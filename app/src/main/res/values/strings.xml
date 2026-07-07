@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LyricSync</string>
+    <string name="notification_access">Notification Access</string>
+    <string name="overlay_permission">Overlay Permission</string>
+    <string name="enabled">Enabled</string>
+    <string name="disabled">Disabled</string>
+    <string name="start">Start</string>
+</resources>
