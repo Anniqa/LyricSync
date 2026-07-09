@@ -11,3 +11,6 @@
 *.ap_
 *.aab
 app/build/
+
+# opencode local config
+opencode.json
