@@ -10,6 +10,4 @@
 *.apk
 *.ap_
 *.aab
-*.jks
-*.keystore
 app/build/
