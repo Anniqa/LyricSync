@@ -46,6 +46,7 @@ public class LRCLIBProvider implements LyricsProvider {
                 throw new IOException("HTTP " + response.code());
             }
 
+            if (response.body() == null) throw new IOException("Empty response body");
             String body = response.body().string();
             return parseResponse(body);
         }
@@ -78,6 +79,7 @@ public class LRCLIBProvider implements LyricsProvider {
                 throw new IOException("HTTP " + response.code());
             }
 
+            if (response.body() == null) throw new IOException("Empty response body");
             String body = response.body().string();
             JsonArray results = JsonParser.parseString(body).getAsJsonArray();
 
@@ -131,7 +133,6 @@ public class LRCLIBProvider implements LyricsProvider {
             if (start < 0) continue;
 
             LyricsData.LyricsLine lyricsLine = new LyricsData.LyricsLine(start, start + 5000, text);
-            lyricsLine.words.add(new LyricsData.Word(start, start + 5000, text));
             lyrics.lines.add(lyricsLine);
         }
 
@@ -166,7 +167,11 @@ public class LRCLIBProvider implements LyricsProvider {
             int sec = Integer.parseInt(secParts[0]);
             int ms = secParts.length > 1 ? Integer.parseInt(secParts[1]) : 0;
 
-            if (String.valueOf(ms).length() == 2) ms *= 10;
+            if (secParts.length > 1) {
+                if (secParts[1].length() == 1) ms *= 100;
+                else if (secParts[1].length() == 2) ms *= 10;
+                else if (secParts[1].length() > 3) ms = (int) Math.round(ms / Math.pow(10, secParts[1].length() - 3));
+            }
 
             return min * 60000L + sec * 1000L + ms;
         } catch (NumberFormatException e) {

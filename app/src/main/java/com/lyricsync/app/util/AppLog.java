@@ -7,13 +7,13 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.LinkedList;
 
 public class AppLog {
     private static final int MAX_LINES = 200;
-    private static final CopyOnWriteArrayList<Entry> entries = new CopyOnWriteArrayList<>();
+    private static final LinkedList<Entry> entries = new LinkedList<>();
     private static final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
-    private static OnLogListener listener;
+    private static volatile OnLogListener listener;
 
     public static class Entry {
         public final long time;
@@ -29,7 +29,7 @@ public class AppLog {
         }
 
         @Override
-        public String toString() {
+        public synchronized String toString() {
             return sdf.format(new Date(time)) + " " + level + "/" + tag + ": " + msg;
         }
     }
@@ -67,18 +67,18 @@ public class AppLog {
         add("E", tag, msg + " | " + t.getMessage());
     }
 
-    private static void add(String level, String tag, String msg) {
+    private static synchronized void add(String level, String tag, String msg) {
         Entry entry = new Entry(level, tag, msg);
         entries.add(entry);
         while (entries.size() > MAX_LINES) {
-            entries.remove(0);
+            entries.removeFirst();
         }
         if (listener != null) {
             listener.onNewLog(entry);
         }
     }
 
-    public static String getAllText() {
+    public static synchronized String getAllText() {
         StringBuilder sb = new StringBuilder();
         for (Entry e : entries) {
             sb.append(e.toString()).append("\n");
@@ -86,7 +86,7 @@ public class AppLog {
         return sb.toString();
     }
 
-    public static void clear() {
+    public static synchronized void clear() {
         entries.clear();
     }
 }

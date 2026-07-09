@@ -1,6 +1,7 @@
 package com.lyricsync.app.renderer;
 
 import android.content.Context;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -43,8 +44,9 @@ public class InterludeDotView extends View {
         glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         glowPaint.setColor(Color.WHITE);
         glowPaint.setStyle(Paint.Style.FILL);
-        glowPaint.setMaskFilter(new android.graphics.BlurMaskFilter(dpToPx(6), android.graphics.BlurMaskFilter.Blur.NORMAL));
+        glowPaint.setMaskFilter(new BlurMaskFilter(dpToPx(6), BlurMaskFilter.Blur.NORMAL));
 
+        setLayerType(LAYER_TYPE_SOFTWARE, null);
         setVisibility(GONE);
     }
 
@@ -53,11 +55,7 @@ public class InterludeDotView extends View {
         boolean isActive = positionMs >= startTime && positionMs < endTime;
         boolean isPast = positionMs >= endTime;
 
-        if (!isActive && !isPast) {
-            if (visible) { setVisibility(GONE); visible = false; }
-            return;
-        }
-        if (isPast) {
+        if (!isActive) {
             if (visible) { setVisibility(GONE); visible = false; }
             return;
         }

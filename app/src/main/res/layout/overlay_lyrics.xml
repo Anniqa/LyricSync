@@ -58,6 +58,15 @@
             android:contentDescription="Hide lyrics" />
 
         <ImageView
+            android:id="@+id/overlay_settings"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:padding="4dp"
+            android:layout_marginStart="4dp"
+            android:src="@drawable/ic_settings"
+            android:contentDescription="Settings" />
+
+        <ImageView
             android:id="@+id/overlay_close"
             android:layout_width="28dp"
             android:layout_height="28dp"
@@ -65,6 +74,50 @@
             android:layout_marginStart="4dp"
             android:src="@drawable/ic_close"
             android:contentDescription="Close" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/overlay_settings_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Lyrics Sync Offset"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/overlay_sync_offset_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0 ms (lyrics later)"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp" />
+
+        <SeekBar
+            android:id="@+id/overlay_sync_offset_slider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="1500"
+            android:min="-1500"
+            android:progress="0"
+            android:layout_marginTop="2dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Lyrics ahead of singing? Increase. Lagging? Decrease."
+            android:textColor="@color/text_dim"
+            android:textSize="11sp"
+            android:layout_marginTop="4dp" />
     </LinearLayout>
 
     <ScrollView

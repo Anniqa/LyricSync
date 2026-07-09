@@ -16,6 +16,7 @@ import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.util.AppLog;
 
 import java.util.List;
+import java.util.Objects;
 
 public class MediaSessionTracker implements MediaSessionManager.OnActiveSessionsChangedListener {
     private static final String TAG = "MediaSessionTracker";
@@ -33,10 +34,14 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     private HandlerThread pollThread;
     private Handler pollHandler;
     private TrackInfo currentTrack;
-    private int currentState = PlaybackState.STATE_NONE;
+    private volatile int currentState = PlaybackState.STATE_NONE;
     private volatile long currentPosition = 0;
     private volatile long lastPositionUpdateElapsed = 0;
+    private volatile boolean positionInitialized = false;
     private volatile float playbackSpeed = 1.0f;
+    // User calibration: positive value shifts the reported position backwards to
+    // compensate apps (e.g. Spotify) whose reported position leads the actual audio.
+    private volatile long syncOffsetMs = 0;
 
     private boolean polling = false;
     private int burstIndex = 0;
@@ -106,6 +111,7 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
     @Override
     public void onActiveSessionsChanged(List<MediaController> controllers) {
+        if (controllers == null) return;
         MediaController target = findTargetController(controllers);
         if (target != null) {
             switchController(target);
@@ -136,9 +142,12 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
             }
         }
 
+        if (spotify != null && spotify.getPlaybackState() != null && spotify.getPlaybackState().getState() == PlaybackState.STATE_PLAYING) return spotify;
+        if (ytmusic != null && ytmusic.getPlaybackState() != null && ytmusic.getPlaybackState().getState() == PlaybackState.STATE_PLAYING) return ytmusic;
+        if (anyPlaying != null) return anyPlaying;
         if (spotify != null) return spotify;
         if (ytmusic != null) return ytmusic;
-        return anyPlaying;
+        return controllers.isEmpty() ? null : controllers.get(0);
     }
 
     private void switchController(MediaController controller) {
@@ -179,13 +188,16 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
             if (track.isValid()) {
                 boolean changed = currentTrack == null ||
-                        !track.title.equals(currentTrack.title) ||
-                        !track.artist.equals(currentTrack.artist);
+                        !Objects.equals(track.title, currentTrack.title) ||
+                        !Objects.equals(track.artist, currentTrack.artist);
                 boolean updated = !changed && hasDisplayInfoChanged(currentTrack, track);
 
                 currentTrack = track;
 
                 if (changed && trackCallback != null) {
+                    currentPosition = 0;
+                    lastPositionUpdateElapsed = SystemClock.elapsedRealtime();
+                    positionInitialized = false;
                     AppLog.i(TAG, "Track: " + track.title + " - " + track.artist
                             + " [" + track.packageName + "] id=" + track.trackId);
                     mainHandler.post(() -> trackCallback.onTrackChanged(track));
@@ -251,9 +263,38 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
     private void updatePlaybackState(PlaybackState state) {
         currentState = state.getState();
-        currentPosition = Math.max(0, state.getPosition());
+        long newPosition = Math.max(0, state.getPosition());
         long updateElapsed = state.getLastPositionUpdateTime();
-        lastPositionUpdateElapsed = updateElapsed > 0 ? updateElapsed : SystemClock.elapsedRealtime();
+        long now = SystemClock.elapsedRealtime();
+        // Spotify (and some other players) do not reliably populate getLastPositionUpdateTime()
+        // in the SystemClock.elapsedRealtime() timebase: it can be a wall-clock value
+        // (currentTimeMillis, far larger than elapsedRealtime) or a future/garbage timestamp.
+        // Only trust it when it is a sane elapsedRealtime value in the past; otherwise anchor
+        // interpolation to the moment we actually read the state.
+        //
+        // Critical detail: MediaController.getPlaybackState() returns a *cached snapshot* that
+        // only changes when Spotify pushes a new one (~1s). Our 16ms poll therefore mostly re-reads
+        // the same snapshot with the same position. If we re-anchored the clock on every poll
+        // (the old behaviour), currentPosition would stay frozen between Spotify's pushes while the
+        // anchor kept resetting to "now", so interpolation would advance only a few ms per poll ->
+        // the lyrics would stutter/lag ("frozen" symptom). Instead, when the timestamp is unusable
+        // we only re-anchor when the REPORTED POSITION actually changed (a genuine new update from
+        // Spotify); on a stale unchanged snapshot we keep the previous anchor so interpolation
+        // continues smoothly until the next real update arrives.
+        if (updateElapsed > 0 && updateElapsed <= now) {
+            lastPositionUpdateElapsed = updateElapsed;
+            currentPosition = newPosition;
+            positionInitialized = true;
+        } else {
+            boolean positionChanged = newPosition != currentPosition;
+            if (positionChanged || !positionInitialized) {
+                lastPositionUpdateElapsed = now;
+                currentPosition = newPosition;
+                positionInitialized = true;
+            }
+            // else: stale snapshot (same position) -> keep anchor + currentPosition so the
+            // already-running interpolation keeps advancing instead of freezing.
+        }
         playbackSpeed = state.getPlaybackSpeed();
         if (playbackSpeed <= 0 && currentState == PlaybackState.STATE_PLAYING) {
             playbackSpeed = 1.0f;
@@ -318,6 +359,9 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         }
         currentTrack = null;
         currentState = PlaybackState.STATE_NONE;
+        currentPosition = 0;
+        lastPositionUpdateElapsed = 0;
+        positionInitialized = false;
 
         if (trackCallback != null) {
             mainHandler.post(trackCallback::onTrackCleared);
@@ -330,22 +374,31 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
     public long getCurrentPosition() {
         int state = currentState;
+        long pos = currentPosition;
         if (state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_BUFFERING) {
             long elapsed = Math.max(0, SystemClock.elapsedRealtime() - lastPositionUpdateElapsed);
-            return currentPosition + (long)(elapsed * playbackSpeed);
+            pos += (long)(elapsed * playbackSpeed);
         }
-        return currentPosition;
+        long adjusted = pos - syncOffsetMs;
+        return adjusted < 0 ? 0 : adjusted;
     }
 
     public long getLastPollNanoTime() {
         long elapsed = lastPositionUpdateElapsed;
         if (elapsed == 0) return System.nanoTime();
-        long bootTime = System.currentTimeMillis() - SystemClock.elapsedRealtime();
-        return (bootTime * 1_000_000L) + (elapsed * 1_000_000L);
+        return System.nanoTime() - (SystemClock.elapsedRealtime() - elapsed) * 1_000_000L;
     }
 
     public float getPlaybackSpeed() {
         return playbackSpeed;
+    }
+
+    public void setSyncOffsetMs(long offsetMs) {
+        this.syncOffsetMs = offsetMs;
+    }
+
+    public long getSyncOffsetMs() {
+        return syncOffsetMs;
     }
 
     public boolean isPlaying() {

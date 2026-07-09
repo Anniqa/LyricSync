@@ -22,6 +22,7 @@ public class LyricsProviderManager {
     private final List<LyricsProvider> providers = new ArrayList<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final LyricsCacheManager cacheManager;
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     public interface LyricsCallback {
         void onLyricsLoaded(LyricsData lyrics);
@@ -40,7 +41,7 @@ public class LyricsProviderManager {
             LyricsData cached = cacheManager.getCached(track);
             if (cached != null && !cached.isEmpty()) {
                 AppLog.d(TAG, "Cache hit for: " + track);
-                callback.onLyricsLoaded(cached);
+                mainHandler.post(() -> callback.onLyricsLoaded(cached));
                 return;
             }
 
@@ -63,21 +64,23 @@ public class LyricsProviderManager {
             }
 
             if (bestLyrics != null) {
+                final LyricsData result = bestLyrics;
                 AppLog.i(TAG, "Got lyrics from " + bestProvider
-                        + " - type: " + bestLyrics.type
-                        + " lines: " + bestLyrics.lines.size());
+                        + " - type: " + result.type
+                        + " lines: " + result.lines.size());
 
-                cacheManager.cache(track, bestLyrics);
-                callback.onLyricsLoaded(bestLyrics);
+                cacheManager.cache(track, result);
+                mainHandler.post(() -> callback.onLyricsLoaded(result));
                 return;
             }
 
             AppLog.w(TAG, "No lyrics found for: " + track);
-            callback.onLyricsError("No lyrics found for: " + track);
+            mainHandler.post(() -> callback.onLyricsError("No lyrics found for: " + track));
         });
     }
 
     public void shutdown() {
-        executor.shutdown();
+        if (executor.isShutdown()) return;
+        executor.shutdownNow();
     }
 }

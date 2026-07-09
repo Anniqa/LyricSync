@@ -18,8 +18,6 @@ public class SyllableHighlighter {
     // SpicyLyrics: words are always bold (font-weight: 700). Size is constant;
     // the ScaleSpline (rest 0.95, peak 1.0505) provides the per-word scale.
     // Non-active lines are scaled to --DefaultLineScale (0.95) via CSS `scale`.
-    private static final float ACTIVE_SIZE = 1.0f;
-    private static final float INACTIVE_SIZE = 1.0f;
     // SpicyLyrics line opacity model: NotSung 0.51, Sung 0.497, Active 1.0
     // (multiplied with the per-word gradient fill of 0.35 dim / 0.85 bright).
     private static final int ACTIVE_COLOR = Color.WHITE;
@@ -36,6 +34,7 @@ public class SyllableHighlighter {
     private final Typeface fontMedium;
     private final float fontSizeSp;
     private final List<LineView> lineViews = new ArrayList<>();
+    private boolean syllableMode = true;
 
     public static class LineView {
         public View rootView;
@@ -58,6 +57,10 @@ public class SyllableHighlighter {
         this.fontBold = fontBold;
         this.fontMedium = fontMedium;
         this.fontSizeSp = fontSizeSp;
+    }
+
+    public void setSyllableMode(boolean syllable) {
+        this.syllableMode = syllable;
     }
 
     public LineView createLineView(LyricsData.LyricsLine line, LinearLayout.LayoutParams params) {
@@ -89,7 +92,7 @@ public class SyllableHighlighter {
             lv.interludeView = dotView;
             lv.rootView = container;
             lv.usePerWord = false;
-        } else if (hasWordTiming(line)) {
+        } else if (syllableMode && hasWordTiming(line)) {
             lv.usePerWord = true;
             lv.rootView = createPerWordView(line, lv, params);
         } else {
@@ -134,7 +137,7 @@ public class SyllableHighlighter {
                     WordFlowLayout.LayoutParams.WRAP_CONTENT,
                     WordFlowLayout.LayoutParams.WRAP_CONTENT);
             if (i < line.words.size() - 1) {
-                wlp.rightMargin = dpToPx(4);
+                wlp.rightMargin = dpToPx(2);
             }
             wv.setLayoutParams(wlp);
 
@@ -147,7 +150,7 @@ public class SyllableHighlighter {
 
         if (line.backgroundVocals != null && !line.backgroundVocals.isEmpty()) {
             lv.backgroundWordViews = new ArrayList<>();
-                lv.bgFlowLayouts = new ArrayList<>();
+            lv.bgFlowLayouts = new ArrayList<>();
             lv.bgWordLastActive = new ArrayList<>();
             float bgSizeSp = fontSizeSp * 0.75f;
             for (LyricsData.LyricsLine bgLine : line.backgroundVocals) {
@@ -158,55 +161,11 @@ public class SyllableHighlighter {
                 bgFlow.setLayoutParams(bgFlowParams);
                 bgFlow.setPadding(dpToPx(4), dpToPx(2), 0, dpToPx(2));
 
-                List<GradientWordView> bgWords = new ArrayList<>();
-                int wordCount = bgLine.words != null ? bgLine.words.size() : 0;
-                boolean[] bgActive = new boolean[wordCount > 0 ? wordCount : 1];
+                List<GradientWordView> bgWords = createBackgroundWords(bgFlow, bgLine, bgSizeSp);
 
-                if (bgLine.words != null && !bgLine.words.isEmpty()) {
-                    for (int j = 0; j < bgLine.words.size(); j++) {
-                        LyricsData.Word bw = bgLine.words.get(j);
-                        GradientWordView bwv = new GradientWordView(context);
-                        bwv.setText(bw.text);
-                        bwv.setTiming(bw.startTime, bw.endTime);
-                bwv.setWordStyle(bgSizeSp, 0x55FFFFFF, fontMedium);
-                        bwv.initLetterEmphasis(bw.text, bw.startTime, bw.endTime);
-
-                        WordFlowLayout.LayoutParams bwlp = new WordFlowLayout.LayoutParams(
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT,
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT);
-                        if (j < bgLine.words.size() - 1) {
-                            bwlp.rightMargin = dpToPx(3);
-                        }
-                        bwv.setLayoutParams(bwlp);
-                        bgFlow.addView(bwv);
-                        bgWords.add(bwv);
-                    }
-                } else if (bgLine.text != null && !bgLine.text.isEmpty()) {
-                    long dur = bgLine.endTime - bgLine.startTime;
-                    String[] parts = bgLine.text.split("\\s+");
-                    long wordDur = parts.length > 0 ? dur / parts.length : dur;
-                    for (int j = 0; j < parts.length; j++) {
-                        long ws = bgLine.startTime + j * wordDur;
-                        long we = ws + wordDur;
-                        GradientWordView bwv = new GradientWordView(context);
-                        bwv.setText(parts[j]);
-                        bwv.setTiming(ws, we);
-                bwv.setWordStyle(bgSizeSp, 0x55FFFFFF, fontMedium);
-
-                        WordFlowLayout.LayoutParams bwlp = new WordFlowLayout.LayoutParams(
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT,
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT);
-                        if (j < parts.length - 1) {
-                            bwlp.rightMargin = dpToPx(3);
-                        }
-                        bwv.setLayoutParams(bwlp);
-                        bgFlow.addView(bwv);
-                        bgWords.add(bwv);
-                    }
-                }
-
+                boolean[] bgActive = new boolean[Math.max(1, bgWords.size())];
                 container.addView(bgFlow);
-                    lv.bgFlowLayouts.add(bgFlow);
+                lv.bgFlowLayouts.add(bgFlow);
                 lv.backgroundWordViews.add(bgWords);
                 lv.bgWordLastActive.add(bgActive);
             }
@@ -221,7 +180,7 @@ public class SyllableHighlighter {
         container.setLayoutParams(params);
 
         GradientTextView gv = new GradientTextView(context);
-        gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp * INACTIVE_SIZE);
+        gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
         gv.setTextColor(INACTIVE_COLOR);
         gv.setTypeface(fontMedium);
         gv.setLineSpacing(0, 1.15f);
@@ -236,7 +195,7 @@ public class SyllableHighlighter {
 
         if (line.backgroundVocals != null && !line.backgroundVocals.isEmpty()) {
             lv.backgroundWordViews = new ArrayList<>();
-                lv.bgFlowLayouts = new ArrayList<>();
+            lv.bgFlowLayouts = new ArrayList<>();
             lv.bgWordLastActive = new ArrayList<>();
             float bgSizeSp = fontSizeSp * 0.75f;
             for (LyricsData.LyricsLine bgLine : line.backgroundVocals) {
@@ -247,61 +206,57 @@ public class SyllableHighlighter {
                 bgFlow.setLayoutParams(bgFlowParams);
                 bgFlow.setPadding(dpToPx(4), dpToPx(2), 0, dpToPx(2));
 
-                List<GradientWordView> bgWords = new ArrayList<>();
-                int wordCount = bgLine.words != null ? bgLine.words.size() : 0;
-                boolean[] bgActive = new boolean[wordCount > 0 ? wordCount : 1];
+                List<GradientWordView> bgWords = createBackgroundWords(bgFlow, bgLine, bgSizeSp);
 
-                if (bgLine.words != null && !bgLine.words.isEmpty()) {
-                    for (int j = 0; j < bgLine.words.size(); j++) {
-                        LyricsData.Word bw = bgLine.words.get(j);
-                        GradientWordView bwv = new GradientWordView(context);
-                        bwv.setText(bw.text);
-                        bwv.setTiming(bw.startTime, bw.endTime);
-                bwv.setWordStyle(bgSizeSp, 0x55FFFFFF, fontMedium);
-                        bwv.initLetterEmphasis(bw.text, bw.startTime, bw.endTime);
-
-                        WordFlowLayout.LayoutParams bwlp = new WordFlowLayout.LayoutParams(
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT,
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT);
-                        if (j < bgLine.words.size() - 1) {
-                            bwlp.rightMargin = dpToPx(3);
-                        }
-                        bwv.setLayoutParams(bwlp);
-                        bgFlow.addView(bwv);
-                        bgWords.add(bwv);
-                    }
-                } else if (bgLine.text != null && !bgLine.text.isEmpty()) {
-                    long dur = bgLine.endTime - bgLine.startTime;
-                    String[] parts = bgLine.text.split("\\s+");
-                    long wordDur = parts.length > 0 ? dur / parts.length : dur;
-                    for (int j = 0; j < parts.length; j++) {
-                        long ws = bgLine.startTime + j * wordDur;
-                        long we = ws + wordDur;
-                        GradientWordView bwv = new GradientWordView(context);
-                        bwv.setText(parts[j]);
-                        bwv.setTiming(ws, we);
-                bwv.setWordStyle(bgSizeSp, 0x55FFFFFF, fontMedium);
-
-                        WordFlowLayout.LayoutParams bwlp = new WordFlowLayout.LayoutParams(
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT,
-                                WordFlowLayout.LayoutParams.WRAP_CONTENT);
-                        if (j < parts.length - 1) {
-                            bwlp.rightMargin = dpToPx(3);
-                        }
-                        bwv.setLayoutParams(bwlp);
-                        bgFlow.addView(bwv);
-                        bgWords.add(bwv);
-                    }
-                }
-
+                boolean[] bgActive = new boolean[Math.max(1, bgWords.size())];
                 container.addView(bgFlow);
-                    lv.bgFlowLayouts.add(bgFlow);
+                lv.bgFlowLayouts.add(bgFlow);
                 lv.backgroundWordViews.add(bgWords);
                 lv.bgWordLastActive.add(bgActive);
             }
         }
 
         return container;
+    }
+
+    private List<GradientWordView> createBackgroundWords(WordFlowLayout bgFlow,
+                                                         LyricsData.LyricsLine bgLine, float bgSizeSp) {
+        List<GradientWordView> bgWords = new ArrayList<>();
+        if (bgLine.words != null && !bgLine.words.isEmpty()) {
+            for (int j = 0; j < bgLine.words.size(); j++) {
+                LyricsData.Word bw = bgLine.words.get(j);
+                bgWords.add(makeBackgroundWord(bw.text, bw.startTime, bw.endTime, j, bgLine.words.size(), bgSizeSp, bgFlow));
+            }
+        } else if (bgLine.text != null && !bgLine.text.isEmpty()) {
+            long dur = bgLine.endTime - bgLine.startTime;
+            String[] parts = bgLine.text.split("\\s+");
+            long wordDur = parts.length > 0 ? dur / parts.length : dur;
+            for (int j = 0; j < parts.length; j++) {
+                long ws = bgLine.startTime + j * wordDur;
+                long we = ws + wordDur;
+                bgWords.add(makeBackgroundWord(parts[j], ws, we, j, parts.length, bgSizeSp, bgFlow));
+            }
+        }
+        return bgWords;
+    }
+
+    private GradientWordView makeBackgroundWord(String text, long start, long end,
+                                                int index, int count, float bgSizeSp, WordFlowLayout bgFlow) {
+        GradientWordView bwv = new GradientWordView(context);
+        bwv.setText(text);
+        bwv.setTiming(start, end);
+        bwv.setBackgroundMode(true);
+        bwv.setWordStyle(bgSizeSp, 0x55FFFFFF, fontMedium);
+        bwv.initLetterEmphasis(text, start, end);
+        WordFlowLayout.LayoutParams bwlp = new WordFlowLayout.LayoutParams(
+                WordFlowLayout.LayoutParams.WRAP_CONTENT,
+                WordFlowLayout.LayoutParams.WRAP_CONTENT);
+        if (index < count - 1) {
+            bwlp.rightMargin = dpToPx(3);
+        }
+        bwv.setLayoutParams(bwlp);
+        bgFlow.addView(bwv);
+        return bwv;
     }
 
     public void animateInterlude(long positionMs, double deltaTime) {
@@ -314,7 +269,15 @@ public class SyllableHighlighter {
     }
 
     public void updateHighlight(long currentPosition, double deltaTime) {
-        for (int i = 0; i < lineViews.size(); i++) {
+        updateHighlight(currentPosition, deltaTime, 0, lineViews.size());
+    }
+
+    public void updateHighlight(long currentPosition, double deltaTime, int start, int end) {
+        int n = lineViews.size();
+        if (n == 0) return;
+        if (start < 0) start = 0;
+        if (end > n) end = n;
+        for (int i = start; i < end; i++) {
             LineView lv = lineViews.get(i);
             LyricsData.LyricsLine line = lv.line;
             if (line.isInterlude) continue;
@@ -352,9 +315,7 @@ public class SyllableHighlighter {
                     wv.setWordStyle(fontSizeSp, ACTIVE_COLOR, fontBold);
                 }
             } else if (isPast) {
-                if (lv.usePerWord || lv.gradientView != null) {
-                    lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-                }
+                lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                 lv.rootView.setAlpha(0.82f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, PAST_COLOR, fontBold);
@@ -380,7 +341,7 @@ public class SyllableHighlighter {
                 lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
                 lv.rootView.setAlpha(1.0f);
                 gv.setTypeface(fontBold);
-                gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp * ACTIVE_SIZE);
+                gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(ACTIVE_COLOR);
             }
             float progress = calculateProgress(lv.line, position);
@@ -402,9 +363,7 @@ public class SyllableHighlighter {
                 gv.setProgress(0f);
                 lv.rootView.setAlpha(0.42f);
             }
-            if (lv.usePerWord || lv.gradientView != null) {
-                lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-            }
+            lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             lv.lastProgress = isPast ? 100f : 0f;
         }
 

@@ -43,6 +43,11 @@ public class SpringScroller {
         scrollPositionRatio = Math.max(0.12f, Math.min(0.45f, ratio));
     }
 
+    public boolean isSettled() {
+        boolean animatorDone = currentAnimator == null || !currentAnimator.isRunning();
+        return scrollSpring.sleeping && animatorDone;
+    }
+
     public void jumpToView(View targetView) {
         if (scrollView == null || targetView == null) return;
         int y = targetScrollFor(targetView);

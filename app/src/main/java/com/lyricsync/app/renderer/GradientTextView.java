@@ -10,7 +10,7 @@ import android.util.AttributeSet;
 import android.widget.TextView;
 
 public class GradientTextView extends TextView {
-    private static final float MIN_PROGRESS_DELTA = 0.005f;
+    private static final float MIN_PROGRESS_DELTA = 0.001f;
     private static final float FADE_WIDTH = 0.2f;
 
     // SpicyLyrics: --gradient-alpha 0.85 (sung), --gradient-alpha-end 0.35 (not-sung)
@@ -23,14 +23,17 @@ public class GradientTextView extends TextView {
 
     public GradientTextView(Context context) {
         super(context);
+        getPaint().setShadowLayer(6f, 0, 0, 0x44FFFFFF);
     }
 
     public GradientTextView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        getPaint().setShadowLayer(6f, 0, 0, 0x44FFFFFF);
     }
 
     public GradientTextView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
+        getPaint().setShadowLayer(6f, 0, 0, 0x44FFFFFF);
     }
 
     @Override
@@ -76,7 +79,6 @@ public class GradientTextView extends TextView {
         }
 
         paint.setShader(cachedShader);
-        paint.setShadowLayer(6f, 0, 0, 0x44FFFFFF);
 
         super.onDraw(canvas);
     }
@@ -85,6 +87,6 @@ public class GradientTextView extends TextView {
         float normalized = Math.max(0f, Math.min(progress / 100f, 1f));
         if (Math.abs(normalized - this.progress) < MIN_PROGRESS_DELTA) return;
         this.progress = normalized;
-        invalidate();
+        postInvalidate();
     }
 }

@@ -7,7 +7,7 @@ import android.util.Log;
 public class MediaNotificationListener extends NotificationListenerService {
     private static final String TAG = "MediaNotifListener";
 
-    private static boolean isListening = false;
+    private static volatile boolean isListening = false;
 
     public static boolean isListenerEnabled() {
         return isListening;

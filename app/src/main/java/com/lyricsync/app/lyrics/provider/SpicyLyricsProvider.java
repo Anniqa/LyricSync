@@ -119,6 +119,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
                     throw new IOException("HTTP " + response.code());
                 }
 
+                if (response.body() == null) throw new IOException("Empty response body");
                 String body = response.body().string();
                 return parseResponse(body);
             }
@@ -156,6 +157,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
                     .build();
             try (Response response = client.newCall(request).execute()) {
                 if (!response.isSuccessful()) return null;
+                if (response.body() == null) throw new IOException("Empty response body");
                 String html = response.body().string();
                 // Extract accessToken from JSON in page: "accessToken":"BQD..."
                 int idx = html.indexOf("\"accessToken\":\"");
@@ -271,6 +273,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
             if ("Interlude".equals(groupType)) {
                 long start = getTimeMs(group, "StartTime");
                 long end = getTimeMs(group, "EndTime");
+                if (start < 0 || end < 0) continue;
                 LyricsData.LyricsLine line = new LyricsData.LyricsLine(start, end, "");
                 line.isInterlude = true;
                 lyrics.lines.add(line);
@@ -285,6 +288,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
 
             long lineStart = getTimeMs(lead, "StartTime");
             long lineEnd = getTimeMs(lead, "EndTime");
+            if (lineStart < 0 || lineEnd < 0) continue;
 
             // Build lead text from syllables
             StringBuilder lineText = new StringBuilder();
@@ -303,6 +307,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
                 String text = safeString(syl, "Text", "text");
                 long start = getTimeMs(syl, "StartTime");
                 long end = getTimeMs(syl, "EndTime");
+                if (start < 0 || end < 0) continue;
                 line.words.add(new LyricsData.Word(start, end, text));
             }
 
@@ -320,6 +325,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
 
                         long bgStart = getTimeMs(bg, "StartTime");
                         long bgEnd = getTimeMs(bg, "EndTime");
+                        if (bgStart < 0 || bgEnd < 0) continue;
 
                         StringBuilder bgText = new StringBuilder();
                         for (JsonElement sylEl : bgSyllables) {
@@ -337,6 +343,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
                             String text = safeString(syl, "Text", "text");
                             long start = getTimeMs(syl, "StartTime");
                             long end = getTimeMs(syl, "EndTime");
+                            if (start < 0 || end < 0) continue;
                             bgLine.words.add(new LyricsData.Word(start, end, text));
                         }
 
@@ -371,12 +378,12 @@ public class SpicyLyricsProvider implements LyricsProvider {
             if ("Interlude".equals(lineType)) {
                 long start = getTimeMs(lineObj, "StartTime", "startTime");
                 long end = getTimeMs(lineObj, "EndTime", "endTime");
-                if (start == 0 && lineObj.has("Time")) {
+                if (start < 0 && lineObj.has("Time")) {
                     JsonObject time = lineObj.getAsJsonObject("Time");
                     start = getTimeMs(time, "Start");
                     end = getTimeMs(time, "End");
                 }
-                if (start < end) {
+                if (start >= 0 && end >= 0 && start < end) {
                     LyricsData.LyricsLine line = new LyricsData.LyricsLine(start, end, "");
                     line.isInterlude = true;
                     lyrics.lines.add(line);
@@ -391,14 +398,14 @@ public class SpicyLyricsProvider implements LyricsProvider {
             long start = getTimeMs(lineObj, "StartTime", "startTime");
             long end = getTimeMs(lineObj, "EndTime", "endTime");
             // Fallback: Time sub-object
-            if (start == 0 && lineObj.has("Time")) {
+            if (start < 0 && lineObj.has("Time")) {
                 JsonObject time = lineObj.getAsJsonObject("Time");
                 start = getTimeMs(time, "Start");
                 end = getTimeMs(time, "End");
             }
+            if (start < 0 || end < 0) continue;
 
             LyricsData.LyricsLine line = new LyricsData.LyricsLine(start, end, text);
-            line.words.add(new LyricsData.Word(start, end, text));
             lyrics.lines.add(line);
         }
 
@@ -434,7 +441,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
                 }
             }
         }
-        return 0;
+        return -1;
     }
 
     private static String safeString(JsonObject obj, String... keys) {
@@ -482,6 +489,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
                     AppLog.w(TAG, "Spotify search failed: HTTP " + response.code());
                     return null;
                 }
+                if (response.body() == null) throw new IOException("Empty response body");
                 String body = response.body().string();
                 return pickBestSpotifyCandidate(track, cleanTitle, body);
             }

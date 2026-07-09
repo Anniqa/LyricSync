@@ -27,7 +27,7 @@ public class LyricsCacheManager {
 
     public LyricsData getCached(TrackInfo track) {
         String key = makeKey(track);
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
 
         try (Cursor cursor = db.query(TABLE,
                 new String[]{"json_data", "type", "timestamp"},
@@ -79,7 +79,7 @@ public class LyricsCacheManager {
     }
 
     private String makeKey(TrackInfo track) {
-        return (track.title + "|" + track.artist).toLowerCase().trim();
+        return (track.title + "|||" + track.artist).toLowerCase().trim();
     }
 
     private static class CacheDBHelper extends SQLiteOpenHelper {

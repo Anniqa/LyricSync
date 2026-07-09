@@ -57,6 +57,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                 throw new IOException("HTTP " + response.code());
             }
 
+            if (response.body() == null) throw new IOException("Empty response body");
             String body = response.body().string();
             JsonObject root = JsonParser.parseString(body).getAsJsonObject();
             JsonObject result = root.getAsJsonObject("result");
@@ -84,6 +85,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                 throw new IOException("HTTP " + response.code());
             }
 
+            if (response.body() == null) throw new IOException("Empty response body");
             String body = response.body().string();
             return parseLyricResponse(body);
         }

@@ -116,7 +116,7 @@ public class Spline {
         m.set(l, p);
     }
 
-    private List<List<Double>> zerosMat(double r, int c) {
+    private List<List<Double>> zerosMat(int r, int c) {
         List<List<Double>> a = new ArrayList<>();
         for (int i = 0; i < r; i++) {
             List<Double> list = new ArrayList<>();

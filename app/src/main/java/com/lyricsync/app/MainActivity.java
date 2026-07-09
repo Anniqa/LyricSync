@@ -18,6 +18,8 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
+import com.lyricsync.app.util.SeekBars;
+
 import com.google.android.material.button.MaterialButton;
 import com.lyricsync.app.detection.MediaNotificationListener;
 import com.lyricsync.app.overlay.FloatingOverlayService;
@@ -77,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
         logScroll = findViewById(R.id.log_scroll);
         setupFontSizeSlider();
         setupOverlaySizeSliders();
+        setupSyncOffsetSlider();
     }
 
     private void setupFontSizeSlider() {
@@ -84,22 +87,12 @@ public class MainActivity extends AppCompatActivity {
         TextView label = findViewById(R.id.font_size_label);
         SharedPreferences prefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
         int savedProgress = Math.max(50, Math.min(200, (int) (prefs.getFloat("font_scale", 1.0f) * 100)));
-        slider.setProgress(savedProgress);
         label.setText(savedProgress + "%");
 
-        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                progress = Math.max(50, Math.min(200, progress));
-                label.setText(progress + "%");
-                prefs.edit().putFloat("font_scale", progress / 100f).apply();
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+        SeekBars.bind(slider, savedProgress, progress -> {
+            progress = Math.max(50, Math.min(200, progress));
+            label.setText(progress + "%");
+            prefs.edit().putFloat("font_scale", progress / 100f).apply();
         });
     }
 
@@ -109,48 +102,44 @@ public class MainActivity extends AppCompatActivity {
         SeekBar widthSlider = findViewById(R.id.overlay_width_slider);
         TextView widthLabel = findViewById(R.id.overlay_width_label);
         int widthPercent = Math.max(55, Math.min(100, prefs.getInt("overlay_width_percent", 88)));
-        widthSlider.setProgress(widthPercent);
         widthLabel.setText("Width: " + widthPercent + "%");
-        widthSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                progress = Math.max(55, Math.min(100, progress));
-                widthLabel.setText("Width: " + progress + "%");
-                prefs.edit().putInt("overlay_width_percent", progress).apply();
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+        SeekBars.bind(widthSlider, widthPercent, progress -> {
+            progress = Math.max(55, Math.min(100, progress));
+            widthLabel.setText("Width: " + progress + "%");
+            prefs.edit().putInt("overlay_width_percent", progress).apply();
         });
 
         SeekBar heightSlider = findViewById(R.id.overlay_height_slider);
         TextView heightLabel = findViewById(R.id.overlay_height_label);
         int heightPercent = Math.max(20, Math.min(70, prefs.getInt("overlay_height_percent", 36)));
-        heightSlider.setProgress(heightPercent);
         heightLabel.setText("Height: " + heightPercent + "%");
-        heightSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                progress = Math.max(20, Math.min(70, progress));
-                heightLabel.setText("Height: " + progress + "%");
-                prefs.edit().putInt("overlay_height_percent", progress).apply();
-            }
+        SeekBars.bind(heightSlider, heightPercent, progress -> {
+            progress = Math.max(20, Math.min(70, progress));
+            heightLabel.setText("Height: " + progress + "%");
+            prefs.edit().putInt("overlay_height_percent", progress).apply();
+        });
+    }
 
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
+    private void setupSyncOffsetSlider() {
+        SeekBar slider = findViewById(R.id.sync_offset_slider);
+        TextView label = findViewById(R.id.sync_offset_label);
+        SharedPreferences prefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
+        int saved = (int) prefs.getLong("sync_offset_ms", 0);
+        saved = Math.max(-1500, Math.min(1500, saved));
+        label.setText(saved + " ms (lyrics " + (saved >= 0 ? "later" : "earlier") + ")");
 
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+        SeekBars.bind(slider, saved + 1500, progress -> {
+            int offset = progress - 1500;
+            offset = Math.max(-1500, Math.min(1500, offset));
+            label.setText(offset + " ms (lyrics " + (offset >= 0 ? "later" : "earlier") + ")");
+            prefs.edit().putLong("sync_offset_ms", offset).apply();
         });
     }
 
     private void setupListeners() {
         findViewById(R.id.btn_notification_access).setOnClickListener(v -> {
             Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
-            startActivityForResult(intent, REQ_NOTIFICATION_LISTENER);
+            startActivity(intent);
         });
 
         findViewById(R.id.btn_overlay_permission).setOnClickListener(v -> {

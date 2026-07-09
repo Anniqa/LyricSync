@@ -116,8 +116,8 @@ public class GradientWordView extends TextView {
         glowPaint.setTextSize(getPaint().getTextSize());
         glowPaint.setTypeface(typeface);
         if (Math.abs(lastSizeSp - sizeSp) > 0.01f) {
-            int horizontalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.14f));
-            int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.20f));
+            int horizontalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.04f));
+            int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
             setPadding(horizontalPad, verticalPad, horizontalPad, verticalPad);
             lastSizeSp = sizeSp;
         }
@@ -233,42 +233,51 @@ public class GradientWordView extends TextView {
         canvas.drawText(text, drawX, getBaseline(), textPaint);
     }
 
-    // SpicyLyrics letter emphasis: each letter is a solid colour (dim -> bright via
-    // easeSinOut as it is sung); the active letter pops in scale and nearby letters
-    // share the pop through a steep proximity falloff.
+    // Smooth left-to-right sweep: each letter's brightness is sampled from a continuous
+    // gradient across the whole word (same sweep math as drawWordGradient), so the bright
+    // edge glides across letters instead of snapping per-letter. The active letter still
+    // pops in scale/glow for emphasis.
     private void drawLetterEmphasis(Canvas canvas, float viewW, float wordGlowAlpha) {
         float baseline = getBaseline();
         float totalTextW = cachedTextWidth;
         float startX = getPaddingLeft() + Math.max(0f, (viewW - totalTextW) / 2f);
 
+        // Continuous sweep position in the -0.20..1.0 space (matches drawWordGradient).
+        float p = -0.20f + 1.20f * progress;
+        float dStop = p + FADE_WIDTH;
+
+        int n = letters.length;
+        float[] centers = new float[n];
+        float cursor = startX;
+        float denom = Math.max(1f, totalTextW);
+        for (int i = 0; i < n; i++) {
+            float letterW = textPaint.measureText(letters[i]);
+            centers[i] = (cursor + letterW / 2f - startX) / denom;
+            cursor += letterW;
+        }
+
         int activeIndex = -1;
-        float activeLetterPct = 0;
-        for (int i = 0; i < letters.length; i++) {
+        for (int i = 0; i < n; i++) {
             if (letterProgress[i] > 0 && letterProgress[i] < 1) {
                 activeIndex = i;
-                activeLetterPct = letterProgress[i];
                 break;
             }
         }
+        float activeLetterPct = activeIndex >= 0 ? letterProgress[activeIndex] : 0;
 
-        float cursorX = startX;
-        for (int i = 0; i < letters.length; i++) {
+        cursor = startX;
+        for (int i = 0; i < n; i++) {
             String letter = letters[i];
             float letterW = textPaint.measureText(letter);
-            float lp = letterProgress[i];
 
-            int letterColor;
-            if (lp >= 1f) {
-                letterColor = brightColor;
-            } else if (lp <= 0f) {
-                letterColor = dimColor;
-            } else {
-                float e = easeSinOut(lp);
-                int lo = (dimColor >> 24) & 0xFF;
-                int hi = (brightColor >> 24) & 0xFF;
-                int a = (int) (lo + (hi - lo) * e);
-                letterColor = (a << 24) | 0x00FFFFFF;
-            }
+            // Continuous brightness across the word for a smooth left-to-right sweep.
+            float f = centers[i];
+            float a = (dStop - f) / FADE_WIDTH;
+            a = Math.max(0f, Math.min(1f, a));
+            int lo = (dimColor >> 24) & 0xFF;
+            int hi = (brightColor >> 24) & 0xFF;
+            int alpha = (int) (lo + (hi - lo) * a);
+            int letterColor = (alpha << 24) | 0x00FFFFFF;
 
             float lScale = (float) letterScaleSprings[i].position;
             float lGlow = (float) Math.max(0, Math.min(letterGlowSprings[i].position, 1));
@@ -286,7 +295,7 @@ public class GradientWordView extends TextView {
             }
 
             canvas.save();
-            float cx = cursorX + letterW / 2f;
+            float cx = cursor + letterW / 2f;
             float cy = baseline / 2f;
             if (lScale != 1f) {
                 canvas.scale(lScale, lScale, cx, cy);
@@ -296,15 +305,15 @@ public class GradientWordView extends TextView {
                 int glowA = (int) (Math.min(lGlow, 1.0) * 255);
                 glowPaint.setColor((glowA << 24) | 0x00FFFFFF);
                 glowPaint.setShader(null);
-                canvas.drawText(letter, cursorX, baseline, glowPaint);
+                canvas.drawText(letter, cursor, baseline, glowPaint);
             }
 
             textPaint.setShader(null);
             textPaint.setColor(letterColor);
-            canvas.drawText(letter, cursorX, baseline, textPaint);
+            canvas.drawText(letter, cursor, baseline, textPaint);
 
             canvas.restore();
-            cursorX += letterW;
+            cursor += letterW;
         }
     }
 
@@ -379,6 +388,9 @@ public class GradientWordView extends TextView {
         letters = null;
         letterScaleSprings = null;
         letterGlowSprings = null;
+        letterProgress = null;
+        letterStartTimes = null;
+        letterEndTimes = null;
         textPaint.setShader(null);
         textPaint.setColor(brightColor);
         invalidate();

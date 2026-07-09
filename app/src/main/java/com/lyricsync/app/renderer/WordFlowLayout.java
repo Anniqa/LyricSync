@@ -85,7 +85,7 @@ public class WordFlowLayout extends ViewGroup {
             int childW = child.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
             int childH = child.getMeasuredHeight() + lp.topMargin + lp.bottomMargin;
 
-            if (x + childW > l + availableWidth && x > getPaddingLeft()) {
+            if (x + childW > getPaddingLeft() + availableWidth && x > getPaddingLeft()) {
                 x = getPaddingLeft();
                 y += rowHeight;
                 rowHeight = 0;
