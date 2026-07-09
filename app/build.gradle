@@ -10,8 +10,8 @@ android {
         applicationId "com.lyricsync.app"
         minSdk 26
         targetSdk 35
-        versionCode 48
-        versionName "15.31"
+        versionCode 49
+        versionName "15.32"
     }
 
     signingConfigs {
@@ -31,15 +31,6 @@ android {
         }
         debug {
             minifyEnabled false
-        }
-    }
-
-    splits {
-        abi {
-            enable true
-            reset()
-            include 'armeabi-v7a', 'arm64-v8a'
-            universalApk false
         }
     }
 
