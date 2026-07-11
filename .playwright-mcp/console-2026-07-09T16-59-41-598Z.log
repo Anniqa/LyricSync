@@ -1,5 +1,0 @@
-[    1851ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://cdn.fonts.coollabs.io/open-sans/normal/700-latin.woff2:0
-[    1856ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ https://cdn.fonts.coollabs.io/open-sans/normal/400-latin.woff2:0
-[    1991ms] [LOG] recaptchacompat disabled @ https://js.hcaptcha.com/1/api.js?hl=en&render=explicit&recaptchacompat=off:3
-[    2085ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://anal.doubledouble.top/js/script.js:0
-[    2436ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://cdn.fonts.coollabs.io/icons/material-icons/v125.woff2:0

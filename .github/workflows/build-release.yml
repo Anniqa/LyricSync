@@ -1,13 +1,9 @@
-name: Build Release APK
+name: Build & Send APK
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    branches:
+      - master
 
 jobs:
   build:
@@ -31,16 +27,20 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build release APKs (ABI split)
-        run: ./gradlew assembleRelease --no-daemon
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
 
-      - name: List built APKs
-        run: ls -la app/build/outputs/apk/release/
+      - name: Find APK
+        id: apk
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          ls -la "$APK"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/release/*.apk
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Send to Telegram
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+            -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F "document=@${{ steps.apk.outputs.path }}" \
+            -F "caption=LyricSync debug build — ${{ github.event.head_commit.message }}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('OK' if r.get('ok') else 'FAIL: '+str(r))"
