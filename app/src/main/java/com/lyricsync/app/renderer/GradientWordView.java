@@ -45,8 +45,10 @@ public class GradientWordView extends TextView {
     // Letter-level emphasis (SpicyLyrics IsLetterCapable + Emphasize)
     private static final long LETTER_MIN_DURATION = 1000;
     // SpicyLyrics non-SLM IsLetterCapable: only duration >= 1000, no count cap.
+    // Distribute the per-letter emphasis across the FULL word so the last letter does
+    // not finish early and snap back to idle (the old 250ms end trim left a dead zone).
     private static final long LETTER_SUBSTRACT_START = 0;
-    private static final long LETTER_SUBSTRACT_END = 250;
+    private static final long LETTER_SUBSTRACT_END = 0;
     // SpicyLyrics Emphasize: LetterGlowMultiplier_Opacity = 185 (percent, clamped to 100)
     private static final float LETTER_GLOW_MULTIPLIER = 1.85f;
     private static final float LETTER_IDLE_SCALE = 0.95f;
@@ -66,13 +68,13 @@ public class GradientWordView extends TextView {
     private float cachedTextWidth = -1f;
     private float lastShaderProgress = -1f;
     private LinearGradient cachedShader;
-    private float lastSizeSp = -1f;
+    private float appliedSizeSp = -1f;
+    private android.graphics.Typeface appliedTypeface = null;
 
     private final Spring scaleSpring;
     private final Spring yOffsetSpring;
     private final Spring glowSpring;
 
-    private final Paint textPaint;
     private final Paint glowPaint;
 
     // Letter-level emphasis state
@@ -86,8 +88,6 @@ public class GradientWordView extends TextView {
 
     public GradientWordView(Context context) {
         super(context);
-        textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        textPaint.setColor(brightColor);
         glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         glowPaint.setColor(brightColor);
         scaleSpring = new Spring(0.95, SCALE_DAMP, SCALE_FREQ);
@@ -107,21 +107,23 @@ public class GradientWordView extends TextView {
     }
 
     public void setWordStyle(float sizeSp, int color, android.graphics.Typeface typeface) {
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp);
         setTextColor(color);
-        setTypeface(typeface);
-        setIncludeFontPadding(true);
-        textPaint.setTextSize(getPaint().getTextSize());
-        textPaint.setTypeface(typeface);
-        glowPaint.setTextSize(getPaint().getTextSize());
-        glowPaint.setTypeface(typeface);
-        if (Math.abs(lastSizeSp - sizeSp) > 0.01f) {
+        // Only touch text size / typeface / padding when they actually change, so a
+        // colour-only state change (active/past/upcoming) doesn't trigger a relayout.
+        boolean styleChanged = Math.abs(appliedSizeSp - sizeSp) > 0.01f || typeface != appliedTypeface;
+        if (styleChanged) {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp);
+            setTypeface(typeface);
+            setIncludeFontPadding(true);
+            glowPaint.setTextSize(getPaint().getTextSize());
+            glowPaint.setTypeface(typeface);
             int horizontalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.04f));
             int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
             setPadding(horizontalPad, verticalPad, horizontalPad, verticalPad);
-            lastSizeSp = sizeSp;
+            appliedSizeSp = sizeSp;
+            appliedTypeface = typeface;
+            cachedTextWidth = -1f;
         }
-        cachedTextWidth = -1f;
     }
 
     public void initLetterEmphasis(String wordText, long wordStart, long wordEnd) {
@@ -159,12 +161,18 @@ public class GradientWordView extends TextView {
     }
 
     private static String[] splitLetters(String text) {
-        int len = text.length();
-        String[] result = new String[len];
-        for (int i = 0; i < len; i++) {
-            result[i] = String.valueOf(text.charAt(i));
+        if (text == null || text.isEmpty()) return new String[0];
+        // Split by grapheme cluster, not UTF-16 code unit. charAt(i) breaks composed
+        // characters (e.g. "é" = e + combining accent) and supplementary characters
+        // (emoji, some CJK), which then measure/draw at the wrong width.
+        java.text.BreakIterator it = java.text.BreakIterator.getCharacterInstance();
+        it.setText(text);
+        java.util.List<String> result = new java.util.ArrayList<>();
+        int start = it.first();
+        for (int end = it.next(); end != java.text.BreakIterator.DONE; start = end, end = it.next()) {
+            result.add(text.substring(start, end));
         }
-        return result;
+        return result.toArray(new String[0]);
     }
 
     @Override
@@ -229,8 +237,8 @@ public class GradientWordView extends TextView {
                     Shader.TileMode.CLAMP);
         }
 
-        textPaint.setShader(shader);
-        canvas.drawText(text, drawX, getBaseline(), textPaint);
+        getPaint().setShader(shader);
+        canvas.drawText(text, drawX, getBaseline(), getPaint());
     }
 
     // Smooth left-to-right sweep: each letter's brightness is sampled from a continuous
@@ -251,7 +259,7 @@ public class GradientWordView extends TextView {
         float cursor = startX;
         float denom = Math.max(1f, totalTextW);
         for (int i = 0; i < n; i++) {
-            float letterW = textPaint.measureText(letters[i]);
+            float letterW = getPaint().measureText(letters[i]);
             centers[i] = (cursor + letterW / 2f - startX) / denom;
             cursor += letterW;
         }
@@ -268,7 +276,7 @@ public class GradientWordView extends TextView {
         cursor = startX;
         for (int i = 0; i < n; i++) {
             String letter = letters[i];
-            float letterW = textPaint.measureText(letter);
+            float letterW = getPaint().measureText(letter);
 
             // Continuous brightness across the word for a smooth left-to-right sweep.
             float f = centers[i];
@@ -308,9 +316,9 @@ public class GradientWordView extends TextView {
                 canvas.drawText(letter, cursor, baseline, glowPaint);
             }
 
-            textPaint.setShader(null);
-            textPaint.setColor(letterColor);
-            canvas.drawText(letter, cursor, baseline, textPaint);
+            getPaint().setShader(null);
+            getPaint().setColor(letterColor);
+            canvas.drawText(letter, cursor, baseline, getPaint());
 
             canvas.restore();
             cursor += letterW;
@@ -391,8 +399,8 @@ public class GradientWordView extends TextView {
         letterProgress = null;
         letterStartTimes = null;
         letterEndTimes = null;
-        textPaint.setShader(null);
-        textPaint.setColor(brightColor);
+        getPaint().setShader(null);
+        getPaint().setColor(brightColor);
         invalidate();
     }
 

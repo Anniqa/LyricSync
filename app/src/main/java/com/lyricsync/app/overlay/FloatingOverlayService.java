@@ -77,6 +77,7 @@ public class FloatingOverlayService extends Service {
 
     private LyricsData currentLyrics;
     private TrackInfo currentTrack;
+    private volatile String pendingFetchKey = null;
     private boolean isDestroyed = false;
     private int lastActiveLineIndex = -1;
     private Typeface fontBold;
@@ -522,13 +523,20 @@ public class FloatingOverlayService extends Service {
 
     private void fetchLyrics(TrackInfo track) {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
+        final String fetchKey = track.title + "|||" + track.artist;
+        pendingFetchKey = fetchKey;
         lyricsManager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
             @Override
             public void onLyricsLoaded(LyricsData lyrics) {
+                if (!fetchKey.equals(pendingFetchKey)) {
+                    AppLog.d(TAG, "Stale lyrics ignored for: " + track.title);
+                    return;
+                }
                 AppLog.i(TAG, "Lyrics loaded: " + lyrics.lines.size()
                         + " lines from " + lyrics.provider
                         + " type=" + lyrics.type);
                 handler.post(() -> {
+                    if (!fetchKey.equals(pendingFetchKey)) return;
                     currentLyrics = lyrics;
                     if (currentTrack != null) updateTrackInfo(currentTrack);
                     renderOverlayLyrics(lyrics);
@@ -537,8 +545,10 @@ public class FloatingOverlayService extends Service {
 
             @Override
             public void onLyricsError(String error) {
+                if (!fetchKey.equals(pendingFetchKey)) return;
                 AppLog.w(TAG, "Lyrics error: " + error);
                 handler.post(() -> {
+                    if (!fetchKey.equals(pendingFetchKey)) return;
                     lyricsContainer.removeAllViews();
                     highlighter.clear();
                     lineViews.clear();

@@ -1,0 +1,54 @@
+- generic [active] [ref=e1]:
+  - link "DoubleDouble" [ref=e2] [cursor=pointer]:
+    - /url: /
+    - heading "DoubleDouble" [level=1] [ref=e3]
+  - paragraph [ref=e4]: Download music directly from Amazon Music, Soundcloud, Qobuz, Deezer and Tidal for free.
+  - generic [ref=e6]:
+    - generic [ref=e7]: Insert a valid URL or search below.
+    - generic [ref=e8]:
+      - textbox "Insert a valid URL or search below." [ref=e9]:
+        - /placeholder: Enter a URL...
+      - button "Download" [ref=e10] [cursor=pointer]
+    - group [ref=e11]:
+      - generic "settings Options" [ref=e12]
+      - generic "If the checkbox is unticked, it will download directly from our server, which may be slower." [ref=e13]:
+        - checkbox "Upload to pixeldrain.com ?" [checked] [ref=e14]
+        - generic [ref=e15]:
+          - text: Upload to
+          - combobox [ref=e16]:
+            - option "pixeldrain.com" [selected]
+            - option "litterbox.catbox.moe"
+            - option "send.cm"
+          - text: "?"
+      - generic [ref=e17]:
+        - checkbox "Hide my download from \"recently downloaded\"" [ref=e18]
+        - text: Hide my download from "recently downloaded"
+      - group [ref=e20]:
+        - generic "Spotify-specific settings" [ref=e21]
+        - option "OGG 320kbps" [selected]
+        - option "MP3 320kbps"
+  - link "Lucida Music Click here to try it out" [ref=e23] [cursor=pointer]:
+    - /url: https://lucida.to/
+    - generic [ref=e24]:
+      - paragraph [ref=e25]: Lucida Music
+      - paragraph [ref=e26]: Click here to try it out
+  - generic [ref=e27]:
+    - separator [ref=e28]
+    - paragraph [ref=e29]:
+      - link "telegram announcements" [ref=e30] [cursor=pointer]:
+        - /url: https://t.me/doubledoubletop
+      - text: (
+      - link "discussion group" [ref=e31] [cursor=pointer]:
+        - /url: https://discord.gg/mER6k6vqnA
+      - text: ", pls join) /"
+      - link "faq" [ref=e32] [cursor=pointer]:
+        - /url: /faq
+      - text: /
+      - link "donate" [ref=e33] [cursor=pointer]:
+        - /url: /donate
+      - text: /
+      - link "server stats" [ref=e34] [cursor=pointer]:
+        - /url: /stats
+      - text: /
+      - link "email me" [ref=e35] [cursor=pointer]:
+        - /url: mailto:Bunt4021@proton.me

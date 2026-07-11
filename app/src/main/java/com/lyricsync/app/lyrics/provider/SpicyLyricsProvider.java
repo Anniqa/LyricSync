@@ -14,7 +14,9 @@ import com.lyricsync.app.util.AppLog;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -290,26 +292,17 @@ public class SpicyLyricsProvider implements LyricsProvider {
             long lineEnd = getTimeMs(lead, "EndTime");
             if (lineStart < 0 || lineEnd < 0) continue;
 
-            // Build lead text from syllables
+            // SpicyLyrics syllables are sub-word timing units and carry NO spaces.
+            // The IsPartOfWord flag marks a syllable that continues into the NEXT
+            // syllable, so we must merge syllables back into real words or the line
+            // renders as one run-on word (e.g. "Ibeentrynacall").
             StringBuilder lineText = new StringBuilder();
-            for (JsonElement sylEl : leadSyllables) {
-                JsonObject syl = sylEl.getAsJsonObject();
-                lineText.append(safeString(syl, "Text", "text"));
-            }
+            List<LyricsData.Word> leadWords = buildWordsFromSyllables(leadSyllables, lineText);
 
-            if (lineText.length() == 0) continue;
+            if (leadWords.isEmpty()) continue;
 
             LyricsData.LyricsLine line = new LyricsData.LyricsLine(lineStart, lineEnd, lineText.toString().trim());
-
-            // Add lead syllables as words
-            for (JsonElement sylEl : leadSyllables) {
-                JsonObject syl = sylEl.getAsJsonObject();
-                String text = safeString(syl, "Text", "text");
-                long start = getTimeMs(syl, "StartTime");
-                long end = getTimeMs(syl, "EndTime");
-                if (start < 0 || end < 0) continue;
-                line.words.add(new LyricsData.Word(start, end, text));
-            }
+            line.words.addAll(leadWords);
 
             // Parse background vocals (Spicy EX: checks both "Background" and "background")
             JsonArray bgArray = null;
@@ -328,24 +321,12 @@ public class SpicyLyricsProvider implements LyricsProvider {
                         if (bgStart < 0 || bgEnd < 0) continue;
 
                         StringBuilder bgText = new StringBuilder();
-                        for (JsonElement sylEl : bgSyllables) {
-                            JsonObject syl = sylEl.getAsJsonObject();
-                            bgText.append(safeString(syl, "Text", "text"));
-                        }
-
-                        if (bgText.length() == 0) continue;
+                        List<LyricsData.Word> bgWords = buildWordsFromSyllables(bgSyllables, bgText);
+                        if (bgWords.isEmpty()) continue;
 
                         LyricsData.LyricsLine bgLine = new LyricsData.LyricsLine(bgStart, bgEnd, bgText.toString().trim());
                         bgLine.isBackground = true;
-
-                        for (JsonElement sylEl : bgSyllables) {
-                            JsonObject syl = sylEl.getAsJsonObject();
-                            String text = safeString(syl, "Text", "text");
-                            long start = getTimeMs(syl, "StartTime");
-                            long end = getTimeMs(syl, "EndTime");
-                            if (start < 0 || end < 0) continue;
-                            bgLine.words.add(new LyricsData.Word(start, end, text));
-                        }
+                        bgLine.words.addAll(bgWords);
 
                         line.backgroundVocals.add(bgLine);
                     }
@@ -364,6 +345,60 @@ public class SpicyLyricsProvider implements LyricsProvider {
         // between lines (>= getLyricsBetweenShow() = 3s), not only from explicit
         // Interlude types. Match that behaviour.
         LyricsData.insertInterludes(lyrics, 3000);
+    }
+
+    /**
+     * Merge SpicyLyrics syllables into real words. A syllable whose IsPartOfWord flag
+     * is true continues the word that the NEXT syllable begins, so consecutive
+     * syllables are grouped into one Word until a syllable that is not part of a word
+     * starts a new one. The merged, space-joined text is appended to {@code lineText}.
+     */
+    private List<LyricsData.Word> buildWordsFromSyllables(JsonArray syllables, StringBuilder lineText) {
+        List<LyricsData.Word> words = new ArrayList<>();
+        if (syllables == null) return words;
+
+        StringBuilder cur = new StringBuilder();
+        long curStart = 0;
+        long curEnd = 0;
+        boolean prevPartOfWord = false;
+
+        for (int i = 0; i < syllables.size(); i++) {
+            JsonObject syl = syllables.get(i).getAsJsonObject();
+            String text = safeString(syl, "Text", "text");
+            if (text.isEmpty()) continue;
+            long start = getTimeMs(syl, "StartTime");
+            long end = getTimeMs(syl, "EndTime");
+            if (start < 0 || end < 0) continue;
+            boolean partOfWord = syl.has("IsPartOfWord") && !syl.get("IsPartOfWord").isJsonNull()
+                    && syl.get("IsPartOfWord").getAsBoolean();
+
+            if (cur.length() == 0) {
+                curStart = start;
+                curEnd = end;
+                cur.append(text);
+            } else if (prevPartOfWord) {
+                // previous syllable was part of a word -> this one continues it
+                curEnd = end;
+                cur.append(text);
+            } else {
+                // previous syllable ended a word -> flush, start a new one
+                words.add(new LyricsData.Word(curStart, curEnd, cur.toString().trim()));
+                if (lineText.length() > 0) lineText.append(' ');
+                lineText.append(cur.toString().trim());
+                cur.setLength(0);
+                curStart = start;
+                curEnd = end;
+                cur.append(text);
+            }
+            prevPartOfWord = partOfWord;
+        }
+
+        if (cur.length() > 0) {
+            words.add(new LyricsData.Word(curStart, curEnd, cur.toString().trim()));
+            if (lineText.length() > 0) lineText.append(' ');
+            lineText.append(cur.toString().trim());
+        }
+        return words;
     }
 
     private void parseLineLyrics(JsonObject data, LyricsData lyrics) {
@@ -471,9 +506,10 @@ public class SpicyLyricsProvider implements LyricsProvider {
         if (token == null || token.isEmpty() || !track.isValid()) return null;
         try {
             String cleanTitle = cleanSearchTitle(track.title);
-            String query = "track:\"" + cleanTitle + "\" artist:\"" + track.artist + "\"";
+            String cleanArtist = cleanSearchTitle(track.artist);
+            String query = "track:\"" + cleanTitle + "\" artist:\"" + cleanArtist + "\"";
             String url = SPOTIFY_SEARCH_URL
-                    + "?type=track&limit=8&market=US&q="
+                    + "?type=track&limit=8&market=from_token&q="
                     + URLEncoder.encode(query, StandardCharsets.UTF_8.name());
 
             Request request = new Request.Builder()

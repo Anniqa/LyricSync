@@ -39,24 +39,24 @@ public class LyricsProviderManager {
     public void fetchLyrics(TrackInfo track, LyricsCallback callback) {
         executor.execute(() -> {
             LyricsData cached = cacheManager.getCached(track);
-            if (cached != null && !cached.isEmpty()) {
-                AppLog.d(TAG, "Cache hit for: " + track);
+            if (cached != null && !cached.isEmpty() && cached.type == LyricsData.Type.SYLLABLE) {
+                AppLog.d(TAG, "Cache hit (SYLLABLE) for: " + track);
                 mainHandler.post(() -> callback.onLyricsLoaded(cached));
                 return;
             }
 
-            LyricsData bestLyrics = null;
-            String bestProvider = null;
+            LyricsData bestLyrics = cached != null && !cached.isEmpty() ? cached : null;
+            String bestProvider = bestLyrics != null ? "cache" : null;
 
             for (LyricsProvider provider : providers) {
+                if (bestLyrics != null && bestLyrics.type == LyricsData.Type.SYLLABLE) break;
                 try {
                     AppLog.d(TAG, "Trying provider: " + provider.getName() + " for: " + track);
                     LyricsData lyrics = provider.fetchLyrics(track);
 
-                    if (lyrics != null && !lyrics.isEmpty()) {
+                    if (lyrics != null && !lyrics.isEmpty() && betterThan(lyrics, bestLyrics)) {
                         bestLyrics = lyrics;
                         bestProvider = provider.getName();
-                        break;
                     }
                 } catch (Exception e) {
                     AppLog.w(TAG, "Provider " + provider.getName() + " failed: " + e.getMessage());
@@ -77,6 +77,19 @@ public class LyricsProviderManager {
             AppLog.w(TAG, "No lyrics found for: " + track);
             mainHandler.post(() -> callback.onLyricsError("No lyrics found for: " + track));
         });
+    }
+
+    private static int typeRank(LyricsData.Type type) {
+        switch (type) {
+            case SYLLABLE: return 3;
+            case LINE: return 2;
+            default: return 1;
+        }
+    }
+
+    private static boolean betterThan(LyricsData candidate, LyricsData current) {
+        if (current == null) return true;
+        return typeRank(candidate.type) > typeRank(current.type);
     }
 
     public void shutdown() {

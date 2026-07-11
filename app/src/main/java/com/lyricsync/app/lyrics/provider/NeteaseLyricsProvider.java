@@ -3,12 +3,15 @@ package com.lyricsync.app.lyrics.provider;
 import android.net.Uri;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,8 +46,10 @@ public class NeteaseLyricsProvider implements LyricsProvider {
     }
 
     private long searchSong(TrackInfo track) throws IOException {
-        String query = track.title + " " + track.artist;
-        String url = SEARCH_URL + "?s=" + Uri.encode(query) + "&type=1&limit=5&offset=0";
+        String cleanTitle = cleanMetadata(track.title);
+        String cleanArtist = cleanMetadata(track.artist);
+        String query = cleanTitle + " " + cleanArtist;
+        String url = SEARCH_URL + "?s=" + Uri.encode(query) + "&type=1&limit=10&offset=0";
 
         Request request = new Request.Builder()
                 .url(url)
@@ -65,10 +70,92 @@ public class NeteaseLyricsProvider implements LyricsProvider {
             if (result == null || !result.has("songs")) return -1;
 
             JsonArray songs = result.getAsJsonArray("songs");
-            if (songs.isEmpty()) return -1;
+            if (songs == null || songs.isEmpty()) return -1;
 
+            long bestId = -1;
+            double bestScore = -1;
+            for (JsonElement el : songs) {
+                JsonObject song = el.getAsJsonObject();
+                String name = safeStr(song, "name");
+                String artists = joinNeteaseArtists(song);
+                long duration = song.has("duration") ? song.get("duration").getAsLong() : 0;
+                double score = scoreCandidate(track.title, track.artist, track.duration,
+                        name, artists, duration);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestId = song.get("id").getAsLong();
+                }
+            }
+
+            if (bestScore >= 0.4d) return bestId;
             return songs.get(0).getAsJsonObject().get("id").getAsLong();
         }
+    }
+
+    private String joinNeteaseArtists(JsonObject song) {
+        if (!song.has("artists")) return "";
+        JsonArray arr = song.getAsJsonArray("artists");
+        StringBuilder sb = new StringBuilder();
+        for (JsonElement el : arr) {
+            JsonObject a = el.getAsJsonObject();
+            String name = safeStr(a, "name");
+            if (name.isEmpty()) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(name);
+        }
+        return sb.toString();
+    }
+
+    private double scoreCandidate(String inTitle, String inArtist, long inDuration,
+                                   String candName, String candArtists, long candDuration) {
+        double ts = tokenOverlap(inTitle, candName);
+        double as = tokenOverlap(inArtist, candArtists);
+        double ds = 0.5d;
+        if (inDuration > 0 && candDuration > 0) {
+            long diff = Math.abs(inDuration - candDuration);
+            ds = Math.max(0d, 1d - (diff / 12000d));
+        }
+        return (ts * 0.50d) + (as * 0.35d) + (ds * 0.15d);
+    }
+
+    private double tokenOverlap(String a, String b) {
+        if (a == null || b == null) return 0d;
+        Set<String> la = tokens(a);
+        Set<String> ra = tokens(b);
+        if (la.isEmpty() || ra.isEmpty()) return 0d;
+        int hits = 0;
+        for (String t : la) { if (ra.contains(t)) hits++; }
+        double recall = hits / (double) la.size();
+        double precision = hits / (double) ra.size();
+        return (recall * 0.65d) + (precision * 0.35d);
+    }
+
+    private Set<String> tokens(String text) {
+        Set<String> set = new HashSet<>();
+        String norm = text.toLowerCase(java.util.Locale.US)
+                .replaceAll("[^a-z0-9]+", " ").trim();
+        if (norm.isEmpty()) return set;
+        for (String t : norm.split(" ")) { if (t.length() > 1) set.add(t); }
+        return set;
+    }
+
+    private static String safeStr(JsonObject obj, String... keys) {
+        for (String key : keys) {
+            if (obj.has(key) && !obj.get(key).isJsonNull()) {
+                try { return obj.get(key).getAsString(); } catch (Exception ignored) {}
+            }
+        }
+        return "";
+    }
+
+    private static String cleanMetadata(String text) {
+        if (text == null) return "";
+        return text
+                .replaceAll("(?i)\\s*\\[[^\\]]*]", "")
+                .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance|topic)[^)]*\\)", "")
+                .replaceAll("(?i)\\s*-\\s*(official|video|audio|lyric|lyrics|mv|music video|hd|4k|topic).*$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private LyricsData fetchLyricById(long songId) throws IOException {

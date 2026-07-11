@@ -3,12 +3,15 @@ package com.lyricsync.app.lyrics.provider;
 import android.net.Uri;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -53,9 +56,11 @@ public class LRCLIBProvider implements LyricsProvider {
     }
 
     private String buildUrl(TrackInfo track) {
+        String cleanTitle = cleanMetadata(track.title);
+        String cleanArtist = cleanMetadata(track.artist);
         StringBuilder sb = new StringBuilder(API_URL);
-        sb.append("?track_name=").append(Uri.encode(track.title));
-        sb.append("&artist_name=").append(Uri.encode(track.artist));
+        sb.append("?track_name=").append(Uri.encode(cleanTitle));
+        sb.append("&artist_name=").append(Uri.encode(cleanArtist));
         if (track.album != null) {
             sb.append("&album_name=").append(Uri.encode(track.album));
         }
@@ -65,9 +70,21 @@ public class LRCLIBProvider implements LyricsProvider {
         return sb.toString();
     }
 
+    private String cleanMetadata(String text) {
+        if (text == null) return "";
+        return text
+                .replaceAll("(?i)\\s*\\[[^\\]]*]", "")
+                .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance|topic)[^)]*\\)", "")
+                .replaceAll("(?i)\\s*-\\s*(official|video|audio|lyric|lyrics|mv|music video|hd|4k|topic).*$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
     private LyricsData searchByQuery(TrackInfo track) throws IOException {
+        String cleanTitle = cleanMetadata(track.title);
+        String cleanArtist = cleanMetadata(track.artist);
         String url = "https://lrclib.net/api/search?track_name="
-                + Uri.encode(track.title) + "&artist_name=" + Uri.encode(track.artist);
+                + Uri.encode(cleanTitle) + "&artist_name=" + Uri.encode(cleanArtist);
 
         Request request = new Request.Builder()
                 .url(url)
@@ -87,8 +104,66 @@ public class LRCLIBProvider implements LyricsProvider {
                 throw new IOException("No results found");
             }
 
-            return parseResponse(results.get(0).getAsJsonObject().toString());
+            JsonObject best = results.get(0).getAsJsonObject();
+            double bestScore = -1;
+            for (JsonElement el : results) {
+                JsonObject obj = el.getAsJsonObject();
+                String rName = safeStr(obj, "trackName", "name");
+                String rArtist = safeStr(obj, "artistName");
+                long rDuration = obj.has("duration") && !obj.get("duration").isJsonNull()
+                        ? obj.get("duration").getAsDouble().longValue() : 0;
+                double score = scoreResult(cleanTitle, cleanArtist, track.duration,
+                        rName, rArtist, rDuration);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = obj;
+                }
+            }
+
+            return parseResponse(best.toString());
         }
+    }
+
+    private double scoreResult(String inTitle, String inArtist, long inDuration,
+                                String candTitle, String candArtist, long candDuration) {
+        double ts = tokenOverlap(inTitle, candTitle);
+        double as = tokenOverlap(inArtist, candArtist);
+        double ds = 0.5d;
+        if (inDuration > 0 && candDuration > 0) {
+            long diff = Math.abs(inDuration - candDuration);
+            ds = Math.max(0d, 1d - (diff / 12000d));
+        }
+        return (ts * 0.50d) + (as * 0.35d) + (ds * 0.15d);
+    }
+
+    private double tokenOverlap(String a, String b) {
+        if (a == null || b == null) return 0d;
+        Set<String> la = tokens(a);
+        Set<String> ra = tokens(b);
+        if (la.isEmpty() || ra.isEmpty()) return 0d;
+        int hits = 0;
+        for (String t : la) { if (ra.contains(t)) hits++; }
+        double recall = hits / (double) la.size();
+        double precision = hits / (double) ra.size();
+        return (recall * 0.65d) + (precision * 0.35d);
+    }
+
+    private Set<String> tokens(String text) {
+        Set<String> set = new HashSet<>();
+        String norm = text.toLowerCase(java.util.Locale.US)
+                .replaceAll("[^a-z0-9]+", " ").trim();
+        if (norm.isEmpty()) return set;
+        for (String t : norm.split(" ")) { if (t.length() > 1) set.add(t); }
+        return set;
+    }
+
+    private static String safeStr(JsonObject obj, String... keys) {
+        for (String key : keys) {
+            if (obj.has(key) && !obj.get(key).isJsonNull()) {
+                try { return obj.get(key).getAsString(); } catch (Exception ignored) {}
+            }
+        }
+        return "";
     }
 
     private LyricsData parseResponse(String body) throws IOException {
@@ -142,6 +217,34 @@ public class LRCLIBProvider implements LyricsProvider {
         if (!lyrics.isEmpty()) {
             lyrics.lines.get(lyrics.lines.size() - 1).endTime =
                     lyrics.lines.get(lyrics.lines.size() - 1).startTime + 5000;
+        }
+
+        for (LyricsData.LyricsLine ll : lyrics.lines) {
+            splitLineIntoWords(ll);
+        }
+
+        LyricsData.insertInterludes(lyrics, 3000);
+    }
+
+    private void splitLineIntoWords(LyricsData.LyricsLine line) {
+        if (line.text == null || line.text.isEmpty()) return;
+
+        String[] words = line.text.split(" ");
+        if (words.length <= 1) {
+            if (words.length == 1 && !words[0].isEmpty()) {
+                line.words.add(new LyricsData.Word(line.startTime, line.endTime, words[0]));
+            }
+            return;
+        }
+
+        long duration = line.endTime - line.startTime;
+        long wordDuration = duration / words.length;
+
+        for (int i = 0; i < words.length; i++) {
+            long wordStart = line.startTime + (i * wordDuration);
+            long wordEnd = (i == words.length - 1) ? line.endTime : wordStart + wordDuration;
+            String sep = (i < words.length - 1) ? " " : "";
+            line.words.add(new LyricsData.Word(wordStart, wordEnd, words[i] + sep));
         }
     }
 
