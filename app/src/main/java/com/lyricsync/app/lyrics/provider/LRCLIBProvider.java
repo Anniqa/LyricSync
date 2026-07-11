@@ -111,7 +111,7 @@ public class LRCLIBProvider implements LyricsProvider {
                 String rName = safeStr(obj, "trackName", "name");
                 String rArtist = safeStr(obj, "artistName");
                 long rDuration = obj.has("duration") && !obj.get("duration").isJsonNull()
-                        ? obj.get("duration").getAsDouble().longValue() : 0;
+                        ? (long) obj.get("duration").getAsDouble() : 0;
                 double score = scoreResult(cleanTitle, cleanArtist, track.duration,
                         rName, rArtist, rDuration);
                 if (score > bestScore) {
