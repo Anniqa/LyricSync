@@ -13,12 +13,13 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="10dp">
 
         <ImageView
             android:id="@+id/overlay_cover"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/rounded_album_bg"
             android:scaleType="centerCrop" />
 
         <LinearLayout
@@ -26,7 +27,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:paddingStart="10dp"
+            android:paddingStart="12dp"
             android:paddingEnd="10dp">
 
             <TextView
@@ -36,6 +37,7 @@
                 android:textColor="@color/text_primary"
                 android:textSize="14sp"
                 android:textStyle="bold"
+                android:letterSpacing="0.01"
                 android:maxLines="1"
                 android:ellipsize="end" />
 
@@ -45,33 +47,37 @@
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp"
+                android:layout_marginTop="1dp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
 
         <ImageView
             android:id="@+id/overlay_toggle"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:padding="4dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_chevron_right"
             android:contentDescription="Hide lyrics" />
 
         <ImageView
             android:id="@+id/overlay_settings"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:padding="4dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:padding="5dp"
             android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_settings"
             android:contentDescription="Settings" />
 
         <ImageView
             android:id="@+id/overlay_close"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:padding="4dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:padding="5dp"
             android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_close"
             android:contentDescription="Close" />
     </LinearLayout>
@@ -127,6 +133,8 @@
         android:maxHeight="400dp"
         android:scrollbars="none"
         android:overScrollMode="never"
+        android:requiresFadingEdge="vertical"
+        android:fadingEdgeLength="36dp"
         android:fillViewport="true">
 
         <LinearLayout

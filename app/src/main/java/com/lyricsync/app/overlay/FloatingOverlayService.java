@@ -36,6 +36,8 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.lyricsync.app.LyricSyncApp;
 import com.lyricsync.app.R;
 import com.lyricsync.app.detection.MediaNotificationListener;
@@ -497,14 +499,14 @@ public class FloatingOverlayService extends Service {
         if (track.albumArtBitmap != null) {
             Glide.with(this)
                     .load(track.albumArtBitmap)
-                    .dontAnimate()
-                    .circleCrop()
+                    .transition(DrawableTransitionOptions.withCrossFade(220))
+                    .transform(new RoundedCorners(dpToPx(10)))
                     .into(overlayCover);
         } else if (track.albumArtUri != null && !track.albumArtUri.trim().isEmpty()) {
             Glide.with(this)
                     .load(track.albumArtUri)
-                    .dontAnimate()
-                    .circleCrop()
+                    .transition(DrawableTransitionOptions.withCrossFade(220))
+                    .transform(new RoundedCorners(dpToPx(10)))
                     .into(overlayCover);
         } else {
             Glide.with(this).clear(overlayCover);

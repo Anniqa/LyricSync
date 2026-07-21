@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded pill button with a green gradient. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:startColor="@color/header_gradient_start"
+        android:endColor="@color/header_gradient_end"
+        android:angle="0" />
+    <corners android:radius="16dp" />
+</shape>

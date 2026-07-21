@@ -25,22 +25,24 @@ public class GradientWordView extends TextView {
     private int dimColor = COLOR_DIM;
     private boolean backgroundMode = false;
 
-    private static final double SCALE_FREQ = 0.88;
-    private static final double SCALE_DAMP = 0.64;
-    private static final double YOFFSET_FREQ = 1.45;
-    private static final double YOFFSET_DAMP = 0.4;
-    private static final double GLOW_FREQ = 1.18;
-    private static final double GLOW_DAMP = 0.56;
+    // Springs tuned for a slightly livelier, springier pop while staying smooth.
+    private static final double SCALE_FREQ = 0.95;
+    private static final double SCALE_DAMP = 0.58;
+    private static final double YOFFSET_FREQ = 1.55;
+    private static final double YOFFSET_DAMP = 0.42;
+    private static final double GLOW_FREQ = 1.25;
+    private static final double GLOW_DAMP = 0.5;
 
-    // SpicyLyrics: cubic spline ranges
-    // Spicy EX Android: ScaleRange 0->0.95, 0.7->1.075, 1->1.0
+    // SpicyLyrics-inspired cubic spline ranges, tuned for a more expressive lift.
+    // Scale: rest 0.95, overshoot ~1.10 near the sung peak, settle back to 1.0.
     private static final Spline SCALE_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.7, 1.0), Arrays.asList(0.95, 1.075, 1.0));
-    // Spicy EX Android: YOffsetRange 0->0.01, 0.9->-1/52.5, 1->0
+            Arrays.asList(0.0, 0.65, 1.0), Arrays.asList(0.95, 1.10, 1.0));
+    // YOffset: gentle dip up (negative = rise) then settle.
     private static final Spline YOFFSET_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.9, 1.0), Arrays.asList(0.01, -(1.0/52.5), 0.0));
+            Arrays.asList(0.0, 0.85, 1.0), Arrays.asList(0.012, -0.026, 0.0));
+    // Glow: quick bloom in, hold, fade out.
     private static final Spline GLOW_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.15, 0.6, 1.0), Arrays.asList(0.0, 1.0, 1.0, 0.0));
+            Arrays.asList(0.0, 0.12, 0.55, 1.0), Arrays.asList(0.0, 1.0, 1.0, 0.0));
 
     // Letter-level emphasis (SpicyLyrics IsLetterCapable + Emphasize)
     private static final long LETTER_MIN_DURATION = 1000;
@@ -55,10 +57,10 @@ public class GradientWordView extends TextView {
 
     // Spicy EX Android: letterScaleRange 0->0.95, 0.7->1.18, 1->1.0
     private static final Spline LETTER_SCALE_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.7, 1.0), Arrays.asList(0.95, 1.18, 1.0));
+            Arrays.asList(0.0, 0.65, 1.0), Arrays.asList(0.95, 1.22, 1.0));
     // Spicy EX Android: letterYOffsetRange 0->0.01, 0.9->-1/50, 1->0
     private static final Spline LETTER_YOFFSET_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.9, 1.0), Arrays.asList(0.01, -0.02, 0.0));
+            Arrays.asList(0.0, 0.85, 1.0), Arrays.asList(0.012, -0.028, 0.0));
 
     private long startTime;
     private long endTime;
@@ -76,6 +78,9 @@ public class GradientWordView extends TextView {
     private final Spring glowSpring;
 
     private final Paint glowPaint;
+    // Soft blurred bloom drawn under the active word for a real light-glow look.
+    private final Paint bloomPaint;
+    private float bloomRadiusPx = 0f;
 
     // Letter-level emphasis state
     private boolean letterCapable;
@@ -90,6 +95,8 @@ public class GradientWordView extends TextView {
         super(context);
         glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         glowPaint.setColor(brightColor);
+        bloomPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        bloomPaint.setColor(0xFFFFFFFF);
         scaleSpring = new Spring(0.95, SCALE_DAMP, SCALE_FREQ);
         yOffsetSpring = new Spring(0, YOFFSET_DAMP, YOFFSET_FREQ);
         glowSpring = new Spring(0, GLOW_DAMP, GLOW_FREQ);
@@ -117,6 +124,9 @@ public class GradientWordView extends TextView {
             setIncludeFontPadding(true);
             glowPaint.setTextSize(getPaint().getTextSize());
             glowPaint.setTypeface(typeface);
+            bloomPaint.setTextSize(getPaint().getTextSize());
+            bloomPaint.setTypeface(typeface);
+            bloomRadiusPx = Math.max(2f, getPaint().getTextSize() * 0.14f);
             int horizontalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.04f));
             int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
             setPadding(horizontalPad, verticalPad, horizontalPad, verticalPad);
@@ -218,6 +228,19 @@ public class GradientWordView extends TextView {
         float drawX = getPaddingLeft();
         float shaderW = Math.max(1f, cachedTextWidth);
 
+        // Soft bloom halo around the sung text — a genuine light-glow, drawn via a text
+        // shadow layer (hardware-accelerated-safe) modulated by the glow spring.
+        if (glowAlpha > 0.02f && !backgroundMode) {
+            float baseline = getBaseline();
+            int haloAlpha = Math.round(Math.max(0f, Math.min(1f, glowAlpha)) * 150f);
+            bloomPaint.setShader(null);
+            bloomPaint.setColor(0x00FFFFFF);
+            bloomPaint.setShadowLayer(bloomRadiusPx * (0.6f + 0.9f * glowAlpha), 0, 0,
+                    (haloAlpha << 24) | 0x00FFFFFF);
+            canvas.drawText(text, drawX, baseline, bloomPaint);
+            bloomPaint.clearShadowLayer();
+        }
+
         // Spicy EX: startAlpha = round(255 * (0.85 + 0.15 * glow) * brightness)
         // glow pushes the sung edge toward full white
         int glowBrightAlpha = Math.round(255f * (0.85f + 0.15f * Math.max(0f, Math.min(1f, glowAlpha))));
@@ -289,31 +312,46 @@ public class GradientWordView extends TextView {
 
             float lScale = (float) letterScaleSprings[i].position;
             float lGlow = (float) Math.max(0, Math.min(letterGlowSprings[i].position, 1));
+            // Per-letter vertical wave: the active letter lifts, neighbours follow with falloff.
+            float lYOffset = 0f;
 
             if (activeIndex >= 0 && i != activeIndex) {
                 int dist = Math.abs(i - activeIndex);
                 // SpicyLyrics: falloff = 1/(1+dist^2.8) (scale), 1/(1+dist*0.9) (glow)
                 double scaleFalloff = 1.0 / (1.0 + Math.pow(dist, 2.8));
                 double glowFalloff = 1.0 / (1.0 + dist * 0.9);
+                double yFalloff = 1.0 / (1.0 + Math.pow(dist, 1.8));
                 float baseScale = (float) LETTER_SCALE_SPLINE.at(activeLetterPct);
                 float resting = (float) LETTER_SCALE_SPLINE.at(0);
                 float targetScale = resting + (baseScale - resting) * (float) scaleFalloff;
                 lScale = Math.max(lScale, targetScale);
                 lGlow = Math.max(lGlow, (float) (glowFalloff * LETTER_GLOW_MULTIPLIER));
+                lYOffset = (float) (LETTER_YOFFSET_SPLINE.at(activeLetterPct) * yFalloff);
+            } else if (i == activeIndex) {
+                lYOffset = (float) LETTER_YOFFSET_SPLINE.at(activeLetterPct);
             }
 
             canvas.save();
             float cx = cursor + letterW / 2f;
             float cy = baseline / 2f;
+            if (lYOffset != 0f) {
+                canvas.translate(0, lYOffset * getHeight());
+            }
             if (lScale != 1f) {
                 canvas.scale(lScale, lScale, cx, cy);
             }
 
             if (lGlow > 0.01f) {
-                int glowA = (int) (Math.min(lGlow, 1.0) * 255);
-                glowPaint.setColor((glowA << 24) | 0x00FFFFFF);
+                // Soft bloom via shadow layer instead of a hard white overdraw, so the
+                // emphasised letter radiates light rather than turning into a flat block.
+                float g = (float) Math.min(lGlow, 1.0);
+                int haloAlpha = (int) (g * 165);
                 glowPaint.setShader(null);
+                glowPaint.setColor(0x00FFFFFF);
+                glowPaint.setShadowLayer(bloomRadiusPx * (0.7f + 1.1f * g), 0, 0,
+                        (haloAlpha << 24) | 0x00FFFFFF);
                 canvas.drawText(letter, cursor, baseline, glowPaint);
+                glowPaint.clearShadowLayer();
             }
 
             getPaint().setShader(null);

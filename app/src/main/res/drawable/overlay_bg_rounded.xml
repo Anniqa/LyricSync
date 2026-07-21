@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Frosted-glass style overlay: subtle vertical gradient + soft rounded border. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#E60A0A14"/>
-    <corners android:radius="24dp"/>
-    <stroke android:width="0.5dp" android:color="#22FFFFFF"/>
+    <gradient
+        android:startColor="#F21A1A24"
+        android:centerColor="#EE12121C"
+        android:endColor="#F20A0A12"
+        android:angle="270" />
+    <corners android:radius="28dp" />
+    <stroke android:width="0.75dp" android:color="#33FFFFFF" />
 </shape>

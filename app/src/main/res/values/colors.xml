@@ -2,11 +2,26 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="spotify_green">#FF1ED760</color>
-    <color name="background_primary">#FF000000</color>
+
+    <!-- Base surfaces: near-black with a faint cool tint for depth. -->
+    <color name="background_primary">#FF07070B</color>
+    <color name="surface">#FF12131A</color>
+    <color name="card_bg">#FF181A22</color>
+    <color name="card_bg_elevated">#FF1F212B</color>
+    <color name="divider">#1AFFFFFF</color>
+
+    <!-- Text -->
     <color name="text_primary">#FFFFFFFF</color>
-    <color name="text_secondary">#B3FFFFFF</color>
+    <color name="text_secondary">#B8FFFFFF</color>
     <color name="text_dim">#66FFFFFF</color>
+
+    <!-- Accent: keep Spotify-green vibe but a touch brighter/cleaner. -->
     <color name="accent">#FF1ED760</color>
+    <color name="accent_dark">#FF17B34E</color>
+
+    <!-- Gradient header accents -->
+    <color name="header_gradient_start">#FF1ED760</color>
+    <color name="header_gradient_end">#FF0FA98C</color>
+
     <color name="overlay_bg">#CC000000</color>
-    <color name="card_bg">#FF1E1E1E</color>
 </resources>

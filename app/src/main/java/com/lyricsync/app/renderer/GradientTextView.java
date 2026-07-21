@@ -23,17 +23,17 @@ public class GradientTextView extends TextView {
 
     public GradientTextView(Context context) {
         super(context);
-        getPaint().setShadowLayer(6f, 0, 0, 0x44FFFFFF);
+        getPaint().setShadowLayer(7f, 0, 0, 0x55FFFFFF);
     }
 
     public GradientTextView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        getPaint().setShadowLayer(6f, 0, 0, 0x44FFFFFF);
+        getPaint().setShadowLayer(7f, 0, 0, 0x55FFFFFF);
     }
 
     public GradientTextView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
-        getPaint().setShadowLayer(6f, 0, 0, 0x44FFFFFF);
+        getPaint().setShadowLayer(7f, 0, 0, 0x55FFFFFF);
     }
 
     @Override
@@ -79,6 +79,13 @@ public class GradientTextView extends TextView {
         }
 
         paint.setShader(cachedShader);
+
+        // Subtle glow that peaks while the line is actively being sung (mid-progress),
+        // giving the active line a soft radiance instead of a flat static shadow.
+        float glow = (gradientProgress > 0f && gradientProgress < 1f)
+                ? (float) Math.sin(gradientProgress * Math.PI) : 0f;
+        int glowAlpha = 0x40 + (int) (0x50 * glow);
+        paint.setShadowLayer(6f + 5f * glow, 0, 0, (glowAlpha << 24) | 0x00FFFFFF);
 
         super.onDraw(canvas);
     }
