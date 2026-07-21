@@ -57,7 +57,6 @@
             android:layout_width="30dp"
             android:layout_height="30dp"
             android:padding="5dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_chevron_right"
             android:contentDescription="Hide lyrics" />
 
@@ -67,7 +66,6 @@
             android:layout_height="30dp"
             android:padding="5dp"
             android:layout_marginStart="4dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_settings"
             android:contentDescription="Settings" />
 
@@ -77,7 +75,6 @@
             android:layout_height="30dp"
             android:padding="5dp"
             android:layout_marginStart="4dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_close"
             android:contentDescription="Close" />
     </LinearLayout>
