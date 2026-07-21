@@ -418,9 +418,33 @@ public class GradientWordView extends TextView {
         isActive = position >= startTime && position < endTime;
         isPast = position >= endTime;
 
-        if (isActive || wasActive || (progress > 0 && progress < 1)) {
+        // Keep redrawing while the springs are still settling. The scale spring
+        // overshoots past 1.0, so when progress hits 1.0 the word is still visually
+        // enlarged and needs several more frames to relax back — otherwise it
+        // freezes mid-animation and never returns to its resting size.
+        if (isActive || wasActive || (progress > 0 && progress < 1) || springsSettling()) {
             postInvalidate();
         }
+    }
+
+    private boolean springsSettling() {
+        if (isSpringUnsettled(scaleSpring) || isSpringUnsettled(yOffsetSpring)
+                || isSpringUnsettled(glowSpring)) {
+            return true;
+        }
+        if (letterCapable && letterScaleSprings != null) {
+            for (int i = 0; i < letterScaleSprings.length; i++) {
+                if (isSpringUnsettled(letterScaleSprings[i])
+                        || isSpringUnsettled(letterGlowSprings[i])) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isSpringUnsettled(Spring s) {
+        return Math.abs(s.position - s.finalPosition) > 0.002 || Math.abs(s.velocity) > 0.01;
     }
 
     public void resetState() {
