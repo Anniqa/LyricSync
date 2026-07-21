@@ -262,7 +262,12 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     }
 
     private void updatePlaybackState(PlaybackState state) {
+        int previousState = currentState;
         currentState = state.getState();
+        // Resuming from a pause/buffer stall: force a fresh time anchor so the elapsed
+        // timer does not include the stalled interval and make the position jump ahead.
+        boolean resumedPlaying = currentState == PlaybackState.STATE_PLAYING
+                && previousState != PlaybackState.STATE_PLAYING;
         long newPosition = Math.max(0, state.getPosition());
         long updateElapsed = state.getLastPositionUpdateTime();
         long now = SystemClock.elapsedRealtime();
@@ -287,7 +292,10 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
             positionInitialized = true;
         } else {
             boolean positionChanged = newPosition != currentPosition;
-            if (positionChanged || !positionInitialized) {
+            // Re-anchor on a genuine position change, on first init, OR when we just
+            // resumed playback — otherwise a resume after buffering would keep the stale
+            // anchor and the interpolated position would leap forward by the stall duration.
+            if (positionChanged || !positionInitialized || resumedPlaying) {
                 lastPositionUpdateElapsed = now;
                 currentPosition = newPosition;
                 positionInitialized = true;
@@ -296,9 +304,13 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
             // already-running interpolation keeps advancing instead of freezing.
         }
         playbackSpeed = state.getPlaybackSpeed();
+        // Guard against players reporting garbage speeds (0 while playing, or absurdly
+        // large values) which would freeze or fling the interpolated position.
         if (playbackSpeed <= 0 && currentState == PlaybackState.STATE_PLAYING) {
             playbackSpeed = 1.0f;
         }
+        if (playbackSpeed < 0f) playbackSpeed = 0f;
+        if (playbackSpeed > 4f) playbackSpeed = 4f;
     }
 
     private void startBurstPolling() {
@@ -375,9 +387,13 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     public long getCurrentPosition() {
         int state = currentState;
         long pos = currentPosition;
-        if (state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_BUFFERING) {
+        // Only extrapolate while actually PLAYING. During BUFFERING the audio is stalled
+        // (network hiccup, track change) but the reported position does not advance, so
+        // extrapolating here made the lyrics race ahead and then snap back once the player
+        // pushed the real position. Hold the last known position instead while buffering.
+        if (state == PlaybackState.STATE_PLAYING) {
             long elapsed = Math.max(0, SystemClock.elapsedRealtime() - lastPositionUpdateElapsed);
-            pos += (long)(elapsed * playbackSpeed);
+            pos += (long) (elapsed * playbackSpeed);
         }
         long adjusted = pos - syncOffsetMs;
         return adjusted < 0 ? 0 : adjusted;
