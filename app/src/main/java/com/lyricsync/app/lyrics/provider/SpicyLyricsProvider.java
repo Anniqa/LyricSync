@@ -504,12 +504,47 @@ public class SpicyLyricsProvider implements LyricsProvider {
 
     private String resolveSpotifyTrackId(TrackInfo track, String token) {
         if (token == null || token.isEmpty() || !track.isValid()) return null;
+
+        String cleanTitle = cleanSearchTitle(track.title);
+        String cleanArtist = cleanSearchArtist(track.artist);
+
+        // Some players (notably YouTube Music) put the artist inside the title as
+        // "Artist - Song" and leave the artist field as "… - Topic" / empty. If the
+        // title still carries a "-", derive a better title/artist split from it.
+        if (track.title != null && track.title.contains(" - ")) {
+            String[] parts = track.title.split(" - ", 2);
+            String maybeArtist = cleanSearchArtist(parts[0]);
+            String maybeTitle = cleanSearchTitle(parts[1]);
+            boolean artistWeak = cleanArtist.isEmpty()
+                    || normalize(track.artist).contains("topic")
+                    || normalize(track.artist).isEmpty();
+            if (artistWeak && !maybeTitle.isEmpty() && !maybeArtist.isEmpty()) {
+                cleanTitle = maybeTitle;
+                cleanArtist = maybeArtist;
+            }
+        }
+
+        // Attempt 1: scoped track+artist query (most precise).
+        String scoped = "track:\"" + cleanTitle + "\" artist:\"" + cleanArtist + "\"";
+        String id = searchSpotify(track, cleanTitle, scoped, token);
+        if (id != null) return id;
+
+        // Attempt 2: free-text "title artist" (handles metadata Spotify indexes
+        // slightly differently than the scoped filters).
+        if (!cleanArtist.isEmpty()) {
+            id = searchSpotify(track, cleanTitle, cleanTitle + " " + cleanArtist, token);
+            if (id != null) return id;
+        }
+
+        // Attempt 3: title only — last resort for messy/absent artist metadata.
+        // pickBestSpotifyCandidate still scores artist, so a wrong hit is rejected.
+        return searchSpotify(track, cleanTitle, cleanTitle, token);
+    }
+
+    private String searchSpotify(TrackInfo track, String cleanTitle, String query, String token) {
         try {
-            String cleanTitle = cleanSearchTitle(track.title);
-            String cleanArtist = cleanSearchTitle(track.artist);
-            String query = "track:\"" + cleanTitle + "\" artist:\"" + cleanArtist + "\"";
             String url = SPOTIFY_SEARCH_URL
-                    + "?type=track&limit=8&market=from_token&q="
+                    + "?type=track&limit=10&market=from_token&q="
                     + URLEncoder.encode(query, StandardCharsets.UTF_8.name());
 
             Request request = new Request.Builder()
@@ -522,7 +557,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
 
             try (Response response = client.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
-                    AppLog.w(TAG, "Spotify search failed: HTTP " + response.code());
+                    AppLog.w(TAG, "Spotify search failed: HTTP " + response.code() + " q=" + query);
                     return null;
                 }
                 if (response.body() == null) throw new IOException("Empty response body");
@@ -678,9 +713,35 @@ public class SpicyLyricsProvider implements LyricsProvider {
                 .replaceAll("(?i)\\s*\\[[^\\]]*]", "")
                 .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance)[^)]*\\)", "")
                 .replaceAll("(?i)\\s+-\\s+(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k).*$", "")
+                // Drop featured-artist tails so the core title matches Spotify's title.
+                .replaceAll("(?i)\\s*[\\(\\[]?\\s*(feat\\.?|ft\\.?|featuring)\\s+[^\\)\\]]*[\\)\\]]?", "")
                 .replaceAll("\\s+", " ")
                 .trim();
         return cleaned.isEmpty() ? title.trim() : cleaned;
+    }
+
+    /**
+     * Clean an artist string coming from arbitrary players. YouTube Music tags
+     * auto-generated channels as "Artist - Topic" and uploaders as "ArtistVEVO";
+     * strip those and any leading "official" noise so the Spotify search matches.
+     */
+    private String cleanSearchArtist(String artist) {
+        if (artist == null) return "";
+        String cleaned = artist
+                .replaceAll("(?i)\\s*-\\s*topic\\s*$", "")
+                .replaceAll("(?i)\\s*vevo\\s*$", "")
+                .replaceAll("(?i)\\s*official\\s*$", "")
+                // If several artists are listed, keep the primary one for the filter.
+                .replaceAll("(?i)\\s*(feat\\.?|ft\\.?|featuring)\\s+.*$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        // Collapse "A, B & C" / "A x B" to the first credited artist for the scoped
+        // filter (full string is still scored later in pickBestSpotifyCandidate).
+        String[] split = cleaned.split("\\s*(,|&| x | X |/|;)\\s*");
+        if (split.length > 0 && !split[0].trim().isEmpty()) {
+            cleaned = split[0].trim();
+        }
+        return cleaned.isEmpty() ? artist.trim() : cleaned;
     }
 
     private String normalize(String text) {
