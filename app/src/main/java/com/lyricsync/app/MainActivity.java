@@ -16,6 +16,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
@@ -34,7 +36,6 @@ import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-    private static final int REQ_POST_NOTIFICATIONS = 2001;
 
     private TextView notificationStatus;
     private TextView overlayStatus;
@@ -45,6 +46,15 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView logScroll;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final ActivityResultLauncher<String> notificationPermissionLauncher =
+            registerForActivityResult(ActivityResultContracts.RequestPermission(), granted -> {
+                if (!granted) {
+                    Toast.makeText(this,
+                            "Overlay will run, but its notification may be hidden",
+                            Toast.LENGTH_LONG).show();
+                }
+                startOverlay();
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -157,8 +167,7 @@ public class MainActivity extends AppCompatActivity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                     && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                        REQ_POST_NOTIFICATIONS);
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
                 return;
             }
 
@@ -172,19 +181,6 @@ public class MainActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.btn_share_logs).setOnClickListener(v -> shareLogs());
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_POST_NOTIFICATIONS) {
-            if (grantResults.length == 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this,
-                        "Overlay will run, but its notification may be hidden",
-                        Toast.LENGTH_LONG).show();
-            }
-            startOverlay();
-        }
     }
 
     private void startOverlay() {
