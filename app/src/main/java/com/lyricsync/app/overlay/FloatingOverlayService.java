@@ -7,7 +7,6 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.content.pm.ServiceInfo;
 import android.graphics.PixelFormat;
 import android.provider.Settings;
 import android.graphics.Typeface;
@@ -32,7 +31,6 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.ServiceCompat;
 import androidx.core.content.ContextCompat;
 
 import com.bumptech.glide.Glide;
@@ -112,8 +110,6 @@ public class FloatingOverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         try {
@@ -134,19 +130,19 @@ public class FloatingOverlayService extends Service {
         sharedPrefs.registerOnSharedPreferenceChangeListener(settingsListener);
 
         if (!Permissions.isNotificationListenerEnabled(this)) {
-            AppLog.w(TAG, "Notification listener not enabled");
+            AppLog.w(TAG, "Notification listener not enabled, opening settings");
             Toast.makeText(this, "Please enable LyricSync notification access", Toast.LENGTH_LONG).show();
-            stopSelf();
-            return;
-        }
-        if (!Settings.canDrawOverlays(this)) {
-            AppLog.w(TAG, "Overlay permission not granted");
+            Intent settingsIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(settingsIntent);
+            startForeground(NOTIFICATION_ID, buildNotification());
             stopSelf();
             return;
         }
 
-        if (!createOverlay()) return;
+        createOverlay();
         startTracker();
+        startForeground(NOTIFICATION_ID, buildNotification());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
@@ -158,10 +154,7 @@ public class FloatingOverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (!Settings.canDrawOverlays(this)) {
-            stopSelf();
-        }
-        return START_NOT_STICKY;
+        return START_STICKY;
     }
 
     @Nullable
@@ -170,7 +163,7 @@ public class FloatingOverlayService extends Service {
         return null;
     }
 
-    private boolean createOverlay() {
+    private void createOverlay() {
         overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_lyrics, null);
 
         overlayTitle = overlayView.findViewById(R.id.overlay_title);
@@ -219,15 +212,7 @@ public class FloatingOverlayService extends Service {
         overlayParams = params;
 
         setupDragging(params);
-        try {
-            windowManager.addView(overlayView, params);
-            return true;
-        } catch (SecurityException | WindowManager.BadTokenException e) {
-            AppLog.e(TAG, "Unable to attach overlay", e);
-            overlayView = null;
-            stopSelf();
-            return false;
-        }
+        windowManager.addView(overlayView, params);
     }
 
     private int dpToPx(int dp) {
@@ -422,16 +407,14 @@ public class FloatingOverlayService extends Service {
     private void startTracker() {
         lyricsManager = new LyricsProviderManager(this);
         sessionTracker = new MediaSessionTracker(this);
-        sessionTracker.setSyncOffsetMs(sharedPrefs.getLong("sync_offset_ms", 0));
 
         sessionTracker.start(
                 new MediaSessionTracker.TrackCallback() {
                     @Override
                     public void onTrackChanged(TrackInfo track) {
+                        currentTrack = track;
+                        AppLog.i(TAG, "Track changed: " + track.title + " - " + track.artist);
                         handler.post(() -> {
-                            if (isDestroyed) return;
-                            currentTrack = track;
-                            AppLog.i(TAG, "Track changed: " + track.title + " - " + track.artist);
                             updateTrackInfo(track);
                             clearLyricsOnly();
                             fetchLyrics(track);
@@ -440,28 +423,18 @@ public class FloatingOverlayService extends Service {
 
                     @Override
                     public void onTrackUpdated(TrackInfo track) {
-                        handler.post(() -> {
-                            if (isDestroyed) return;
-                            currentTrack = track;
-                            AppLog.d(TAG, "Track info updated: " + track.title + " - " + track.artist);
-                            updateTrackInfo(track);
-                        });
+                        currentTrack = track;
+                        AppLog.d(TAG, "Track info updated: " + track.title + " - " + track.artist);
+                        handler.post(() -> updateTrackInfo(track));
                     }
 
                     @Override
                     public void onTrackCleared() {
-                        handler.post(() -> {
-                            if (isDestroyed) return;
-                            AppLog.i(TAG, "Track cleared");
-                            currentTrack = null;
-                            pendingFetchKey = null;
-                            if (lyricsManager != null) lyricsManager.cancelPending();
-                            clearOverlay();
-                        });
+                        AppLog.i(TAG, "Track cleared");
+                        handler.post(() -> clearOverlay());
                     }
                 },
                 (state, position) -> {
-                    if (isDestroyed) return;
                     // Position/state come from the tracker; we only need this signal to
                     // wake the render loop if it had gone idle. Values are re-read per frame.
                     if (renderRunning && !renderActive) {
@@ -490,9 +463,7 @@ public class FloatingOverlayService extends Service {
 
             double dt;
             if (lastFrameNanos > 0) {
-                dt = Math.min(Math.max(
-                        (frameTimeNanos - lastFrameNanos) / 1_000_000_000.0, 0.0),
-                        1.0 / 30.0);
+                dt = Math.min((frameTimeNanos - lastFrameNanos) / 1_000_000_000.0, 0.1);
             } else {
                 dt = 1.0 / 60.0;
             }
@@ -569,7 +540,7 @@ public class FloatingOverlayService extends Service {
 
     private void fetchLyrics(TrackInfo track) {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
-        final String fetchKey = track.stableKey();
+        final String fetchKey = track.title + "|||" + track.artist;
         pendingFetchKey = fetchKey;
         lyricsManager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
             @Override
@@ -706,7 +677,6 @@ public class FloatingOverlayService extends Service {
     @Override
     public void onDestroy() {
         isDestroyed = true;
-        pendingFetchKey = null;
         super.onDestroy();
         stopRenderLoop();
         handler.removeCallbacksAndMessages(null);

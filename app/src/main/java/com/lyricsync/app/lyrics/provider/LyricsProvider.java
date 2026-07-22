@@ -6,10 +6,4 @@ import com.lyricsync.app.lyrics.model.TrackInfo;
 public interface LyricsProvider {
     String getName();
     LyricsData fetchLyrics(TrackInfo track) throws Exception;
-
-    default void cancelPendingRequests() {}
-
-    default void close() {
-        cancelPendingRequests();
-    }
 }

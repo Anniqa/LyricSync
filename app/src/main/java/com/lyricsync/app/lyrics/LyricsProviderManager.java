@@ -15,9 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class LyricsProviderManager {
     private static final String TAG = "LyricsProviderManager";
@@ -26,8 +23,6 @@ public class LyricsProviderManager {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final LyricsCacheManager cacheManager;
     private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-    private final AtomicLong generation = new AtomicLong();
-    private Future<?> pendingTask;
 
     public interface LyricsCallback {
         void onLyricsLoaded(LyricsData lyrics);
@@ -41,86 +36,46 @@ public class LyricsProviderManager {
         providers.add(new LRCLIBProvider());
     }
 
-    public synchronized void fetchLyrics(TrackInfo track, LyricsCallback callback) {
-        if (track == null || callback == null || !track.isValid()) {
-            if (callback != null) callback.onLyricsError("Invalid track metadata");
-            return;
-        }
-
-        cancelPendingLocked();
-        long requestGeneration = generation.incrementAndGet();
-        try {
-            pendingTask = executor.submit(() -> runFetch(track, callback, requestGeneration));
-        } catch (RejectedExecutionException e) {
-            postError(callback, requestGeneration, "Lyrics service is shutting down");
-        }
-    }
-
-    private void runFetch(TrackInfo track, LyricsCallback callback, long requestGeneration) {
-        try {
+    public void fetchLyrics(TrackInfo track, LyricsCallback callback) {
+        executor.execute(() -> {
             LyricsData cached = cacheManager.getCached(track);
-            if (isCancelled(requestGeneration)) return;
             if (cached != null && !cached.isEmpty() && cached.type == LyricsData.Type.SYLLABLE) {
                 AppLog.d(TAG, "Cache hit (SYLLABLE) for: " + track);
-                postLoaded(callback, requestGeneration, cached);
+                mainHandler.post(() -> callback.onLyricsLoaded(cached));
                 return;
             }
 
             LyricsData bestLyrics = cached != null && !cached.isEmpty() ? cached : null;
             String bestProvider = bestLyrics != null ? "cache" : null;
-            boolean improvedCache = false;
 
             for (LyricsProvider provider : providers) {
-                if (isCancelled(requestGeneration)
-                        || (bestLyrics != null && bestLyrics.type == LyricsData.Type.SYLLABLE)) break;
+                if (bestLyrics != null && bestLyrics.type == LyricsData.Type.SYLLABLE) break;
                 try {
                     AppLog.d(TAG, "Trying provider: " + provider.getName() + " for: " + track);
                     LyricsData lyrics = provider.fetchLyrics(track);
-                    if (isCancelled(requestGeneration)) return;
-                    if (lyrics != null && !lyrics.isEmpty() && lyrics.type != null
-                            && betterThan(lyrics, bestLyrics)) {
+
+                    if (lyrics != null && !lyrics.isEmpty() && betterThan(lyrics, bestLyrics)) {
                         bestLyrics = lyrics;
                         bestProvider = provider.getName();
-                        improvedCache = true;
                     }
                 } catch (Exception e) {
-                    if (!isCancelled(requestGeneration)) {
-                        AppLog.w(TAG, "Provider " + provider.getName() + " failed: " + e.getMessage());
-                    }
+                    AppLog.w(TAG, "Provider " + provider.getName() + " failed: " + e.getMessage());
                 }
             }
 
-            if (isCancelled(requestGeneration)) return;
             if (bestLyrics != null) {
-                LyricsData result = bestLyrics;
-                AppLog.i(TAG, "Got lyrics from " + bestProvider + " - type: " + result.type
+                final LyricsData result = bestLyrics;
+                AppLog.i(TAG, "Got lyrics from " + bestProvider
+                        + " - type: " + result.type
                         + " lines: " + result.lines.size());
-                if (improvedCache) cacheManager.cache(track, result);
-                postLoaded(callback, requestGeneration, result);
+
+                cacheManager.cache(track, result);
+                mainHandler.post(() -> callback.onLyricsLoaded(result));
                 return;
             }
 
             AppLog.w(TAG, "No lyrics found for: " + track);
-            postError(callback, requestGeneration, "No lyrics found for: " + track);
-        } catch (Exception e) {
-            AppLog.e(TAG, "Lyrics fetch failed", e);
-            postError(callback, requestGeneration, "Lyrics fetch failed: " + e.getMessage());
-        }
-    }
-
-    private boolean isCancelled(long requestGeneration) {
-        return Thread.currentThread().isInterrupted() || generation.get() != requestGeneration;
-    }
-
-    private void postLoaded(LyricsCallback callback, long requestGeneration, LyricsData lyrics) {
-        mainHandler.post(() -> {
-            if (generation.get() == requestGeneration) callback.onLyricsLoaded(lyrics);
-        });
-    }
-
-    private void postError(LyricsCallback callback, long requestGeneration, String error) {
-        mainHandler.post(() -> {
-            if (generation.get() == requestGeneration) callback.onLyricsError(error);
+            mainHandler.post(() -> callback.onLyricsError("No lyrics found for: " + track));
         });
     }
 
@@ -137,26 +92,8 @@ public class LyricsProviderManager {
         return typeRank(candidate.type) > typeRank(current.type);
     }
 
-    public synchronized void cancelPending() {
-        generation.incrementAndGet();
-        cancelPendingLocked();
-    }
-
-    private void cancelPendingLocked() {
-        if (pendingTask != null) {
-            pendingTask.cancel(true);
-            pendingTask = null;
-        }
-        for (LyricsProvider provider : providers) provider.cancelPendingRequests();
-    }
-
-    public synchronized void shutdown() {
+    public void shutdown() {
         if (executor.isShutdown()) return;
-        generation.incrementAndGet();
-        cancelPendingLocked();
-        mainHandler.removeCallbacksAndMessages(null);
         executor.shutdownNow();
-        for (LyricsProvider provider : providers) provider.close();
-        cacheManager.close();
     }
 }

@@ -70,18 +70,6 @@ public class SpicyLyricsProvider implements LyricsProvider {
     }
 
     @Override
-    public void cancelPendingRequests() {
-        client.dispatcher().cancelAll();
-    }
-
-    @Override
-    public void close() {
-        cancelPendingRequests();
-        client.connectionPool().evictAll();
-        client.dispatcher().executorService().shutdown();
-    }
-
-    @Override
     public LyricsData fetchLyrics(TrackInfo track) throws Exception {
         String token = getCachedToken();
         String trackId = extractSpotifyId(track);
@@ -663,6 +651,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
         }
 
         if (bestId != null && bestScore >= 0.68d) {
+            track.trackId = "spotify:track:" + bestId;
             if ((track.albumArtUri == null || track.albumArtUri.isEmpty()) && bestArtwork != null) {
                 track.albumArtUri = bestArtwork;
             }
@@ -777,6 +766,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
         }
 
         if (bestId != null && bestScore >= 0.68d) {
+            track.trackId = "spotify:track:" + bestId;
             if ((track.albumArtUri == null || track.albumArtUri.isEmpty()) && bestArtwork != null) {
                 track.albumArtUri = bestArtwork;
             }
@@ -920,10 +910,10 @@ public class SpicyLyricsProvider implements LyricsProvider {
 
     private String normalize(String text) {
         if (text == null) return "";
-        return text.toLowerCase(Locale.ROOT)
+        return text.toLowerCase(Locale.US)
                 .replace('&', ' ')
                 .replaceAll("(?i)\\([^)]*\\)|\\[[^\\]]*]", "")
-                .replaceAll("[^\\p{L}\\p{N}]+", " ")
+                .replaceAll("[^a-z0-9]+", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
     }

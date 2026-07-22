@@ -289,7 +289,7 @@ public class SyllableHighlighter {
             if (lv.usePerWord && lv.wordViews != null) {
                 updatePerWordHighlight(lv, currentPosition, deltaTime, stateChanged, isActive, isPast);
             } else if (lv.gradientView != null) {
-                updatePerLineHighlight(lv, currentPosition, deltaTime, stateChanged, isActive, isPast);
+                updatePerLineHighlight(lv, currentPosition, stateChanged, isActive, isPast);
             }
 
             lv.lastState = state;
@@ -324,10 +324,10 @@ public class SyllableHighlighter {
             }
         }
 
-        updateBackgroundVocals(lv, position, deltaTime);
+        updateBackgroundVocals(lv, position, stateChanged);
     }
 
-    private void updatePerLineHighlight(LineView lv, long position, double deltaTime,
+    private void updatePerLineHighlight(LineView lv, long position,
                                          boolean stateChanged, boolean isActive, boolean isPast) {
         GradientTextView gv = lv.gradientView;
         if (isActive) {
@@ -361,10 +361,10 @@ public class SyllableHighlighter {
             lv.lastProgress = isPast ? 100f : 0f;
         }
 
-        updateBackgroundVocals(lv, position, deltaTime);
+        updateBackgroundVocals(lv, position, stateChanged);
     }
 
-    private void updateBackgroundVocals(LineView lv, long position, double deltaTime) {
+    private void updateBackgroundVocals(LineView lv, long position, boolean stateChanged) {
         if (lv.backgroundWordViews == null || lv.line.backgroundVocals == null) return;
         for (int b = 0; b < lv.backgroundWordViews.size() && b < lv.line.backgroundVocals.size(); b++) {
             List<GradientWordView> bgWords = lv.backgroundWordViews.get(b);
@@ -381,7 +381,7 @@ public class SyllableHighlighter {
             if (bgWords != null) {
                 for (int w = 0; w < bgWords.size(); w++) {
                     GradientWordView bwv = bgWords.get(w);
-                    bwv.updateState(position, deltaTime);
+                    bwv.updateState(position, 1.0 / 60.0);
 
                     boolean wasActive = w < lastActive.length && lastActive[w];
                     if (bgActive && !wasActive) {

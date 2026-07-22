@@ -103,27 +103,20 @@ public class LRCLIBProvider implements LyricsProvider {
                 throw new IOException("No results found");
             }
 
-            JsonObject best = null;
+            JsonObject best = results.get(0).getAsJsonObject();
             double bestScore = -1;
             for (JsonElement el : results) {
                 JsonObject obj = el.getAsJsonObject();
                 String rName = safeStr(obj, "trackName", "name");
                 String rArtist = safeStr(obj, "artistName");
-                // LRCLIB reports duration in whole seconds; convert to ms to match TrackInfo.
-                long rDurationMs = obj.has("duration") && !obj.get("duration").isJsonNull()
-                        ? Math.round(obj.get("duration").getAsDouble() * 1000d) : 0;
+                long rDuration = obj.has("duration") && !obj.get("duration").isJsonNull()
+                        ? (long) obj.get("duration").getAsDouble() : 0;
                 double score = scoreResult(cleanTitle, cleanArtist, track.duration,
-                        rName, rArtist, rDurationMs);
+                        rName, rArtist, rDuration);
                 if (score > bestScore) {
                     bestScore = score;
                     best = obj;
                 }
-            }
-
-            // Reject weak matches instead of blindly using the first result, which would
-            // frequently attach unrelated lyrics that then poison the cache.
-            if (best == null || bestScore < 0.4d) {
-                throw new IOException("No confident LRCLIB match (score=" + bestScore + ")");
             }
 
             return parseResponse(best.toString());
@@ -156,10 +149,10 @@ public class LRCLIBProvider implements LyricsProvider {
 
     private Set<String> tokens(String text) {
         Set<String> set = new HashSet<>();
-        String norm = text.toLowerCase(java.util.Locale.ROOT)
-                .replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
+        String norm = text.toLowerCase(java.util.Locale.US)
+                .replaceAll("[^a-z0-9]+", " ").trim();
         if (norm.isEmpty()) return set;
-        for (String t : norm.split(" ")) { if (!t.isEmpty()) set.add(t); }
+        for (String t : norm.split(" ")) { if (t.length() > 1) set.add(t); }
         return set;
     }
 
@@ -202,36 +195,23 @@ public class LRCLIBProvider implements LyricsProvider {
             line = line.trim();
             if (line.isEmpty()) continue;
 
-            // Collect all leading [mm:ss.xx] timestamps; a standard LRC line may carry
-            // several (e.g. a repeated chorus) that all point at the same text.
-            java.util.List<Long> starts = new java.util.ArrayList<>();
-            int idx = 0;
-            while (idx < line.length() && line.charAt(idx) == '[') {
-                int bracketEnd = line.indexOf(']', idx);
-                if (bracketEnd < 0) break;
-                long start = parseTime(line.substring(idx + 1, bracketEnd));
-                if (start < 0) break; // metadata tag like [ar:...] -> stop scanning
-                starts.add(start);
-                idx = bracketEnd + 1;
-            }
+            int bracketEnd = line.indexOf(']');
+            if (bracketEnd < 0 || line.charAt(0) != '[') continue;
 
-            if (starts.isEmpty()) continue;
-            String text = line.substring(idx).trim();
+            String timePart = line.substring(1, bracketEnd);
+            String text = line.substring(bracketEnd + 1).trim();
+
             if (text.isEmpty()) continue;
 
-            for (long start : starts) {
-                lyrics.lines.add(new LyricsData.LyricsLine(start, start + 5000, text));
-            }
+            long start = parseTime(timePart);
+            if (start < 0) continue;
+
+            LyricsData.LyricsLine lyricsLine = new LyricsData.LyricsLine(start, start + 5000, text);
+            lyrics.lines.add(lyricsLine);
         }
 
-        // Timestamps (especially from multi-timestamp lines) may be out of order.
-        java.util.Collections.sort(lyrics.lines, (a, b) -> Long.compare(a.startTime, b.startTime));
-
         for (int i = 0; i < lyrics.lines.size() - 1; i++) {
-            long next = lyrics.lines.get(i + 1).startTime;
-            if (next > lyrics.lines.get(i).startTime) {
-                lyrics.lines.get(i).endTime = next;
-            }
+            lyrics.lines.get(i).endTime = lyrics.lines.get(i + 1).startTime;
         }
         if (!lyrics.isEmpty()) {
             lyrics.lines.get(lyrics.lines.size() - 1).endTime =
@@ -284,14 +264,12 @@ public class LRCLIBProvider implements LyricsProvider {
             String[] parts = time.split(":");
             if (parts.length != 2) return -1;
 
-            int min = Integer.parseInt(parts[0].trim());
-            // Fractions may be separated by '.' or ',' depending on the source.
-            String[] secParts = parts[1].trim().split("[.,]");
+            int min = Integer.parseInt(parts[0]);
+            String[] secParts = parts[1].split("\\.");
             int sec = Integer.parseInt(secParts[0]);
-            int ms = secParts.length > 1 && !secParts[1].isEmpty()
-                    ? Integer.parseInt(secParts[1]) : 0;
+            int ms = secParts.length > 1 ? Integer.parseInt(secParts[1]) : 0;
 
-            if (secParts.length > 1 && !secParts[1].isEmpty()) {
+            if (secParts.length > 1) {
                 if (secParts[1].length() == 1) ms *= 100;
                 else if (secParts[1].length() == 2) ms *= 10;
                 else if (secParts[1].length() > 3) ms = (int) Math.round(ms / Math.pow(10, secParts[1].length() - 3));

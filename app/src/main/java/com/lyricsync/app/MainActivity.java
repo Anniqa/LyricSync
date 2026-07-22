@@ -1,9 +1,7 @@
 package com.lyricsync.app;
 
-import android.Manifest;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -16,9 +14,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import com.lyricsync.app.util.SeekBars;
@@ -46,15 +41,6 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView logScroll;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ActivityResultLauncher<String> notificationPermissionLauncher =
-            registerForActivityResult(ActivityResultContracts.RequestPermission(), granted -> {
-                if (!granted) {
-                    Toast.makeText(this,
-                            "Overlay will run, but its notification may be hidden",
-                            Toast.LENGTH_LONG).show();
-                }
-                startOverlay();
-            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -164,14 +150,9 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                    && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
-                return;
-            }
-
-            startOverlay();
+            Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
+            startForegroundService(serviceIntent);
+            Toast.makeText(this, "Lyrics overlay started", Toast.LENGTH_SHORT).show();
         });
 
         findViewById(R.id.btn_clear_logs).setOnClickListener(v -> {
@@ -181,12 +162,6 @@ public class MainActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.btn_share_logs).setOnClickListener(v -> shareLogs());
-    }
-
-    private void startOverlay() {
-        Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
-        ContextCompat.startForegroundService(this, serviceIntent);
-        Toast.makeText(this, "Lyrics overlay started", Toast.LENGTH_SHORT).show();
     }
 
     private void setupLogViewer() {
