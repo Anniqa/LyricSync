@@ -14,7 +14,7 @@ import com.lyricsync.app.lyrics.model.TrackInfo;
 public class LyricsCacheManager {
     private static final String TAG = "LyricsCache";
     private static final String DB_NAME = "lyrics_cache.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
     private static final String TABLE = "lyrics";
     private static final long CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000L; // 7 days
 
@@ -74,8 +74,12 @@ public class LyricsCacheManager {
         db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
+    public void close() {
+        dbHelper.close();
+    }
+
     private String makeKey(TrackInfo track) {
-        return (track.title + "|||" + track.artist).toLowerCase().trim();
+        return track.stableKey();
     }
 
     private static class CacheDBHelper extends SQLiteOpenHelper {

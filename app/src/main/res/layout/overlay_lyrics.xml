@@ -109,9 +109,9 @@
             android:id="@+id/overlay_sync_offset_slider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="1500"
-            android:min="-1500"
-            android:progress="0"
+            android:max="3000"
+            android:min="0"
+            android:progress="1500"
             android:layout_marginTop="2dp" />
 
         <TextView

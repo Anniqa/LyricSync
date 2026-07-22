@@ -143,10 +143,10 @@ public class NeteaseLyricsProvider implements LyricsProvider {
 
     private Set<String> tokens(String text) {
         Set<String> set = new HashSet<>();
-        String norm = text.toLowerCase(java.util.Locale.US)
-                .replaceAll("[^a-z0-9]+", " ").trim();
+        String norm = text.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
         if (norm.isEmpty()) return set;
-        for (String t : norm.split(" ")) { if (t.length() > 1) set.add(t); }
+        for (String t : norm.split(" ")) { if (!t.isEmpty()) set.add(t); }
         return set;
     }
 
@@ -278,7 +278,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
         }
     }
 
-    private static final Pattern LRC_TIME = Pattern.compile("\\[(\\d{2}):(\\d{2})\\.?(\\d{0,3})\\](.*)");
+    private static final Pattern LRC_TIME = Pattern.compile("\\[(\\d{1,2}):(\\d{2})[.,]?(\\d{0,3})\\]");
 
     private void parseLRC(String raw, LyricsData lyrics) {
         if (raw == null || raw.isEmpty()) return;
@@ -287,28 +287,39 @@ public class NeteaseLyricsProvider implements LyricsProvider {
             String line = fullLine.trim();
             if (line.isEmpty()) continue;
 
+            // Collect every leading timestamp so repeated-chorus lines are all emitted.
             Matcher matcher = LRC_TIME.matcher(line);
-            if (!matcher.find()) continue;
+            java.util.List<Long> starts = new java.util.ArrayList<>();
+            int contentStart = 0;
+            while (matcher.find() && matcher.start() == contentStart) {
+                int min = Integer.parseInt(matcher.group(1));
+                int sec = Integer.parseInt(matcher.group(2));
+                String msStr = matcher.group(3);
+                int ms = msStr.isEmpty() ? 0 : Integer.parseInt(msStr);
+                if (msStr.length() == 2) ms *= 10;
+                if (msStr.length() == 1) ms *= 100;
+                starts.add(min * 60000L + sec * 1000L + ms);
+                contentStart = matcher.end();
+            }
 
-            int min = Integer.parseInt(matcher.group(1));
-            int sec = Integer.parseInt(matcher.group(2));
-            String msStr = matcher.group(3);
-            int ms = msStr.isEmpty() ? 0 : Integer.parseInt(msStr);
-            if (msStr.length() == 2) ms *= 10;
-            if (msStr.length() == 1) ms *= 100;
-
-            long start = min * 60000L + sec * 1000L + ms;
-            String text = matcher.group(4).trim();
-
+            if (starts.isEmpty()) continue;
+            String text = line.substring(contentStart).trim();
             if (text.isEmpty()) continue;
 
-            LyricsData.LyricsLine lyricsLine = new LyricsData.LyricsLine(start, start + 5000, text);
-            lyrics.lines.add(lyricsLine);
+            for (long start : starts) {
+                lyrics.lines.add(new LyricsData.LyricsLine(start, start + 5000, text));
+            }
         }
+
+        // Multi-timestamp lines can be out of order; sort before deriving end times.
+        java.util.Collections.sort(lyrics.lines, (a, b) -> Long.compare(a.startTime, b.startTime));
 
         // Set end times based on next line start, then split into words
         for (int i = 0; i < lyrics.lines.size() - 1; i++) {
-            lyrics.lines.get(i).endTime = lyrics.lines.get(i + 1).startTime;
+            long next = lyrics.lines.get(i + 1).startTime;
+            if (next > lyrics.lines.get(i).startTime) {
+                lyrics.lines.get(i).endTime = next;
+            }
         }
         if (!lyrics.isEmpty()) {
             lyrics.lines.get(lyrics.lines.size() - 1).endTime =
