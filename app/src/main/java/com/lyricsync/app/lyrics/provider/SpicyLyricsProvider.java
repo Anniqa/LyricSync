@@ -36,6 +36,12 @@ public class SpicyLyricsProvider implements LyricsProvider {
     private static final String SPICY_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Spotify/1.2.63 Chrome/132.0.6834.210 Electron/34.3.1 Safari/537.36";
     private static final String EMBED_URL = "https://open.spotify.com/embed/track/";
     private static final String SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";
+    // Web-player internal search. Unlike /v1/search (which rejects the anonymous embed
+    // token with HTTP 429), api-partner/pathfinder ACCEPTS the embed token, so this is
+    // the reliable way to resolve a Spotify track id for non-Spotify players.
+    private static final String PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v1/query";
+    private static final String SEARCH_DESKTOP_HASH =
+            "d9f785900f0710b31c07818d617f4f7600c1e21217e80f5b043d1e78d74e6026";
     private static final String PREFS_NAME = "spotify_token";
     private static final String PREF_TOKEN = "access_token";
     private static final String PREF_TOKEN_TIME = "token_captured_at";
@@ -524,9 +530,19 @@ public class SpicyLyricsProvider implements LyricsProvider {
             }
         }
 
+        // Primary: pathfinder searchDesktop. Free-text query is the most tolerant of
+        // messy YouTube Music titles ("Artist - Song (Official Video)") and, crucially,
+        // works with the anonymous embed token. Try the richest query first.
+        String id = searchPathfinder(track, cleanTitle, cleanTitle + " " + cleanArtist, token);
+        if (id != null) return id;
+        id = searchPathfinder(track, cleanTitle, cleanTitle, token);
+        if (id != null) return id;
+
+        // Fallback: classic /v1/search (works only when a real user token is present,
+        // e.g. captured via LSPosed; the anonymous embed token gets 429 here).
         // Attempt 1: scoped track+artist query (most precise).
         String scoped = "track:\"" + cleanTitle + "\" artist:\"" + cleanArtist + "\"";
-        String id = searchSpotify(track, cleanTitle, scoped, token);
+        id = searchSpotify(track, cleanTitle, scoped, token);
         if (id != null) return id;
 
         // Attempt 2: free-text "title artist" (handles metadata Spotify indexes
@@ -539,6 +555,155 @@ public class SpicyLyricsProvider implements LyricsProvider {
         // Attempt 3: title only — last resort for messy/absent artist metadata.
         // pickBestSpotifyCandidate still scores artist, so a wrong hit is rejected.
         return searchSpotify(track, cleanTitle, cleanTitle, token);
+    }
+
+    /**
+     * Resolve a track id via Spotify's web-player pathfinder search. Parses the
+     * searchV2.tracksV2 GraphQL shape and reuses the same candidate scorer as the
+     * REST path so a wrong hit is still rejected by the >=0.68 threshold.
+     */
+    private String searchPathfinder(TrackInfo track, String cleanTitle, String term, String token) {
+        try {
+            JsonObject variables = new JsonObject();
+            variables.addProperty("searchTerm", term.trim());
+            variables.addProperty("offset", 0);
+            variables.addProperty("limit", 10);
+            variables.addProperty("numberOfTopResults", 5);
+            variables.addProperty("includeAudiobooks", false);
+
+            JsonObject persisted = new JsonObject();
+            persisted.addProperty("version", 1);
+            persisted.addProperty("sha256Hash", SEARCH_DESKTOP_HASH);
+            JsonObject extensions = new JsonObject();
+            extensions.add("persistedQuery", persisted);
+
+            String url = PATHFINDER_URL
+                    + "?operationName=searchDesktop&variables="
+                    + URLEncoder.encode(variables.toString(), StandardCharsets.UTF_8.name())
+                    + "&extensions="
+                    + URLEncoder.encode(extensions.toString(), StandardCharsets.UTF_8.name());
+
+            Request request = new Request.Builder()
+                    .url(url)
+                    .get()
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/json")
+                    .header("Origin", "https://open.spotify.com")
+                    .header("Referer", "https://open.spotify.com/")
+                    .header("User-Agent", "Mozilla/5.0")
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    AppLog.w(TAG, "Pathfinder search HTTP " + response.code() + " term=" + term);
+                    return null;
+                }
+                if (response.body() == null) return null;
+                return pickBestPathfinderCandidate(track, cleanTitle, response.body().string());
+            }
+        } catch (Exception e) {
+            AppLog.w(TAG, "Pathfinder search failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private String pickBestPathfinderCandidate(TrackInfo track, String cleanTitle, String body) {
+        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+        if (!root.has("data")) return null;
+        JsonObject data = root.getAsJsonObject("data");
+        if (!data.has("searchV2")) return null;
+        JsonObject searchV2 = data.getAsJsonObject("searchV2");
+        JsonObject tracksV2 = searchV2.has("tracksV2") ? searchV2.getAsJsonObject("tracksV2") : null;
+        if (tracksV2 == null) return null;
+        JsonArray items = tracksV2.getAsJsonArray("items");
+        if (items == null || items.isEmpty()) return null;
+
+        String bestId = null, bestName = null, bestArtists = null, bestArtwork = null;
+        double bestScore = 0;
+
+        for (JsonElement itemEl : items) {
+            if (!itemEl.isJsonObject()) continue;
+            JsonObject wrapper = itemEl.getAsJsonObject();
+            JsonObject item = wrapper.has("item") ? wrapper.getAsJsonObject("item") : wrapper;
+            JsonObject t = item.has("data") ? item.getAsJsonObject("data") : null;
+            if (t == null) continue;
+
+            String uri = safeString(t, "uri");
+            String id = uri.startsWith("spotify:track:") ? uri.substring("spotify:track:".length()) : null;
+            if (!isSpotifyTrackId(id)) continue;
+
+            String name = safeString(t, "name");
+            String artists = joinPathfinderArtists(t);
+            long durationMs = 0;
+            if (t.has("duration") && t.get("duration").isJsonObject()) {
+                JsonObject dur = t.getAsJsonObject("duration");
+                if (dur.has("totalMilliseconds")) durationMs = dur.get("totalMilliseconds").getAsLong();
+            }
+            if (name.isEmpty() || artists.isEmpty()) continue;
+
+            double score = scoreSpotifyCandidate(cleanTitle, track.artist, track.duration, name, artists, durationMs);
+            if (score > bestScore) {
+                bestScore = score;
+                bestId = id;
+                bestName = name;
+                bestArtists = artists;
+                bestArtwork = extractPathfinderArtwork(t);
+            }
+        }
+
+        if (bestId != null && bestScore >= 0.68d) {
+            track.trackId = "spotify:track:" + bestId;
+            if ((track.albumArtUri == null || track.albumArtUri.isEmpty()) && bestArtwork != null) {
+                track.albumArtUri = bestArtwork;
+            }
+            AppLog.i(TAG, "Resolved via pathfinder: " + bestName + " - " + bestArtists
+                    + " id=" + bestId + " score=" + String.format(Locale.US, "%.3f", bestScore));
+            return bestId;
+        }
+        AppLog.w(TAG, "Pathfinder no confident match, bestScore="
+                + String.format(Locale.US, "%.3f", bestScore));
+        return null;
+    }
+
+    private String joinPathfinderArtists(JsonObject trackData) {
+        if (!trackData.has("artists") || !trackData.get("artists").isJsonObject()) return "";
+        JsonArray items = trackData.getAsJsonObject("artists").getAsJsonArray("items");
+        if (items == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (JsonElement el : items) {
+            if (!el.isJsonObject()) continue;
+            JsonObject prof = el.getAsJsonObject().has("profile")
+                    ? el.getAsJsonObject().getAsJsonObject("profile") : null;
+            String name = prof != null ? safeString(prof, "name") : "";
+            if (name.isEmpty()) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(name);
+        }
+        return sb.toString();
+    }
+
+    private String extractPathfinderArtwork(JsonObject trackData) {
+        try {
+            JsonObject album = trackData.has("albumOfTrack") && trackData.get("albumOfTrack").isJsonObject()
+                    ? trackData.getAsJsonObject("albumOfTrack") : null;
+            if (album == null || !album.has("coverArt")) return null;
+            JsonArray sources = album.getAsJsonObject("coverArt").getAsJsonArray("sources");
+            if (sources == null || sources.isEmpty()) return null;
+            String fallback = null, best = null;
+            int bestDist = Integer.MAX_VALUE;
+            for (JsonElement s : sources) {
+                JsonObject o = s.getAsJsonObject();
+                String u = safeString(o, "url");
+                if (u.isEmpty()) continue;
+                if (fallback == null) fallback = u;
+                int w = o.has("width") && !o.get("width").isJsonNull() ? o.get("width").getAsInt() : 300;
+                int dist = Math.abs(w - 300);
+                if (dist < bestDist) { bestDist = dist; best = u; }
+            }
+            return best != null ? best : fallback;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String searchSpotify(TrackInfo track, String cleanTitle, String query, String token) {
