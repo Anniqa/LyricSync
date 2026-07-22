@@ -24,6 +24,19 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     private static final String YTMUSIC_PKG = "com.google.android.apps.youtube.music";
     private static final long POLL_INTERVAL_MS = 16;
     private static final int[] BURST_TIMINGS = {50, 100, 150, 750};
+    // A player's getLastPositionUpdateTime() is only trusted when "now - updateElapsed"
+    // falls inside this window. Some players report it in a different timebase
+    // (uptimeMillis, wall-clock) or stamp it at load time, which — if trusted — makes
+    // the interpolated position race ahead by seconds. Outside the window we anchor to now.
+    private static final long UPDATE_TIME_TRUST_WINDOW_MS = 5_000;
+    // Auto-resync: when a fresh snapshot's real position differs from what we are
+    // currently projecting by more than this, snap the anchor back to the truth
+    // (this is what removes the "1-2s ahead until you replay" drift automatically).
+    private static final long RESYNC_THRESHOLD_MS = 400;
+    // Hard cap on how far past the last anchor we allow free-running extrapolation.
+    // Players push a new snapshot roughly every second, so >2s of pure projection
+    // means we lost the anchor — clamp instead of drifting away from the audio.
+    private static final long MAX_EXTRAPOLATION_MS = 2_000;
 
     private final Context context;
     private MediaSessionManager sessionManager;
@@ -39,6 +52,8 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     private volatile long lastPositionUpdateElapsed = 0;
     private volatile boolean positionInitialized = false;
     private volatile float playbackSpeed = 1.0f;
+    // Track length (ms) used to clamp the extrapolated position to the end of the song.
+    private volatile long trackDurationMs = 0;
     // User calibration: positive value shifts the reported position backwards to
     // compensate apps (e.g. Spotify) whose reported position leads the actual audio.
     private volatile long syncOffsetMs = 0;
@@ -180,6 +195,7 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
                     MediaMetadata.METADATA_KEY_DISPLAY_ICON);
             track.duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
             track.packageName = controller.getPackageName();
+            trackDurationMs = Math.max(0, track.duration);
 
             String mediaId = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID);
             if (mediaId != null) {
@@ -271,37 +287,43 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         long newPosition = Math.max(0, state.getPosition());
         long updateElapsed = state.getLastPositionUpdateTime();
         long now = SystemClock.elapsedRealtime();
-        // Spotify (and some other players) do not reliably populate getLastPositionUpdateTime()
-        // in the SystemClock.elapsedRealtime() timebase: it can be a wall-clock value
-        // (currentTimeMillis, far larger than elapsedRealtime) or a future/garbage timestamp.
-        // Only trust it when it is a sane elapsedRealtime value in the past; otherwise anchor
-        // interpolation to the moment we actually read the state.
+        // MediaController.getPlaybackState() returns a cached snapshot that only changes
+        // when the player pushes a new one (~1s), while we poll every 16ms. We must not
+        // re-anchor on every identical re-read (that would freeze interpolation), only on
+        // genuine new samples.
         //
-        // Critical detail: MediaController.getPlaybackState() returns a *cached snapshot* that
-        // only changes when Spotify pushes a new one (~1s). Our 16ms poll therefore mostly re-reads
-        // the same snapshot with the same position. If we re-anchored the clock on every poll
-        // (the old behaviour), currentPosition would stay frozen between Spotify's pushes while the
-        // anchor kept resetting to "now", so interpolation would advance only a few ms per poll ->
-        // the lyrics would stutter/lag ("frozen" symptom). Instead, when the timestamp is unusable
-        // we only re-anchor when the REPORTED POSITION actually changed (a genuine new update from
-        // Spotify); on a stale unchanged snapshot we keep the previous anchor so interpolation
-        // continues smoothly until the next real update arrives.
-        if (updateElapsed > 0 && updateElapsed <= now) {
+        // Trust the player-supplied update time only when it is a sane elapsedRealtime
+        // value AND recent (within the trust window). Some players report this in a
+        // different timebase or stamp it at load time; trusting a stale/mistimed value
+        // makes "now - updateElapsed" huge and the interpolated position races ahead.
+        boolean updateTimeUsable = updateElapsed > 0
+                && updateElapsed <= now
+                && (now - updateElapsed) <= UPDATE_TIME_TRUST_WINDOW_MS;
+
+        if (updateTimeUsable) {
             lastPositionUpdateElapsed = updateElapsed;
             currentPosition = newPosition;
             positionInitialized = true;
         } else {
+            // No usable timestamp. Decide whether this snapshot is a genuine new sample.
+            long projectedNow = projectedPosition(now);
+            long drift = Math.abs(newPosition - projectedNow);
             boolean positionChanged = newPosition != currentPosition;
-            // Re-anchor on a genuine position change, on first init, OR when we just
-            // resumed playback — otherwise a resume after buffering would keep the stale
-            // anchor and the interpolated position would leap forward by the stall duration.
-            if (positionChanged || !positionInitialized || resumedPlaying) {
+            // Auto-resync: the reported (truth) position drifted from our projection
+            // beyond the threshold -> snap the anchor back to the real position. This
+            // corrects the "1-2s ahead" case on its own the moment the player pushes a
+            // fresh snapshot, without needing the user to replay the song.
+            boolean needsResync = positionInitialized
+                    && currentState == PlaybackState.STATE_PLAYING
+                    && drift > RESYNC_THRESHOLD_MS;
+
+            if (positionChanged || !positionInitialized || resumedPlaying || needsResync) {
                 lastPositionUpdateElapsed = now;
                 currentPosition = newPosition;
                 positionInitialized = true;
             }
-            // else: stale snapshot (same position) -> keep anchor + currentPosition so the
-            // already-running interpolation keeps advancing instead of freezing.
+            // else: stale snapshot (same position, small drift) -> keep anchor so the
+            // already-running interpolation keeps advancing smoothly.
         }
         playbackSpeed = state.getPlaybackSpeed();
         // Guard against players reporting garbage speeds (0 while playing, or absurdly
@@ -374,6 +396,7 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         currentPosition = 0;
         lastPositionUpdateElapsed = 0;
         positionInitialized = false;
+        trackDurationMs = 0;
 
         if (trackCallback != null) {
             mainHandler.post(trackCallback::onTrackCleared);
@@ -385,18 +408,28 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     }
 
     public long getCurrentPosition() {
-        int state = currentState;
-        long pos = currentPosition;
-        // Only extrapolate while actually PLAYING. During BUFFERING the audio is stalled
-        // (network hiccup, track change) but the reported position does not advance, so
-        // extrapolating here made the lyrics race ahead and then snap back once the player
-        // pushed the real position. Hold the last known position instead while buffering.
-        if (state == PlaybackState.STATE_PLAYING) {
-            long elapsed = Math.max(0, SystemClock.elapsedRealtime() - lastPositionUpdateElapsed);
-            pos += (long) (elapsed * playbackSpeed);
-        }
+        long pos = projectedPosition(SystemClock.elapsedRealtime());
         long adjusted = pos - syncOffsetMs;
         return adjusted < 0 ? 0 : adjusted;
+    }
+
+    /**
+     * Project the current playback position (before user sync offset). Only extrapolates
+     * while actually PLAYING, caps free-running extrapolation so a lost anchor cannot
+     * drift away from the audio, and clamps to the track length.
+     */
+    private long projectedPosition(long nowElapsed) {
+        long pos = currentPosition;
+        if (currentState == PlaybackState.STATE_PLAYING) {
+            long elapsed = Math.max(0, nowElapsed - lastPositionUpdateElapsed);
+            // Cap how far we trust pure projection: past this we likely lost the anchor.
+            elapsed = Math.min(elapsed, MAX_EXTRAPOLATION_MS);
+            pos += (long) (elapsed * playbackSpeed);
+        }
+        if (pos < 0) pos = 0;
+        long dur = trackDurationMs;
+        if (dur > 0 && pos > dur) pos = dur;
+        return pos;
     }
 
     public long getLastPollNanoTime() {
