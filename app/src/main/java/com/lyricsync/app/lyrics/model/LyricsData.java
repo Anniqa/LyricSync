@@ -16,7 +16,6 @@ public class LyricsData {
         public String text;
         public List<Word> words = new ArrayList<>();
         public boolean isInterlude;
-        public boolean isBackground;
         public List<LyricsLine> backgroundVocals;
 
         public LyricsLine() {}

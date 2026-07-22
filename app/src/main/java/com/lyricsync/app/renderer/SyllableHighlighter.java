@@ -7,7 +7,6 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 
 import com.lyricsync.app.lyrics.model.LyricsData;
 
@@ -21,8 +20,8 @@ public class SyllableHighlighter {
     // SpicyLyrics line opacity model: NotSung 0.51, Sung 0.497, Active 1.0
     // (multiplied with the per-word gradient fill of 0.35 dim / 0.85 bright).
     private static final int ACTIVE_COLOR = Color.WHITE;
+    // Non-active (upcoming and already-sung-but-inactive) lines share this dim color.
     private static final int INACTIVE_COLOR = 0x82FFFFFF;
-    private static final int UPCOMING_COLOR = 0x82FFFFFF;
     private static final int PAST_COLOR = 0x7FFFFFFF;
 
     private static final int STATE_UPCOMING = 0;
@@ -46,7 +45,6 @@ public class SyllableHighlighter {
         public List<boolean[]> bgWordLastActive;
         public List<View> bgFlowLayouts;
         public LyricsData.LyricsLine line;
-        public boolean isActive;
         public boolean usePerWord;
         public int lastState = -1;
         public float lastProgress = -1f;
@@ -287,12 +285,11 @@ public class SyllableHighlighter {
             boolean isUpcoming = !isActive && !isPast && (line.startTime - currentPosition) < 3000;
             int state = isActive ? STATE_ACTIVE : (isPast ? STATE_PAST : STATE_UPCOMING);
             boolean stateChanged = state != lv.lastState;
-            lv.isActive = isActive;
 
             if (lv.usePerWord && lv.wordViews != null) {
-                updatePerWordHighlight(lv, currentPosition, deltaTime, state, stateChanged, isActive, isPast, isUpcoming);
+                updatePerWordHighlight(lv, currentPosition, deltaTime, stateChanged, isActive, isPast);
             } else if (lv.gradientView != null) {
-                updatePerLineHighlight(lv, currentPosition, state, stateChanged, isActive, isPast, isUpcoming);
+                updatePerLineHighlight(lv, currentPosition, stateChanged, isActive, isPast);
             }
 
             lv.lastState = state;
@@ -300,8 +297,7 @@ public class SyllableHighlighter {
     }
 
     private void updatePerWordHighlight(LineView lv, long position, double deltaTime,
-                                         int state, boolean stateChanged,
-                                         boolean isActive, boolean isPast, boolean isUpcoming) {
+                                         boolean stateChanged, boolean isActive, boolean isPast) {
         for (int w = 0; w < lv.wordViews.size(); w++) {
             GradientWordView wv = lv.wordViews.get(w);
             wv.updateState(position, deltaTime);
@@ -321,10 +317,9 @@ public class SyllableHighlighter {
                     wv.setWordStyle(fontSizeSp, PAST_COLOR, fontBold);
                 }
             } else {
-                int color = isUpcoming ? UPCOMING_COLOR : INACTIVE_COLOR;
                 lv.rootView.setAlpha(0.42f);
                 for (GradientWordView wv : lv.wordViews) {
-                    wv.setWordStyle(fontSizeSp, color, fontBold);
+                    wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
                 }
             }
         }
@@ -333,8 +328,7 @@ public class SyllableHighlighter {
     }
 
     private void updatePerLineHighlight(LineView lv, long position,
-                                         int state, boolean stateChanged,
-                                         boolean isActive, boolean isPast, boolean isUpcoming) {
+                                         boolean stateChanged, boolean isActive, boolean isPast) {
         GradientTextView gv = lv.gradientView;
         if (isActive) {
             if (stateChanged) {
@@ -359,7 +353,7 @@ public class SyllableHighlighter {
             } else {
                 gv.setTypeface(fontBold);
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
-                gv.setTextColor(isUpcoming ? UPCOMING_COLOR : INACTIVE_COLOR);
+                gv.setTextColor(INACTIVE_COLOR);
                 gv.setProgress(0f);
                 lv.rootView.setAlpha(0.42f);
             }

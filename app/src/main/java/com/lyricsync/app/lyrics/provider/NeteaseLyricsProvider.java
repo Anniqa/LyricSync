@@ -21,7 +21,6 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 public class NeteaseLyricsProvider implements LyricsProvider {
-    private static final String TAG = "NeteaseLyrics";
     private static final String SEARCH_URL = "https://music.163.com/api/search/get";
     private static final String LYRIC_URL = "https://music.163.com/api/song/lyric";
 
@@ -78,17 +77,29 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                 JsonObject song = el.getAsJsonObject();
                 String name = safeStr(song, "name");
                 String artists = joinNeteaseArtists(song);
-                long duration = song.has("duration") ? song.get("duration").getAsLong() : 0;
+                long duration = safeLong(song, "duration");
+                long id = safeLong(song, "id");
+                if (id <= 0) continue;
                 double score = scoreCandidate(track.title, track.artist, track.duration,
                         name, artists, duration);
                 if (score > bestScore) {
                     bestScore = score;
-                    bestId = song.get("id").getAsLong();
+                    bestId = id;
                 }
             }
 
-            if (bestScore >= 0.4d) return bestId;
-            return songs.get(0).getAsJsonObject().get("id").getAsLong();
+            // Only accept a confident match. Returning the first result blindly would
+            // frequently attach the wrong song's lyrics.
+            return bestScore >= 0.4d ? bestId : -1;
+        }
+    }
+
+    private static long safeLong(JsonObject obj, String key) {
+        try {
+            if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) return 0;
+            return obj.get(key).getAsLong();
+        } catch (Exception e) {
+            return 0;
         }
     }
 
@@ -185,31 +196,45 @@ public class NeteaseLyricsProvider implements LyricsProvider {
 
         // Try YRC (syllable-synced) first
         if (root.has("yrc") && !root.get("yrc").isJsonNull()) {
-            String yrc = root.getAsJsonObject("yrc").get("lyric").getAsString();
-            lyrics.type = LyricsData.Type.SYLLABLE;
-            parseYRC(yrc, lyrics);
-            if (!lyrics.isEmpty()) {
-                LyricsData.insertInterludes(lyrics, 3000);
-                return lyrics;
+            String yrc = extractLyric(root.getAsJsonObject("yrc"));
+            if (yrc != null) {
+                lyrics.type = LyricsData.Type.SYLLABLE;
+                parseYRC(yrc, lyrics);
+                if (!lyrics.isEmpty()) {
+                    LyricsData.insertInterludes(lyrics, 3000);
+                    return lyrics;
+                }
             }
         }
 
         // Try LRC (line-synced)
         if (root.has("lrc") && !root.get("lrc").isJsonNull()) {
-            String lrc = root.getAsJsonObject("lrc").get("lyric").getAsString();
-            lyrics.type = LyricsData.Type.LINE;
-            parseLRC(lrc, lyrics);
-            if (!lyrics.isEmpty()) return lyrics;
+            String lrc = extractLyric(root.getAsJsonObject("lrc"));
+            if (lrc != null) {
+                lyrics.type = LyricsData.Type.LINE;
+                parseLRC(lrc, lyrics);
+                if (!lyrics.isEmpty()) return lyrics;
+            }
         }
 
         // Fallback: static from tlyric
         if (root.has("tlyric") && !root.get("tlyric").isJsonNull()) {
-            String tlyric = root.getAsJsonObject("tlyric").get("lyric").getAsString();
-            lyrics.type = LyricsData.Type.STATIC;
-            parseLRC(tlyric, lyrics);
+            String tlyric = extractLyric(root.getAsJsonObject("tlyric"));
+            if (tlyric != null) {
+                lyrics.type = LyricsData.Type.STATIC;
+                parseLRC(tlyric, lyrics);
+            }
         }
 
         return lyrics;
+    }
+
+    /** Safely reads the "lyric" string from a yrc/lrc/tlyric container object. */
+    private static String extractLyric(JsonObject container) {
+        if (container == null || !container.has("lyric") || container.get("lyric").isJsonNull()) {
+            return null;
+        }
+        return container.get("lyric").getAsString();
     }
 
     private static final Pattern YRC_LINE_HEADER = Pattern.compile("\\[(\\d+),(\\d+)\\]");
@@ -295,7 +320,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
             splitLineIntoWords(ll);
         }
 
-        // Insert interlude dots for gaps >= 4 seconds
+        // Insert interlude dots for gaps >= 3 seconds
         LyricsData.insertInterludes(lyrics, 3000);
     }
 

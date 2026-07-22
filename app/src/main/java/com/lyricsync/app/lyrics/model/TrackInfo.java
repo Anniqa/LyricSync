@@ -14,12 +14,6 @@ public class TrackInfo {
 
     public TrackInfo() {}
 
-    public TrackInfo(String title, String artist, String packageName) {
-        this.title = title;
-        this.artist = artist;
-        this.packageName = packageName;
-    }
-
     public boolean isValid() {
         return title != null && !title.isEmpty() && artist != null && !artist.isEmpty();
     }

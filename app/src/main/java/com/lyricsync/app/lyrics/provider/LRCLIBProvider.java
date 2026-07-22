@@ -19,7 +19,6 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 public class LRCLIBProvider implements LyricsProvider {
-    private static final String TAG = "LRCLIB";
     private static final String API_URL = "https://lrclib.net/api/get";
 
     private final OkHttpClient client = new OkHttpClient.Builder()

@@ -66,7 +66,6 @@ public class GradientWordView extends TextView {
     private long endTime;
     private float progress;
     private boolean isActive;
-    private boolean isPast;
     private float cachedTextWidth = -1f;
     private float lastShaderProgress = -1f;
     private LinearGradient cachedShader;
@@ -212,7 +211,7 @@ public class GradientWordView extends TextView {
         float viewW = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
 
         if (letterCapable && letters != null && letterScaleSprings != null) {
-            drawLetterEmphasis(canvas, viewW, glowAlpha);
+            drawLetterEmphasis(canvas, viewW);
         } else {
             drawWordGradient(canvas, text, glowAlpha);
         }
@@ -268,7 +267,7 @@ public class GradientWordView extends TextView {
     // gradient across the whole word (same sweep math as drawWordGradient), so the bright
     // edge glides across letters instead of snapping per-letter. The active letter still
     // pops in scale/glow for emphasis.
-    private void drawLetterEmphasis(Canvas canvas, float viewW, float wordGlowAlpha) {
+    private void drawLetterEmphasis(Canvas canvas, float viewW) {
         float baseline = getBaseline();
         float totalTextW = cachedTextWidth;
         float startX = getPaddingLeft() + Math.max(0f, (viewW - totalTextW) / 2f);
@@ -363,10 +362,6 @@ public class GradientWordView extends TextView {
         }
     }
 
-    private static float easeSinOut(float x) {
-        return (float) Math.sin((x * Math.PI) / 2.0);
-    }
-
     public void updateState(long position, double deltaTime) {
         if (endTime <= startTime) {
             progress = position >= startTime ? 1f : 0f;
@@ -416,7 +411,6 @@ public class GradientWordView extends TextView {
 
         boolean wasActive = isActive;
         isActive = position >= startTime && position < endTime;
-        isPast = position >= endTime;
 
         // Keep redrawing while the springs are still settling. The scale spring
         // overshoots past 1.0, so when progress hits 1.0 the word is still visually
@@ -453,7 +447,6 @@ public class GradientWordView extends TextView {
         glowSpring.set(0);
         progress = 0;
         isActive = false;
-        isPast = false;
         letterCapable = false;
         letters = null;
         letterScaleSprings = null;

@@ -40,13 +40,15 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
     private final Context context;
     private MediaSessionManager sessionManager;
-    private MediaController currentController;
+    // Written on the main thread (session callbacks) but read on the poll thread,
+    // so it must be volatile and always snapshotted into a local before use.
+    private volatile MediaController currentController;
     private TrackCallback trackCallback;
     private PlaybackCallback playbackCallback;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private HandlerThread pollThread;
     private Handler pollHandler;
-    private TrackInfo currentTrack;
+    private volatile TrackInfo currentTrack;
     private volatile int currentState = PlaybackState.STATE_NONE;
     private volatile long currentPosition = 0;
     private volatile long lastPositionUpdateElapsed = 0;
@@ -113,8 +115,9 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
                 AppLog.e(TAG, "Error removing listener", e);
             }
         }
-        if (currentController != null) {
-            currentController.unregisterCallback(controllerCallback);
+        MediaController controller = currentController;
+        if (controller != null) {
+            controller.unregisterCallback(controllerCallback);
             currentController = null;
         }
         if (pollThread != null) {
@@ -142,7 +145,6 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
         for (MediaController controller : controllers) {
             String pkg = controller.getPackageName();
-            PlaybackState state = controller.getPlaybackState();
 
             if (SPOTIFY_PKG.equals(pkg)) {
                 spotify = controller;
@@ -150,19 +152,23 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
                 ytmusic = controller;
             }
 
-            if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-                if (anyPlaying == null) {
-                    anyPlaying = controller;
-                }
+            if (isPlaying(controller) && anyPlaying == null) {
+                anyPlaying = controller;
             }
         }
 
-        if (spotify != null && spotify.getPlaybackState() != null && spotify.getPlaybackState().getState() == PlaybackState.STATE_PLAYING) return spotify;
-        if (ytmusic != null && ytmusic.getPlaybackState() != null && ytmusic.getPlaybackState().getState() == PlaybackState.STATE_PLAYING) return ytmusic;
+        if (isPlaying(spotify)) return spotify;
+        if (isPlaying(ytmusic)) return ytmusic;
         if (anyPlaying != null) return anyPlaying;
         if (spotify != null) return spotify;
         if (ytmusic != null) return ytmusic;
         return controllers.isEmpty() ? null : controllers.get(0);
+    }
+
+    private static boolean isPlaying(MediaController controller) {
+        if (controller == null) return false;
+        PlaybackState state = controller.getPlaybackState();
+        return state != null && state.getState() == PlaybackState.STATE_PLAYING;
     }
 
     private void switchController(MediaController controller) {
@@ -269,9 +275,10 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     }
 
     private void pollPosition() {
-        if (currentController == null) return;
+        MediaController controller = currentController;
+        if (controller == null) return;
 
-        PlaybackState state = currentController.getPlaybackState();
+        PlaybackState state = controller.getPlaybackState();
         if (state != null) {
             updatePlaybackState(state);
         }
@@ -387,8 +394,9 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
     private void clearCurrentTrack() {
         stopPolling();
-        if (currentController != null) {
-            currentController.unregisterCallback(controllerCallback);
+        MediaController controller = currentController;
+        if (controller != null) {
+            controller.unregisterCallback(controllerCallback);
             currentController = null;
         }
         currentTrack = null;
@@ -401,10 +409,6 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         if (trackCallback != null) {
             mainHandler.post(trackCallback::onTrackCleared);
         }
-    }
-
-    public TrackInfo getCurrentTrack() {
-        return currentTrack;
     }
 
     public long getCurrentPosition() {
@@ -432,22 +436,8 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         return pos;
     }
 
-    public long getLastPollNanoTime() {
-        long elapsed = lastPositionUpdateElapsed;
-        if (elapsed == 0) return System.nanoTime();
-        return System.nanoTime() - (SystemClock.elapsedRealtime() - elapsed) * 1_000_000L;
-    }
-
-    public float getPlaybackSpeed() {
-        return playbackSpeed;
-    }
-
     public void setSyncOffsetMs(long offsetMs) {
         this.syncOffsetMs = offsetMs;
-    }
-
-    public long getSyncOffsetMs() {
-        return syncOffsetMs;
     }
 
     public boolean isPlaying() {
@@ -458,16 +448,12 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     private final MediaController.Callback controllerCallback = new MediaController.Callback() {
         @Override
         public void onMetadataChanged(MediaMetadata metadata) {
-            if (currentController != null) {
-                updateFromController(currentController);
-            }
+            refreshFromCurrentController();
         }
 
         @Override
         public void onPlaybackStateChanged(PlaybackState state) {
-            if (currentController != null) {
-                updateFromController(currentController);
-            }
+            refreshFromCurrentController();
         }
 
         @Override
@@ -475,4 +461,11 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
             clearCurrentTrack();
         }
     };
+
+    private void refreshFromCurrentController() {
+        MediaController controller = currentController;
+        if (controller != null) {
+            updateFromController(controller);
+        }
+    }
 }

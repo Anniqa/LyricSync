@@ -32,7 +32,7 @@ public class Spring {
         double newPosition;
         double newVelocity;
 
-        if (dr == 1) {
+        if (Math.abs(dr - 1) < 1e-6) {
             newPosition = (offset * (1 + radialFrequency * deltaTime) + vel * deltaTime) * decay + finalPos;
             newVelocity = (vel * (1 - radialFrequency * deltaTime) - offset * (radialFrequency * radialFrequency * deltaTime)) * decay;
         } else if (dr < 1) {

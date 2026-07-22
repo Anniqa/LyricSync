@@ -4,14 +4,12 @@ import android.Manifest;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.PixelFormat;
 import android.provider.Settings;
 import android.graphics.Typeface;
-import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -40,7 +38,6 @@ import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.lyricsync.app.LyricSyncApp;
 import com.lyricsync.app.R;
-import com.lyricsync.app.detection.MediaNotificationListener;
 import com.lyricsync.app.detection.MediaSessionTracker;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
@@ -48,6 +45,7 @@ import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.renderer.SpringScroller;
 import com.lyricsync.app.renderer.SyllableHighlighter;
 import com.lyricsync.app.util.AppLog;
+import com.lyricsync.app.util.Permissions;
 import com.lyricsync.app.util.SeekBars;
 
 import java.util.ArrayList;
@@ -131,7 +129,7 @@ public class FloatingOverlayService extends Service {
         choreographer = Choreographer.getInstance();
         sharedPrefs.registerOnSharedPreferenceChangeListener(settingsListener);
 
-        if (!isNotificationListenerEnabled()) {
+        if (!Permissions.isNotificationListenerEnabled(this)) {
             AppLog.w(TAG, "Notification listener not enabled, opening settings");
             Toast.makeText(this, "Please enable LyricSync notification access", Toast.LENGTH_LONG).show();
             Intent settingsIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
@@ -224,8 +222,7 @@ public class FloatingOverlayService extends Service {
     private float calculateFontSizeSp() {
         float screenWidthDp = getResources().getConfiguration().screenWidthDp;
         float baseFontSize = Math.max(11f, Math.min(22f, screenWidthDp * 0.038f));
-        SharedPreferences prefs = sharedPrefs != null ? sharedPrefs : getSharedPreferences("lyricsync", MODE_PRIVATE);
-        float fontScale = Math.max(0.5f, Math.min(2.0f, prefs.getFloat("font_scale", 1.0f)));
+        float fontScale = Math.max(0.5f, Math.min(2.0f, sharedPrefs.getFloat("font_scale", 1.0f)));
         return Math.max(9f, Math.min(30f, baseFontSize * fontScale));
     }
 
@@ -390,7 +387,12 @@ public class FloatingOverlayService extends Service {
                     if (isDragging[0]) {
                         params.x = paramX[0] + (int) dx;
                         params.y = paramY[0] + (int) dy;
-                        windowManager.updateViewLayout(overlayView, params);
+                        try {
+                            windowManager.updateViewLayout(overlayView, params);
+                        } catch (Exception e) {
+                            // View may have been detached mid-drag during teardown.
+                            AppLog.w(TAG, "Drag updateViewLayout failed: " + e.getMessage());
+                        }
                         return true;
                     }
                     return false;
@@ -433,6 +435,8 @@ public class FloatingOverlayService extends Service {
                     }
                 },
                 (state, position) -> {
+                    // Position/state come from the tracker; we only need this signal to
+                    // wake the render loop if it had gone idle. Values are re-read per frame.
                     if (renderRunning && !renderActive) {
                         startFrameCallback();
                     }
@@ -523,6 +527,17 @@ public class FloatingOverlayService extends Service {
         lineViews.clear();
     }
 
+    private void showNoLyrics() {
+        lyricsContainer.removeAllViews();
+        highlighter.clear();
+        lineViews.clear();
+        TextView noLyrics = new TextView(this);
+        noLyrics.setText("No lyrics");
+        noLyrics.setTextColor(0x66FFFFFF);
+        noLyrics.setTextSize(11);
+        lyricsContainer.addView(noLyrics);
+    }
+
     private void fetchLyrics(TrackInfo track) {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
         final String fetchKey = track.title + "|||" + track.artist;
@@ -538,7 +553,7 @@ public class FloatingOverlayService extends Service {
                         + " lines from " + lyrics.provider
                         + " type=" + lyrics.type);
                 handler.post(() -> {
-                    if (!fetchKey.equals(pendingFetchKey)) return;
+                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
                     currentLyrics = lyrics;
                     if (currentTrack != null) updateTrackInfo(currentTrack);
                     renderOverlayLyrics(lyrics);
@@ -550,28 +565,18 @@ public class FloatingOverlayService extends Service {
                 if (!fetchKey.equals(pendingFetchKey)) return;
                 AppLog.w(TAG, "Lyrics error: " + error);
                 handler.post(() -> {
-                    if (!fetchKey.equals(pendingFetchKey)) return;
-                    lyricsContainer.removeAllViews();
-                    highlighter.clear();
-                    lineViews.clear();
-                    TextView errorText = new TextView(FloatingOverlayService.this);
-                    errorText.setText("No lyrics");
-                    errorText.setTextColor(0x66FFFFFF);
-                    errorText.setTextSize(11);
-                    lyricsContainer.addView(errorText);
+                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
+                    showNoLyrics();
                 });
             }
         });
     }
 
     private void renderOverlayLyrics(LyricsData lyrics) {
+        if (isDestroyed) return;
         if (lyrics == null || lyrics.lines == null || lyrics.lines.isEmpty()) {
             clearLyricsOnly();
-            TextView emptyText = new TextView(FloatingOverlayService.this);
-            emptyText.setText("No lyrics");
-            emptyText.setTextColor(0x66FFFFFF);
-            emptyText.setTextSize(11);
-            lyricsContainer.addView(emptyText);
+            showNoLyrics();
             return;
         }
 
@@ -602,7 +607,7 @@ public class FloatingOverlayService extends Service {
     }
 
     private void updateHighlight(long position, double deltaTime) {
-        if (currentLyrics == null || lineViews.isEmpty()) return;
+        if (isDestroyed || currentLyrics == null || lineViews.isEmpty()) return;
 
         int activeIndex = findActiveLine(position);
         if (activeIndex < 0) return;
@@ -649,23 +654,10 @@ public class FloatingOverlayService extends Service {
     }
 
     private void clearOverlay() {
-        stopRenderLoop();
-        lyricsContainer.removeAllViews();
-        highlighter.clear();
-        lineViews.clear();
+        if (isDestroyed) return;
+        clearLyricsOnly();
         overlayTitle.setText("No music");
         overlayArtist.setText("");
-        currentLyrics = null;
-        lastActiveLineIndex = -1;
-    }
-
-    private boolean isNotificationListenerEnabled() {
-        String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        if (flat != null) {
-            ComponentName cn = new ComponentName(this, MediaNotificationListener.class);
-            return flat.contains(cn.flattenToString());
-        }
-        return false;
     }
 
     private Notification buildNotification() {

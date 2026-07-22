@@ -1,6 +1,5 @@
 package com.lyricsync.app;
 
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -9,7 +8,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -21,9 +19,9 @@ import androidx.core.content.FileProvider;
 import com.lyricsync.app.util.SeekBars;
 
 import com.google.android.material.button.MaterialButton;
-import com.lyricsync.app.detection.MediaNotificationListener;
 import com.lyricsync.app.overlay.FloatingOverlayService;
 import com.lyricsync.app.util.AppLog;
+import com.lyricsync.app.util.Permissions;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -32,8 +30,6 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
-    private static final int REQ_NOTIFICATION_LISTENER = 1001;
-    private static final int REQ_OVERLAY_PERMISSION = 1002;
     private static final String TAG = "MainActivity";
 
     private TextView notificationStatus;
@@ -145,7 +141,7 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btn_overlay_permission).setOnClickListener(v -> {
             Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:" + getPackageName()));
-            startActivityForResult(intent, REQ_OVERLAY_PERMISSION);
+            startActivity(intent);
         });
 
         startButton.setOnClickListener(v -> {
@@ -191,9 +187,9 @@ public class MainActivity extends AppCompatActivity {
                     + "Device: " + Build.MANUFACTURER + " " + Build.MODEL + "\n\n";
 
             File logFile = new File(getCacheDir(), "lyricsync_log_" + timestamp + ".txt");
-            FileWriter fw = new FileWriter(logFile);
-            fw.write(header + logs);
-            fw.close();
+            try (FileWriter fw = new FileWriter(logFile)) {
+                fw.write(header + logs);
+            }
 
             Uri uri = FileProvider.getUriForFile(this,
                     getPackageName() + ".fileprovider", logFile);
@@ -213,7 +209,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updatePermissionStatus() {
-        boolean notifEnabled = isNotificationListenerEnabled();
+        boolean notifEnabled = Permissions.isNotificationListenerEnabled(this);
         boolean overlayEnabled = Settings.canDrawOverlays(this);
 
         notificationStatus.setText(notifEnabled ? "Enabled" : "Disabled");
@@ -223,16 +219,7 @@ public class MainActivity extends AppCompatActivity {
         overlayStatus.setTextColor(overlayEnabled ? 0xFF1ED760 : 0xFFFF4444);
     }
 
-    private boolean isNotificationListenerEnabled() {
-        String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        if (flat != null) {
-            ComponentName cn = new ComponentName(this, MediaNotificationListener.class);
-            return flat.contains(cn.flattenToString());
-        }
-        return false;
-    }
-
     private boolean checkPermissions() {
-        return isNotificationListenerEnabled() && Settings.canDrawOverlays(this);
+        return Permissions.isNotificationListenerEnabled(this) && Settings.canDrawOverlays(this);
     }
 }

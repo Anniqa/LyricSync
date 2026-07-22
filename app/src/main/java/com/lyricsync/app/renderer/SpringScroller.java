@@ -11,7 +11,6 @@ public class SpringScroller {
     private final ScrollView scrollView;
     private final Spring scrollSpring = new Spring(0, 0.85, 2.5);
     private ValueAnimator currentAnimator;
-    private View followedView;
 
     public SpringScroller(ScrollView scrollView) {
         this.scrollView = scrollView;
@@ -32,7 +31,6 @@ public class SpringScroller {
 
     public void followView(View targetView, double deltaTime) {
         if (scrollView == null || targetView == null) return;
-        followedView = targetView;
         scrollSpring.finalPosition = targetScrollFor(targetView);
         if (deltaTime <= 0) deltaTime = 1.0 / 60.0;
         int y = (int) Math.max(0, scrollSpring.update(deltaTime));
@@ -52,7 +50,6 @@ public class SpringScroller {
         if (scrollView == null || targetView == null) return;
         int y = targetScrollFor(targetView);
         scrollSpring.set(y);
-        followedView = targetView;
         scrollView.scrollTo(0, y);
     }
 
@@ -101,6 +98,5 @@ public class SpringScroller {
         if (currentAnimator != null) {
             currentAnimator.cancel();
         }
-        followedView = null;
     }
 }

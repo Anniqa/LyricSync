@@ -331,7 +331,6 @@ public class SpicyLyricsProvider implements LyricsProvider {
                         if (bgWords.isEmpty()) continue;
 
                         LyricsData.LyricsLine bgLine = new LyricsData.LyricsLine(bgStart, bgEnd, bgText.toString().trim());
-                        bgLine.isBackground = true;
                         bgLine.words.addAll(bgWords);
 
                         line.backgroundVocals.add(bgLine);

@@ -3,16 +3,17 @@ package com.lyricsync.app.util;
 import android.util.Log;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Locale;
 import java.util.LinkedList;
 
 public class AppLog {
     private static final int MAX_LINES = 200;
     private static final LinkedList<Entry> entries = new LinkedList<>();
-    private static final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
+    // SimpleDateFormat is not thread-safe and add()/toString() run on many threads
+    // (poll thread, provider workers, UI), so give each thread its own formatter.
+    private static final ThreadLocal<SimpleDateFormat> sdf =
+            ThreadLocal.withInitial(() -> new SimpleDateFormat("HH:mm:ss.SSS", Locale.US));
     private static volatile OnLogListener listener;
 
     public static class Entry {
@@ -29,8 +30,8 @@ public class AppLog {
         }
 
         @Override
-        public synchronized String toString() {
-            return sdf.format(new Date(time)) + " " + level + "/" + tag + ": " + msg;
+        public String toString() {
+            return sdf.get().format(new Date(time)) + " " + level + "/" + tag + ": " + msg;
         }
     }
 
@@ -64,17 +65,21 @@ public class AppLog {
 
     public static void e(String tag, String msg, Throwable t) {
         Log.e(tag, msg, t);
-        add("E", tag, msg + " | " + t.getMessage());
+        add("E", tag, msg + " | " + (t != null ? t.getMessage() : "null"));
     }
 
-    private static synchronized void add(String level, String tag, String msg) {
+    private static void add(String level, String tag, String msg) {
         Entry entry = new Entry(level, tag, msg);
-        entries.add(entry);
-        while (entries.size() > MAX_LINES) {
-            entries.removeFirst();
+        synchronized (AppLog.class) {
+            entries.add(entry);
+            while (entries.size() > MAX_LINES) {
+                entries.removeFirst();
+            }
         }
-        if (listener != null) {
-            listener.onNewLog(entry);
+        // Notify outside the lock to avoid deadlock/reentrancy if a listener logs.
+        OnLogListener l = listener;
+        if (l != null) {
+            l.onNewLog(entry);
         }
     }
 

@@ -21,7 +21,6 @@ public class InterludeDotView extends View {
     private final long duration;
     private final float dotRadiusPx;
     private final float dotSpacingPx;
-    private final float density;
 
     private final Paint dotPaint;
     private final Paint glowPaint;
@@ -35,7 +34,6 @@ public class InterludeDotView extends View {
         this.duration = endTime - startTime;
         this.dotRadiusPx = dpToPx(6);
         this.dotSpacingPx = dpToPx(11);
-        this.density = context.getResources().getDisplayMetrics().density;
 
         dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         dotPaint.setColor(Color.WHITE);
@@ -53,7 +51,6 @@ public class InterludeDotView extends View {
     public void animate(long positionMs, double deltaTime) {
         float lineProgress = progress01(positionMs, startTime, endTime);
         boolean isActive = positionMs >= startTime && positionMs < endTime;
-        boolean isPast = positionMs >= endTime;
 
         if (!isActive) {
             if (visible) { setVisibility(GONE); visible = false; }
@@ -112,8 +109,6 @@ public class InterludeDotView extends View {
             float glow = dotGlowSpline(stagger) * mainOpacity;
             float opacity = mainOpacity * dotOpacitySpline(stagger);
 
-            // Gradient: -20 + 120 * stagger (Spicy EX exact)
-            float gradientPos = -20f + 120f * stagger;
             float glowBrightAlpha = 0.85f + 0.15f * glow;
             int dotAlpha = Math.round(opacity * glowBrightAlpha * 255);
             int glowAlphaInt = Math.round(glow * opacity * 255);

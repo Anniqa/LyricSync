@@ -59,6 +59,7 @@ public class LyricsCacheManager {
     }
 
     public void cache(TrackInfo track, LyricsData lyrics) {
+        if (lyrics == null || lyrics.type == null) return;
         String key = makeKey(track);
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
@@ -71,11 +72,6 @@ public class LyricsCacheManager {
         values.put("timestamp", System.currentTimeMillis());
 
         db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_REPLACE);
-    }
-
-    public void clearAll() {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        db.delete(TABLE, null, null);
     }
 
     private String makeKey(TrackInfo track) {

@@ -52,7 +52,7 @@ public class Spline {
         int mid = 0;
 
         while (low < high) {
-            mid = (int) Math.floor((double) ((low + high) / 2));
+            mid = (low + high) / 2;
             if (xs.get(mid) < target && mid != low) low = mid;
             else if (xs.get(mid) >= target && mid != high) high = mid;
             else high = low;
