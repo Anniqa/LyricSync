@@ -174,9 +174,14 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         return state != null && state.getState() == PlaybackState.STATE_PLAYING;
     }
 
+    private static boolean sameSession(MediaController a, MediaController b) {
+        return a != null && b != null
+                && Objects.equals(a.getSessionToken(), b.getSessionToken());
+    }
+
     private void switchController(MediaController controller) {
         MediaController previous = currentController;
-        if (previous != null && previous.controlsSameSession(controller)) {
+        if (sameSession(previous, controller)) {
             updateFromController(previous);
             return;
         }
@@ -187,8 +192,7 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
 
         MediaController.Callback callback = new MediaController.Callback() {
             private boolean isCurrent() {
-                MediaController current = currentController;
-                return current != null && current.controlsSameSession(controller);
+                return sameSession(currentController, controller);
             }
 
             @Override
