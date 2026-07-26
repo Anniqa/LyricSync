@@ -440,6 +440,67 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         this.syncOffsetMs = offsetMs;
     }
 
+    public boolean hasController() {
+        return currentController != null;
+    }
+
+    /**
+     * Seek so that {@link #getCurrentPosition()} lands on {@code positionMs}. getCurrentPosition
+     * subtracts the user sync offset, so it has to be added back on the way out.
+     *
+     * The local anchor is updated immediately: players can take up to a second to push a
+     * fresh snapshot, and without this the lyrics would rewind to the old position first.
+     */
+    public void seekTo(long positionMs) {
+        MediaController controller = currentController;
+        if (controller == null) return;
+        long target = Math.max(0, positionMs + syncOffsetMs);
+        long dur = trackDurationMs;
+        if (dur > 0 && target > dur) target = dur;
+        try {
+            controller.getTransportControls().seekTo(target);
+            currentPosition = target;
+            lastPositionUpdateElapsed = SystemClock.elapsedRealtime();
+            positionInitialized = true;
+        } catch (Exception e) {
+            AppLog.w(TAG, "seekTo failed: " + e.getMessage());
+        }
+    }
+
+    public void togglePlayPause() {
+        MediaController controller = currentController;
+        if (controller == null) return;
+        try {
+            if (currentState == PlaybackState.STATE_PLAYING) {
+                controller.getTransportControls().pause();
+            } else {
+                controller.getTransportControls().play();
+            }
+        } catch (Exception e) {
+            AppLog.w(TAG, "play/pause failed: " + e.getMessage());
+        }
+    }
+
+    public void skipNext() {
+        MediaController controller = currentController;
+        if (controller == null) return;
+        try {
+            controller.getTransportControls().skipToNext();
+        } catch (Exception e) {
+            AppLog.w(TAG, "skipToNext failed: " + e.getMessage());
+        }
+    }
+
+    public void skipPrevious() {
+        MediaController controller = currentController;
+        if (controller == null) return;
+        try {
+            controller.getTransportControls().skipToPrevious();
+        } catch (Exception e) {
+            AppLog.w(TAG, "skipToPrevious failed: " + e.getMessage());
+        }
+    }
+
     public boolean isPlaying() {
         return currentState == PlaybackState.STATE_PLAYING
                 || currentState == PlaybackState.STATE_BUFFERING;

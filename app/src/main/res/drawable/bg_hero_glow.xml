@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ambient glow behind the header; tinted at runtime from the album art. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="radial"
+        android:centerX="0.5"
+        android:centerY="0.0"
+        android:gradientRadius="65%p"
+        android:startColor="@color/hero_glow_start"
+        android:centerColor="@color/hero_glow_mid"
+        android:endColor="@color/hero_glow_end" />
+</shape>

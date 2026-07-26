@@ -13,8 +13,12 @@ It reads what's playing from the media notification (Spotify, YT Music, etc.), p
 ## What it does
 - Word / syllable highlighting that follows the beat, with a smooth spring scroll
 - Auto-syncs to the player position (no manual seeking) and self-corrects drift
+- **Tap any line to jump the player there**
+- **Playback controls** (previous / play-pause / next) right in the overlay
+- **Colour picked from the album art** — the overlay retints itself each track
 - Manual offset slider if a song is still a touch early or late
 - Album art, adjustable size, font scale, and a per-song sync tweak
+- Draggable anywhere on screen; position is remembered and stays on-screen
 - Works over any music app that posts a media notification
 
 ## Setup

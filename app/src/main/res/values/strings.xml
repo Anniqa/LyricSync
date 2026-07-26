@@ -1,9 +1,75 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LyricSync</string>
+    <string name="app_tagline">Beautiful synced lyrics for your music</string>
+
+    <!-- Permissions -->
+    <string name="permissions_title">Permissions</string>
     <string name="notification_access">Notification Access</string>
-    <string name="overlay_permission">Overlay Permission</string>
-    <string name="enabled">Enabled</string>
-    <string name="disabled">Disabled</string>
-    <string name="start">Start</string>
+    <string name="notification_access_desc">Lets LyricSync see what\'s playing</string>
+    <string name="overlay_permission">Display Over Apps</string>
+    <string name="overlay_permission_desc">Lets the lyrics float above your player</string>
+    <string name="enabled">Granted</string>
+    <string name="disabled">Tap to grant</string>
+    <string name="permissions_all_set">All set — you\'re ready to go</string>
+    <string name="permissions_needed">Grant both to start</string>
+
+    <!-- Actions -->
+    <string name="start">Start Overlay</string>
+    <string name="stop">Stop Overlay</string>
+    <string name="grant_permissions_first">Grant both permissions first</string>
+    <string name="overlay_started">Lyrics overlay started</string>
+    <string name="overlay_stopped">Lyrics overlay stopped</string>
+
+    <!-- Now playing -->
+    <string name="now_playing">Now Playing</string>
+    <string name="nothing_playing">Nothing playing</string>
+    <string name="nothing_playing_desc">Start a song in any music app</string>
+
+    <!-- Appearance -->
+    <string name="appearance_title">Appearance</string>
+    <string name="font_size">Font size</string>
+    <string name="overlay_size">Overlay size</string>
+    <string name="overlay_width">Width</string>
+    <string name="overlay_height">Height</string>
+
+    <!-- Sync -->
+    <string name="sync_title">Lyrics Sync Offset</string>
+    <string name="sync_hint">If lyrics run ahead of the singing, increase this. If they lag, decrease it.</string>
+    <string name="sync_hint_short">Ahead of the singing? Increase. Lagging? Decrease.</string>
+    <string name="sync_reset">Reset</string>
+    <string name="lyrics_later">lyrics later</string>
+    <string name="lyrics_earlier">lyrics earlier</string>
+    <string name="in_sync">in sync</string>
+
+    <!-- Developer -->
+    <string name="developer_title">Developer</string>
+    <string name="logs">Logs</string>
+    <string name="clear_logs">Clear logs</string>
+    <string name="share_logs">Share logs</string>
+    <string name="logs_cleared">Logs cleared</string>
+    <string name="share_logs_failed">Failed to share logs</string>
+
+    <!-- Overlay -->
+    <string name="lyrics_loading">Finding lyrics…</string>
+    <string name="lyrics_none">No lyrics found</string>
+    <string name="lyrics_none_desc">This track isn\'t in any lyrics database yet</string>
+    <string name="no_music">No music</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_album_art">Album art</string>
+    <string name="cd_open">Open</string>
+    <string name="cd_collapse">Collapse lyrics</string>
+    <string name="cd_settings">Overlay settings</string>
+    <string name="cd_close">Close overlay</string>
+    <string name="cd_previous">Previous track</string>
+    <string name="cd_play_pause">Play or pause</string>
+    <string name="cd_next">Next track</string>
+    <string name="cd_expand_section">Expand section</string>
+
+    <!-- Notification -->
+    <string name="notif_active">Lyrics overlay active</string>
+    <string name="notif_hide">Hide</string>
+    <string name="notif_show">Show</string>
+    <string name="notif_stop">Stop</string>
 </resources>

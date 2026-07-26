@@ -1,19 +1,25 @@
 package com.lyricsync.app.overlay;
 
-import android.Manifest;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ArgbEvaluator;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
-import android.provider.Settings;
 import android.graphics.Typeface;
-import android.os.Build;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.Choreographer;
 import android.view.Gravity;
@@ -31,7 +37,6 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
@@ -44,7 +49,11 @@ import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.renderer.SpringScroller;
 import com.lyricsync.app.renderer.SyllableHighlighter;
+import com.lyricsync.app.ui.AlbumPalette;
+import com.lyricsync.app.ui.Anim;
 import com.lyricsync.app.util.AppLog;
+import com.lyricsync.app.util.Haptics;
+import com.lyricsync.app.util.NowPlaying;
 import com.lyricsync.app.util.Permissions;
 import com.lyricsync.app.util.SeekBars;
 
@@ -54,6 +63,19 @@ import java.util.List;
 public class FloatingOverlayService extends Service {
     private static final String TAG = "FloatingOverlay";
     private static final int NOTIFICATION_ID = 1001;
+
+    public static final String ACTION_STOP = "com.lyricsync.app.action.STOP";
+    public static final String ACTION_TOGGLE = "com.lyricsync.app.action.TOGGLE";
+
+    /** Sync slider is 0..3000 with 1500 meaning "no offset". */
+    private static final int SYNC_LIMIT_MS = 1500;
+
+    /** Read by MainActivity to render Start vs Stop without binding to the service. */
+    private static volatile boolean running = false;
+
+    public static boolean isRunning() {
+        return running;
+    }
 
     private WindowManager windowManager;
     private View overlayView;
@@ -67,16 +89,25 @@ public class FloatingOverlayService extends Service {
     private ImageView overlayToggle;
     private ImageView overlayClose;
     private ImageView overlaySettings;
+    private ImageView overlayPrev;
+    private ImageView overlayPlayPause;
+    private ImageView overlayNext;
     private View overlaySettingsPanel;
     private SeekBar overlaySyncOffsetSlider;
     private TextView overlaySyncOffsetLabel;
     private LinearLayout lyricsContainer;
     private ScrollView scrollView;
+    private View overlayBody;
+    private View overlaySkeleton;
+    private View overlayEmpty;
+    private TextView overlayEmptyTitle;
+    private TextView overlayEmptyDesc;
     private WindowManager.LayoutParams overlayParams;
     private SharedPreferences sharedPrefs;
 
     private LyricsData currentLyrics;
     private TrackInfo currentTrack;
+    private String lyricsStatusText;
     private volatile String pendingFetchKey = null;
     private boolean isDestroyed = false;
     private int lastActiveLineIndex = -1;
@@ -86,6 +117,17 @@ public class FloatingOverlayService extends Service {
     private int overlayWidthPercent = 88;
     private int lyricsHeightPx = 0;
     private boolean lyricsVisible = true;
+
+    // Album-derived colouring
+    private final ArgbEvaluator argb = new ArgbEvaluator();
+    private GradientDrawable overlayBackground;
+    private ValueAnimator colorAnimator;
+    private ObjectAnimator skeletonAnimator;
+    private int overlayAccent = AlbumPalette.DEFAULT_ACCENT;
+    private int overlayDeep = AlbumPalette.DEFAULT_DEEP;
+    /** updateTrackInfo runs on metadata refreshes too; only re-run Palette on new art. */
+    private Bitmap lastPaletteArt;
+
     private final Runnable applySettingsRunnable = () -> applyRuntimeSettings(true);
     private final SharedPreferences.OnSharedPreferenceChangeListener settingsListener = (prefs, key) -> {
         if ("font_scale".equals(key)
@@ -94,7 +136,9 @@ public class FloatingOverlayService extends Service {
             handler.removeCallbacks(applySettingsRunnable);
             handler.postDelayed(applySettingsRunnable, 100);
         } else if ("sync_offset_ms".equals(key) && sessionTracker != null) {
-            sessionTracker.setSyncOffsetMs(prefs.getLong("sync_offset_ms", 0));
+            long offset = prefs.getLong("sync_offset_ms", 0);
+            sessionTracker.setSyncOffsetMs(offset);
+            syncOffsetSliderFromPrefs(offset);
         }
     };
 
@@ -129,31 +173,50 @@ public class FloatingOverlayService extends Service {
         choreographer = Choreographer.getInstance();
         sharedPrefs.registerOnSharedPreferenceChangeListener(settingsListener);
 
+        // Start foreground before any early-exit path so the system never sees a
+        // foreground service that failed to post its notification.
+        startForeground(NOTIFICATION_ID, buildNotification());
+
         if (!Permissions.isNotificationListenerEnabled(this)) {
             AppLog.w(TAG, "Notification listener not enabled, opening settings");
             Toast.makeText(this, "Please enable LyricSync notification access", Toast.LENGTH_LONG).show();
             Intent settingsIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
             settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(settingsIntent);
-            startForeground(NOTIFICATION_ID, buildNotification());
             stopSelf();
             return;
         }
 
-        createOverlay();
-        startTracker();
-        startForeground(NOTIFICATION_ID, buildNotification());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                AppLog.w(TAG, "POST_NOTIFICATIONS permission not granted");
-            }
+        if (!Settings.canDrawOverlays(this)) {
+            AppLog.w(TAG, "Overlay permission missing, cannot draw");
+            Toast.makeText(this, "Please allow display over other apps", Toast.LENGTH_LONG).show();
+            stopSelf();
+            return;
         }
+
+        if (!createOverlay()) {
+            stopSelf();
+            return;
+        }
+        startTracker();
+        running = true;
         AppLog.i(TAG, "Overlay service created");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && intent.getAction() != null) {
+            switch (intent.getAction()) {
+                case ACTION_STOP:
+                    animateOutAndStop();
+                    return START_NOT_STICKY;
+                case ACTION_TOGGLE:
+                    if (overlayView != null) setLyricsVisible(!lyricsVisible, true, true);
+                    return START_STICKY;
+                default:
+                    break;
+            }
+        }
         return START_STICKY;
     }
 
@@ -163,7 +226,9 @@ public class FloatingOverlayService extends Service {
         return null;
     }
 
-    private void createOverlay() {
+    // ── Overlay construction ───────────────────────────────────────────────
+
+    private boolean createOverlay() {
         overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_lyrics, null);
 
         overlayTitle = overlayView.findViewById(R.id.overlay_title);
@@ -172,32 +237,55 @@ public class FloatingOverlayService extends Service {
         overlayToggle = overlayView.findViewById(R.id.overlay_toggle);
         overlayClose = overlayView.findViewById(R.id.overlay_close);
         overlaySettings = overlayView.findViewById(R.id.overlay_settings);
+        overlayPrev = overlayView.findViewById(R.id.overlay_prev);
+        overlayPlayPause = overlayView.findViewById(R.id.overlay_play_pause);
+        overlayNext = overlayView.findViewById(R.id.overlay_next);
         overlaySettingsPanel = overlayView.findViewById(R.id.overlay_settings_panel);
         overlaySyncOffsetSlider = overlayView.findViewById(R.id.overlay_sync_offset_slider);
         overlaySyncOffsetLabel = overlayView.findViewById(R.id.overlay_sync_offset_label);
         lyricsContainer = overlayView.findViewById(R.id.overlay_lyrics_container);
         scrollView = overlayView.findViewById(R.id.overlay_scroll);
+        overlayBody = overlayView.findViewById(R.id.overlay_body);
+        overlaySkeleton = overlayView.findViewById(R.id.overlay_skeleton);
+        overlayEmpty = overlayView.findViewById(R.id.overlay_empty);
+        overlayEmptyTitle = overlayView.findViewById(R.id.overlay_empty_title);
+        overlayEmptyDesc = overlayView.findViewById(R.id.overlay_empty_desc);
+
         lyricsVisible = sharedPrefs.getBoolean("lyrics_visible", true);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int widthPercent = Math.max(55, Math.min(100, sharedPrefs.getInt("overlay_width_percent", 88)));
+        int widthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 55, 100);
         overlayWidthPercent = widthPercent;
-        int heightPercent = Math.max(20, Math.min(70, sharedPrefs.getInt("overlay_height_percent", 36)));
+        int heightPercent = clamp(sharedPrefs.getInt("overlay_height_percent", 36), 20, 70);
         int overlayWidth = Math.max(dpToPx(220), metrics.widthPixels * widthPercent / 100);
         lyricsHeightPx = Math.max(dpToPx(140), metrics.heightPixels * heightPercent / 100);
 
-        ViewGroup.LayoutParams scrollParams = scrollView.getLayoutParams();
-        scrollParams.height = lyricsHeightPx;
-        scrollView.setLayoutParams(scrollParams);
+        ViewGroup.LayoutParams bodyParams = overlayBody.getLayoutParams();
+        bodyParams.height = lyricsHeightPx;
+        overlayBody.setLayoutParams(bodyParams);
+
+        installOverlayBackground();
         applyResponsiveHeaderSizing();
         applyResponsiveLyricsSpacing();
 
         springScroller = new SpringScroller(scrollView);
         springScroller.setScrollPositionRatio(calculateScrollPositionRatio());
 
-        overlayToggle.setOnClickListener(v -> setLyricsVisible(!lyricsVisible));
-        overlayClose.setOnClickListener(v -> stopSelf());
+        overlayToggle.setOnClickListener(v -> {
+            Haptics.tick(v);
+            setLyricsVisible(!lyricsVisible, true, true);
+        });
+        overlayClose.setOnClickListener(v -> {
+            Haptics.confirm(v);
+            animateOutAndStop();
+        });
+        setupTransportControls();
         setupSyncOffsetUi();
-        setLyricsVisible(lyricsVisible, false);
+        setLyricsVisible(lyricsVisible, false, false);
+
+        // Until a media session reports in, say so rather than showing an empty box.
+        overlayTitle.setText(R.string.no_music);
+        overlayArtist.setText("");
+        showIdleState();
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 overlayWidth,
@@ -208,15 +296,153 @@ public class FloatingOverlayService extends Service {
                 PixelFormat.TRANSLUCENT);
 
         params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        params.y = 100;
+        params.x = sharedPrefs.getInt("overlay_x", 0);
+        params.y = sharedPrefs.getInt("overlay_y", dpToPx(64));
         overlayParams = params;
 
         setupDragging(params);
-        windowManager.addView(overlayView, params);
+
+        try {
+            windowManager.addView(overlayView, params);
+        } catch (Exception e) {
+            // A revoked overlay grant (or an OEM restriction) throws here; don't crash.
+            AppLog.e(TAG, "Failed to add overlay view", e);
+            overlayView = null;
+            return false;
+        }
+
+        playOverlayEntrance();
+        return true;
     }
+
+    /** Replaces the static XML shape with a drawable we can recolour per album. */
+    private void installOverlayBackground() {
+        overlayBackground = new GradientDrawable();
+        overlayBackground.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
+        overlayBackground.setCornerRadius(dpToPx(28));
+        applyOverlayColors(overlayAccent, overlayDeep);
+        overlayView.setBackground(overlayBackground);
+    }
+
+    private void playOverlayEntrance() {
+        overlayView.setAlpha(0f);
+        overlayView.setScaleX(0.93f);
+        overlayView.setScaleY(0.93f);
+        overlayView.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(420)
+                .setInterpolator(Anim.DECEL)
+                .start();
+    }
+
+    private void animateOutAndStop() {
+        if (overlayView == null) {
+            stopSelf();
+            return;
+        }
+        overlayView.animate()
+                .alpha(0f)
+                .scaleX(0.9f)
+                .scaleY(0.9f)
+                .setDuration(200)
+                .setInterpolator(Anim.STANDARD)
+                .withEndAction(this::stopSelf)
+                .start();
+    }
+
+    // ── Colour ─────────────────────────────────────────────────────────────
+
+    private void applyAlbumColors(Bitmap art) {
+        AlbumPalette.from(art, (accent, deep) -> {
+            if (isDestroyed) return;
+            animateOverlayColors(accent, deep);
+        });
+    }
+
+    private void animateOverlayColors(int accent, int deep) {
+        if (accent == overlayAccent && deep == overlayDeep) return;
+        if (colorAnimator != null) colorAnimator.cancel();
+
+        final int fromAccent = overlayAccent;
+        final int fromDeep = overlayDeep;
+        final int toAccent = accent;
+        final int toDeep = deep;
+        overlayAccent = accent;
+        overlayDeep = deep;
+
+        colorAnimator = ValueAnimator.ofFloat(0f, 1f);
+        colorAnimator.setDuration(650);
+        colorAnimator.setInterpolator(Anim.STANDARD);
+        colorAnimator.addUpdateListener(a -> {
+            float f = a.getAnimatedFraction();
+            int ac = (Integer) argb.evaluate(f, fromAccent, toAccent);
+            int dp = (Integer) argb.evaluate(f, fromDeep, toDeep);
+            applyOverlayColors(ac, dp);
+        });
+        colorAnimator.start();
+    }
+
+    private void applyOverlayColors(int accent, int deep) {
+        if (overlayBackground != null) {
+            // Top edge leans toward the accent, the body stays near-black so lyrics
+            // keep their contrast whatever the album art is.
+            int top = AlbumPalette.withAlpha(AlbumPalette.blend(deep, accent, 0.18f), 0xF5);
+            int mid = AlbumPalette.withAlpha(deep, 0xF0);
+            int bottom = AlbumPalette.withAlpha(AlbumPalette.blend(deep, 0xFF000000, 0.45f), 0xF7);
+            overlayBackground.setColors(new int[]{top, mid, bottom});
+            overlayBackground.setStroke(Math.max(1, dpToPx(1)),
+                    AlbumPalette.withAlpha(accent, 0x4D));
+        }
+        ColorStateList tint = ColorStateList.valueOf(accent);
+        if (overlaySyncOffsetSlider != null) {
+            overlaySyncOffsetSlider.setProgressTintList(tint);
+            overlaySyncOffsetSlider.setThumbTintList(tint);
+        }
+        if (overlaySyncOffsetLabel != null) {
+            overlaySyncOffsetLabel.setTextColor(accent);
+        }
+        if (overlayPlayPause != null) {
+            overlayPlayPause.setColorFilter(accent);
+        }
+    }
+
+    // ── Transport ──────────────────────────────────────────────────────────
+
+    private void setupTransportControls() {
+        overlayPrev.setOnClickListener(v -> {
+            Haptics.tick(v);
+            if (sessionTracker != null) sessionTracker.skipPrevious();
+        });
+        overlayNext.setOnClickListener(v -> {
+            Haptics.tick(v);
+            if (sessionTracker != null) sessionTracker.skipNext();
+        });
+        overlayPlayPause.setOnClickListener(v -> {
+            Haptics.confirm(v);
+            if (sessionTracker != null) sessionTracker.togglePlayPause();
+            Anim.pop(v);
+            handler.postDelayed(this::updatePlayPauseIcon, 180);
+        });
+        overlayPlayPause.setColorFilter(overlayAccent);
+    }
+
+    private void updatePlayPauseIcon() {
+        if (overlayPlayPause == null) return;
+        boolean playing = sessionTracker != null && sessionTracker.isPlaying();
+        overlayPlayPause.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
+        overlayPlayPause.setColorFilter(overlayAccent);
+    }
+
+    // ── Sizing ─────────────────────────────────────────────────────────────
 
     private int dpToPx(int dp) {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private static int clamp(int value, int lo, int hi) {
+        return value < lo ? lo : (value > hi ? hi : value);
     }
 
     private float calculateFontSizeSp() {
@@ -227,11 +453,11 @@ public class FloatingOverlayService extends Service {
     }
 
     private void applyRuntimeSettings(boolean rebuildLyrics) {
-        if (overlayView == null || scrollView == null || lyricsContainer == null) return;
+        if (overlayView == null || overlayBody == null || lyricsContainer == null) return;
 
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int newWidthPercent = Math.max(55, Math.min(100, sharedPrefs.getInt("overlay_width_percent", 88)));
-        int newHeightPercent = Math.max(20, Math.min(70, sharedPrefs.getInt("overlay_height_percent", 36)));
+        int newWidthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 55, 100);
+        int newHeightPercent = clamp(sharedPrefs.getInt("overlay_height_percent", 36), 20, 70);
         float newFontSizeSp = calculateFontSizeSp();
 
         boolean fontChanged = Math.abs(newFontSizeSp - overlayFontSizeSp) > 0.05f;
@@ -239,12 +465,15 @@ public class FloatingOverlayService extends Service {
         overlayWidthPercent = newWidthPercent;
         lyricsHeightPx = Math.max(dpToPx(140), metrics.heightPixels * newHeightPercent / 100);
 
-        ViewGroup.LayoutParams scrollParams = scrollView.getLayoutParams();
-        scrollParams.height = lyricsHeightPx;
-        scrollView.setLayoutParams(scrollParams);
+        if (lyricsVisible) {
+            ViewGroup.LayoutParams bodyParams = overlayBody.getLayoutParams();
+            bodyParams.height = lyricsHeightPx;
+            overlayBody.setLayoutParams(bodyParams);
+        }
 
         if (overlayParams != null && windowManager != null) {
             overlayParams.width = Math.max(dpToPx(220), metrics.widthPixels * newWidthPercent / 100);
+            clampOverlayPosition(overlayParams);
             try {
                 windowManager.updateViewLayout(overlayView, overlayParams);
             } catch (Exception e) {
@@ -301,27 +530,68 @@ public class FloatingOverlayService extends Service {
         return 0.34f + fontHeightRatio + compactBoost + tallOverlayPullUp;
     }
 
-    private void setLyricsVisible(boolean visible) {
-        setLyricsVisible(visible, true);
-    }
+    // ── Collapse / expand ──────────────────────────────────────────────────
 
-    private void setLyricsVisible(boolean visible, boolean persist) {
+    private void setLyricsVisible(boolean visible, boolean persist, boolean animate) {
         lyricsVisible = visible;
         if (persist) {
-            getSharedPreferences("lyricsync", MODE_PRIVATE)
-                    .edit()
-                    .putBoolean("lyrics_visible", visible)
-                    .apply();
+            sharedPrefs.edit().putBoolean("lyrics_visible", visible).apply();
         }
-        scrollView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        Anim.rotateTo(overlayToggle, visible ? 0f : 180f);
         overlayToggle.setAlpha(visible ? 1.0f : 0.65f);
-        overlayToggle.setRotation(visible ? 90f : 270f);
+
+        if (animate) {
+            animateBody(visible);
+        } else {
+            ViewGroup.LayoutParams lp = overlayBody.getLayoutParams();
+            lp.height = lyricsHeightPx;
+            overlayBody.setLayoutParams(lp);
+            overlayBody.setAlpha(visible ? 1f : 0f);
+            overlayBody.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+
         if (visible) {
             startRenderLoop();
             jumpToCurrentLineAfterLayout();
         } else {
             stopRenderLoop();
         }
+        updateNotification();
+    }
+
+    /**
+     * Animates the body open/closed. The height is restored to the configured lyrics
+     * height (not WRAP_CONTENT) so the next expand starts from the right size.
+     */
+    private void animateBody(final boolean show) {
+        final ViewGroup.LayoutParams lp = overlayBody.getLayoutParams();
+        if (lp == null) return;
+
+        int from = show ? 0 : Math.max(1, overlayBody.getHeight());
+        int to = show ? lyricsHeightPx : 0;
+        if (show) {
+            lp.height = 0;
+            overlayBody.setLayoutParams(lp);
+            overlayBody.setVisibility(View.VISIBLE);
+        }
+
+        ValueAnimator anim = ValueAnimator.ofInt(from, to);
+        anim.setDuration(Anim.D_MED);
+        anim.setInterpolator(show ? Anim.DECEL : Anim.STANDARD);
+        anim.addUpdateListener(a -> {
+            lp.height = (int) a.getAnimatedValue();
+            overlayBody.setLayoutParams(lp);
+        });
+        anim.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (!show) overlayBody.setVisibility(View.GONE);
+                lp.height = lyricsHeightPx;
+                overlayBody.setLayoutParams(lp);
+            }
+        });
+        overlayBody.animate().alpha(show ? 1f : 0f).setDuration(Anim.D_MED).start();
+        anim.start();
     }
 
     private void jumpToCurrentLineAfterLayout() {
@@ -336,31 +606,54 @@ public class FloatingOverlayService extends Service {
         });
     }
 
+    // ── Sync offset UI ─────────────────────────────────────────────────────
+
     private void setupSyncOffsetUi() {
-        long saved = sharedPrefs.getLong("sync_offset_ms", 0);
-        saved = Math.max(-1500, Math.min(1500, saved));
-        overlaySyncOffsetSlider.setProgress((int) saved + 1500);
-        updateSyncOffsetLabel((int) saved);
+        int saved = clamp((int) sharedPrefs.getLong("sync_offset_ms", 0), -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
+        updateSyncOffsetLabel(saved);
 
         overlaySettings.setOnClickListener(v -> {
+            Haptics.tick(v);
             boolean visible = overlaySettingsPanel.getVisibility() == View.VISIBLE;
-            overlaySettingsPanel.setVisibility(visible ? View.GONE : View.VISIBLE);
+            if (visible) {
+                Anim.collapse(overlaySettingsPanel);
+            } else {
+                Anim.expand(overlaySettingsPanel);
+                updatePlayPauseIcon();
+            }
+            Anim.rotateTo(overlaySettings, visible ? 0f : 90f);
         });
 
-        SeekBars.bind(overlaySyncOffsetSlider, (int) saved + 1500, progress -> {
-            int offset = progress - 1500;
-            offset = Math.max(-1500, Math.min(1500, offset));
+        SeekBars.bind(overlaySyncOffsetSlider, saved + SYNC_LIMIT_MS, (progress, fromUser) -> {
+            int offset = clamp(progress - SYNC_LIMIT_MS, -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
             updateSyncOffsetLabel(offset);
             sharedPrefs.edit().putLong("sync_offset_ms", offset).apply();
             if (sessionTracker != null) {
                 sessionTracker.setSyncOffsetMs(offset);
             }
+            if (fromUser) Haptics.tick(overlaySyncOffsetSlider);
         });
     }
 
-    private void updateSyncOffsetLabel(int ms) {
-        overlaySyncOffsetLabel.setText(ms + " ms (lyrics " + (ms >= 0 ? "later" : "earlier") + ")");
+    /** Keeps the overlay slider in step when the offset is changed from the activity. */
+    private void syncOffsetSliderFromPrefs(long offset) {
+        if (overlaySyncOffsetSlider == null) return;
+        int clamped = clamp((int) offset, -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
+        if (overlaySyncOffsetSlider.getProgress() != clamped + SYNC_LIMIT_MS) {
+            overlaySyncOffsetSlider.setProgress(clamped + SYNC_LIMIT_MS);
+        }
+        updateSyncOffsetLabel(clamped);
     }
+
+    private void updateSyncOffsetLabel(int ms) {
+        if (ms == 0) {
+            overlaySyncOffsetLabel.setText("0 ms");
+            return;
+        }
+        overlaySyncOffsetLabel.setText((ms > 0 ? "+" : "") + ms + " ms");
+    }
+
+    // ── Dragging ───────────────────────────────────────────────────────────
 
     private void setupDragging(WindowManager.LayoutParams params) {
         final int[] touchX = new int[1];
@@ -368,6 +661,8 @@ public class FloatingOverlayService extends Service {
         final int[] paramX = new int[1];
         final int[] paramY = new int[1];
         final boolean[] isDragging = new boolean[1];
+        final boolean[] wasClamped = new boolean[1];
+        final int touchSlop = dpToPx(10);
 
         overlayView.setOnTouchListener((v, event) -> {
             switch (event.getAction()) {
@@ -377,16 +672,23 @@ public class FloatingOverlayService extends Service {
                     paramX[0] = params.x;
                     paramY[0] = params.y;
                     isDragging[0] = false;
+                    wasClamped[0] = false;
                     return false;
                 case MotionEvent.ACTION_MOVE:
                     float dx = event.getRawX() - touchX[0];
                     float dy = event.getRawY() - touchY[0];
-                    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                    if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
                         isDragging[0] = true;
                     }
                     if (isDragging[0]) {
                         params.x = paramX[0] + (int) dx;
                         params.y = paramY[0] + (int) dy;
+                        // Without this the overlay can be flung off-screen and never recovered.
+                        boolean clamped = clampOverlayPosition(params);
+                        if (clamped && !wasClamped[0]) {
+                            Haptics.snap(v);
+                        }
+                        wasClamped[0] = clamped;
                         try {
                             windowManager.updateViewLayout(overlayView, params);
                         } catch (Exception e) {
@@ -398,40 +700,86 @@ public class FloatingOverlayService extends Service {
                     return false;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
+                    if (isDragging[0]) {
+                        persistOverlayPosition(params);
+                    }
                     return isDragging[0];
             }
             return false;
         });
     }
 
+    /** Keeps the whole overlay on screen. Returns true if a bound had to be applied. */
+    private boolean clampOverlayPosition(WindowManager.LayoutParams params) {
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int viewWidth = overlayView != null && overlayView.getWidth() > 0
+                ? overlayView.getWidth() : params.width;
+        int viewHeight = overlayView != null && overlayView.getHeight() > 0
+                ? overlayView.getHeight() : dpToPx(200);
+
+        // Gravity is TOP|CENTER_HORIZONTAL, so x is an offset from the horizontal centre.
+        int maxX = Math.max(0, (metrics.widthPixels - viewWidth) / 2);
+        int maxY = Math.max(0, metrics.heightPixels - viewHeight);
+
+        int newX = Math.max(-maxX, Math.min(maxX, params.x));
+        int newY = Math.max(0, Math.min(maxY, params.y));
+        boolean clamped = newX != params.x || newY != params.y;
+        params.x = newX;
+        params.y = newY;
+        return clamped;
+    }
+
+    private void persistOverlayPosition(WindowManager.LayoutParams params) {
+        sharedPrefs.edit()
+                .putInt("overlay_x", params.x)
+                .putInt("overlay_y", params.y)
+                .apply();
+    }
+
+    // ── Tracking ───────────────────────────────────────────────────────────
+
     private void startTracker() {
         lyricsManager = new LyricsProviderManager(this);
         sessionTracker = new MediaSessionTracker(this);
+        sessionTracker.setSyncOffsetMs(
+                clamp((int) sharedPrefs.getLong("sync_offset_ms", 0), -SYNC_LIMIT_MS, SYNC_LIMIT_MS));
 
         sessionTracker.start(
                 new MediaSessionTracker.TrackCallback() {
                     @Override
                     public void onTrackChanged(TrackInfo track) {
-                        currentTrack = track;
                         AppLog.i(TAG, "Track changed: " + track.title + " - " + track.artist);
                         handler.post(() -> {
+                            if (isDestroyed) return;
+                            currentTrack = track;
+                            lyricsStatusText = null;
                             updateTrackInfo(track);
                             clearLyricsOnly();
+                            showLoadingState();
                             fetchLyrics(track);
+                            updateNotification();
+                            publishNowPlaying();
                         });
                     }
 
                     @Override
                     public void onTrackUpdated(TrackInfo track) {
-                        currentTrack = track;
                         AppLog.d(TAG, "Track info updated: " + track.title + " - " + track.artist);
-                        handler.post(() -> updateTrackInfo(track));
+                        handler.post(() -> {
+                            if (isDestroyed) return;
+                            currentTrack = track;
+                            updateTrackInfo(track);
+                            publishNowPlaying();
+                        });
                     }
 
                     @Override
                     public void onTrackCleared() {
                         AppLog.i(TAG, "Track cleared");
-                        handler.post(() -> clearOverlay());
+                        handler.post(() -> {
+                            if (isDestroyed) return;
+                            clearOverlay();
+                        });
                     }
                 },
                 (state, position) -> {
@@ -440,8 +788,21 @@ public class FloatingOverlayService extends Service {
                     if (renderRunning && !renderActive) {
                         startFrameCallback();
                     }
+                    updatePlayPauseIcon();
+                    publishNowPlaying();
                 }
         );
+    }
+
+    private void publishNowPlaying() {
+        TrackInfo track = currentTrack;
+        if (track == null) {
+            NowPlaying.clear();
+            return;
+        }
+        boolean playing = sessionTracker != null && sessionTracker.isPlaying();
+        NowPlaying.publish(new NowPlaying.Snapshot(
+                track.title, track.artist, lyricsStatusText, track.albumArtBitmap, playing, true));
     }
 
     private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
@@ -497,8 +858,8 @@ public class FloatingOverlayService extends Service {
 
     private void updateTrackInfo(TrackInfo track) {
         if (isDestroyed) return;
-        overlayTitle.setText(track.title);
-        overlayArtist.setText(track.artist);
+        Anim.setTextAnimated(overlayTitle, track.title);
+        Anim.setTextAnimated(overlayArtist, track.artist);
 
         if (track.albumArtBitmap != null) {
             Glide.with(this)
@@ -506,6 +867,10 @@ public class FloatingOverlayService extends Service {
                     .transition(DrawableTransitionOptions.withCrossFade(220))
                     .transform(new RoundedCorners(dpToPx(10)))
                     .into(overlayCover);
+            if (track.albumArtBitmap != lastPaletteArt) {
+                lastPaletteArt = track.albumArtBitmap;
+                applyAlbumColors(track.albumArtBitmap);
+            }
         } else if (track.albumArtUri != null && !track.albumArtUri.trim().isEmpty()) {
             Glide.with(this)
                     .load(track.albumArtUri)
@@ -518,6 +883,66 @@ public class FloatingOverlayService extends Service {
         }
     }
 
+    // ── Body states ────────────────────────────────────────────────────────
+
+    private void showLoadingState() {
+        if (overlaySkeleton == null) return;
+        scrollView.setVisibility(View.INVISIBLE);
+        overlayEmpty.setVisibility(View.GONE);
+        overlaySkeleton.setVisibility(View.VISIBLE);
+        startSkeletonShimmer();
+    }
+
+    private void showLyricsState() {
+        if (overlaySkeleton == null) return;
+        stopSkeletonShimmer();
+        overlaySkeleton.setVisibility(View.GONE);
+        overlayEmpty.setVisibility(View.GONE);
+        if (scrollView.getVisibility() != View.VISIBLE) {
+            scrollView.setVisibility(View.VISIBLE);
+            scrollView.setAlpha(0f);
+            scrollView.animate().alpha(1f).setDuration(Anim.D_MED).start();
+        }
+    }
+
+    /** Nothing is playing at all — different message from "this track has no lyrics". */
+    private void showIdleState() {
+        showEmptyState(R.string.nothing_playing, R.string.nothing_playing_desc);
+    }
+
+    private void showEmptyState() {
+        showEmptyState(R.string.lyrics_none, R.string.lyrics_none_desc);
+    }
+
+    private void showEmptyState(int titleRes, int descRes) {
+        if (overlaySkeleton == null) return;
+        if (overlayEmptyTitle != null) overlayEmptyTitle.setText(titleRes);
+        if (overlayEmptyDesc != null) overlayEmptyDesc.setText(descRes);
+        stopSkeletonShimmer();
+        overlaySkeleton.setVisibility(View.GONE);
+        scrollView.setVisibility(View.INVISIBLE);
+        overlayEmpty.setVisibility(View.VISIBLE);
+        overlayEmpty.setAlpha(0f);
+        overlayEmpty.animate().alpha(1f).setDuration(Anim.D_MED).start();
+    }
+
+    private void startSkeletonShimmer() {
+        if (skeletonAnimator != null) return;
+        skeletonAnimator = ObjectAnimator.ofFloat(overlaySkeleton, View.ALPHA, 0.35f, 0.9f);
+        skeletonAnimator.setDuration(760);
+        skeletonAnimator.setRepeatMode(ValueAnimator.REVERSE);
+        skeletonAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        skeletonAnimator.setInterpolator(Anim.STANDARD);
+        skeletonAnimator.start();
+    }
+
+    private void stopSkeletonShimmer() {
+        if (skeletonAnimator == null) return;
+        skeletonAnimator.cancel();
+        skeletonAnimator = null;
+        if (overlaySkeleton != null) overlaySkeleton.setAlpha(1f);
+    }
+
     private void clearLyricsOnly() {
         stopRenderLoop();
         currentLyrics = null;
@@ -527,16 +952,7 @@ public class FloatingOverlayService extends Service {
         lineViews.clear();
     }
 
-    private void showNoLyrics() {
-        lyricsContainer.removeAllViews();
-        highlighter.clear();
-        lineViews.clear();
-        TextView noLyrics = new TextView(this);
-        noLyrics.setText("No lyrics");
-        noLyrics.setTextColor(0x66FFFFFF);
-        noLyrics.setTextSize(11);
-        lyricsContainer.addView(noLyrics);
-    }
+    // ── Lyrics ─────────────────────────────────────────────────────────────
 
     private void fetchLyrics(TrackInfo track) {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
@@ -555,8 +971,10 @@ public class FloatingOverlayService extends Service {
                 handler.post(() -> {
                     if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
                     currentLyrics = lyrics;
+                    lyricsStatusText = describeLyrics(lyrics);
                     if (currentTrack != null) updateTrackInfo(currentTrack);
                     renderOverlayLyrics(lyrics);
+                    publishNowPlaying();
                 });
             }
 
@@ -566,17 +984,33 @@ public class FloatingOverlayService extends Service {
                 AppLog.w(TAG, "Lyrics error: " + error);
                 handler.post(() -> {
                     if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
-                    showNoLyrics();
+                    lyricsStatusText = null;
+                    clearLyricsOnly();
+                    showEmptyState();
+                    publishNowPlaying();
                 });
             }
         });
+    }
+
+    private String describeLyrics(LyricsData lyrics) {
+        String kind;
+        if (lyrics.type == LyricsData.Type.SYLLABLE) {
+            kind = "WORD-BY-WORD";
+        } else if (lyrics.type == LyricsData.Type.LINE) {
+            kind = "LINE-SYNCED";
+        } else {
+            kind = "UNSYNCED";
+        }
+        return lyrics.provider == null || lyrics.provider.isEmpty()
+                ? kind : kind + " · " + lyrics.provider.toUpperCase(java.util.Locale.ROOT);
     }
 
     private void renderOverlayLyrics(LyricsData lyrics) {
         if (isDestroyed) return;
         if (lyrics == null || lyrics.lines == null || lyrics.lines.isEmpty()) {
             clearLyricsOnly();
-            showNoLyrics();
+            showEmptyState();
             return;
         }
 
@@ -596,14 +1030,44 @@ public class FloatingOverlayService extends Service {
 
             SyllableHighlighter.LineView lv = highlighter.createLineView(line, lp);
             lineViews.add(lv);
+
+            if (!line.isInterlude) {
+                final int index = i;
+                lv.rootView.setOnClickListener(v -> seekToLine(index));
+            }
+
             lyricsContainer.addView(lv.rootView);
         }
 
+        showLyricsState();
         if (lyricsVisible) {
             startRenderLoop();
             jumpToCurrentLineAfterLayout();
         }
         AppLog.i(TAG, "Rendered " + lyrics.lines.size() + " lyric lines, Choreographer loop started");
+    }
+
+    /** Tap a line to jump the player there. No-op on players that don't support seeking. */
+    private void seekToLine(int index) {
+        if (currentLyrics == null || currentLyrics.lines == null || sessionTracker == null) return;
+        if (index < 0 || index >= currentLyrics.lines.size()) return;
+        if (!sessionTracker.hasController()) return;
+
+        long target = Math.max(0, currentLyrics.lines.get(index).startTime);
+        sessionTracker.seekTo(target);
+        AppLog.i(TAG, "Seek to line " + index + " @ " + target + "ms");
+
+        View lineView = lyricsContainer.getChildAt(index);
+        if (lineView != null) {
+            Haptics.confirm(lineView);
+            Anim.pop(lineView);
+        }
+        lastActiveLineIndex = index;
+        // Force a frame even while paused so the highlight follows the seek immediately.
+        startFrameCallback();
+        if (springScroller != null && lineView != null) {
+            springScroller.scrollToView(lineView, true);
+        }
     }
 
     private void updateHighlight(long position, double deltaTime) {
@@ -655,30 +1119,74 @@ public class FloatingOverlayService extends Service {
 
     private void clearOverlay() {
         if (isDestroyed) return;
+        pendingFetchKey = null;
+        currentTrack = null;
+        lyricsStatusText = null;
+        lastPaletteArt = null;
         clearLyricsOnly();
-        overlayTitle.setText("No music");
-        overlayArtist.setText("");
+        Anim.setTextAnimated(overlayTitle, getString(R.string.no_music));
+        Anim.setTextAnimated(overlayArtist, "");
+        Glide.with(this).clear(overlayCover);
+        overlayCover.setImageDrawable(null);
+        showIdleState();
+        animateOverlayColors(AlbumPalette.DEFAULT_ACCENT, AlbumPalette.DEFAULT_DEEP);
+        NowPlaying.clear();
+        updateNotification();
     }
 
+    // ── Notification ───────────────────────────────────────────────────────
+
     private Notification buildNotification() {
-        Intent intent = new Intent(this, com.lyricsync.app.MainActivity.class);
-        PendingIntent pi = PendingIntent.getActivity(this, 0, intent,
+        Intent openIntent = new Intent(this, com.lyricsync.app.MainActivity.class);
+        PendingIntent openPi = PendingIntent.getActivity(this, 0, openIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
+        Intent toggleIntent = new Intent(this, FloatingOverlayService.class).setAction(ACTION_TOGGLE);
+        PendingIntent togglePi = PendingIntent.getService(this, 1, toggleIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Intent stopIntent = new Intent(this, FloatingOverlayService.class).setAction(ACTION_STOP);
+        PendingIntent stopPi = PendingIntent.getService(this, 2, stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        TrackInfo track = currentTrack;
+        String title = track != null && track.title != null ? track.title : getString(R.string.app_name);
+        String text = track != null && track.artist != null
+                ? track.artist : getString(R.string.notif_active);
+
         return new NotificationCompat.Builder(this, LyricSyncApp.CHANNEL_ID)
-                .setContentTitle("LyricSync")
-                .setContentText("Lyrics overlay active")
-                .setSmallIcon(R.drawable.ic_close)
-                .setContentIntent(pi)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentIntent(openPi)
                 .setOngoing(true)
+                .setShowWhen(false)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .addAction(0, getString(lyricsVisible ? R.string.notif_hide : R.string.notif_show), togglePi)
+                .addAction(0, getString(R.string.notif_stop), stopPi)
                 .build();
+    }
+
+    private void updateNotification() {
+        if (isDestroyed) return;
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        try {
+            nm.notify(NOTIFICATION_ID, buildNotification());
+        } catch (Exception e) {
+            AppLog.w(TAG, "Notification update failed: " + e.getMessage());
+        }
     }
 
     @Override
     public void onDestroy() {
         isDestroyed = true;
+        running = false;
         super.onDestroy();
         stopRenderLoop();
+        stopSkeletonShimmer();
+        if (colorAnimator != null) colorAnimator.cancel();
         handler.removeCallbacksAndMessages(null);
         if (sharedPrefs != null) {
             sharedPrefs.unregisterOnSharedPreferenceChangeListener(settingsListener);
@@ -686,6 +1194,7 @@ public class FloatingOverlayService extends Service {
         if (sessionTracker != null) sessionTracker.stop();
         if (lyricsManager != null) lyricsManager.shutdown();
         if (springScroller != null) springScroller.destroy();
+        NowPlaying.clear();
         if (overlayView != null && windowManager != null) {
             try {
                 windowManager.removeView(overlayView);

@@ -1,27 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="transparent">#00000000</color>
     <color name="spotify_green">#FF1ED760</color>
 
     <!-- Base surfaces: near-black with a faint cool tint for depth. -->
     <color name="background_primary">#FF07070B</color>
+    <color name="background_elevated">#FF0B0C12</color>
     <color name="surface">#FF12131A</color>
     <color name="card_bg">#FF181A22</color>
     <color name="card_bg_elevated">#FF1F212B</color>
+    <color name="card_stroke">#14FFFFFF</color>
     <color name="divider">#1AFFFFFF</color>
 
     <!-- Text -->
     <color name="text_primary">#FFFFFFFF</color>
     <color name="text_secondary">#B8FFFFFF</color>
     <color name="text_dim">#66FFFFFF</color>
+    <color name="text_faint">#3DFFFFFF</color>
 
     <!-- Accent: keep Spotify-green vibe but a touch brighter/cleaner. -->
     <color name="accent">#FF1ED760</color>
     <color name="accent_dark">#FF17B34E</color>
+    <color name="accent_soft">#291ED760</color>
+
+    <!-- Semantic state colours (were hardcoded ints in MainActivity). -->
+    <color name="state_ok">#FF1ED760</color>
+    <color name="state_ok_soft">#241ED760</color>
+    <color name="state_warn">#FFFFB020</color>
+    <color name="state_warn_soft">#26FFB020</color>
+    <color name="state_error">#FFFF5D5D</color>
 
     <!-- Gradient header accents -->
     <color name="header_gradient_start">#FF1ED760</color>
     <color name="header_gradient_end">#FF0FA98C</color>
+    <color name="hero_glow_start">#3D1ED760</color>
+    <color name="hero_glow_mid">#140FA98C</color>
+    <color name="hero_glow_end">#0007070B</color>
+
+    <!-- Track controls -->
+    <color name="track_inactive">#1FFFFFFF</color>
+    <color name="thumb_halo">#331ED760</color>
 
     <color name="overlay_bg">#CC000000</color>
+    <color name="overlay_scrim">#66000000</color>
 </resources>

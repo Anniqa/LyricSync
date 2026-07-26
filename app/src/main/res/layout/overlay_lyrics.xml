@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/overlay_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -8,7 +9,9 @@
     android:layout_marginStart="10dp"
     android:layout_marginEnd="10dp">
 
+    <!-- ── Header ─────────────────────────────────────────────────── -->
     <LinearLayout
+        android:id="@+id/overlay_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -20,7 +23,8 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:background="@drawable/rounded_album_bg"
-            android:scaleType="centerCrop" />
+            android:scaleType="centerCrop"
+            android:contentDescription="@string/cd_album_art" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -32,7 +36,7 @@
 
             <TextView
                 android:id="@+id/overlay_title"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_primary"
                 android:textSize="14sp"
@@ -43,7 +47,7 @@
 
             <TextView
                 android:id="@+id/overlay_artist"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp"
@@ -57,91 +61,245 @@
             android:layout_width="30dp"
             android:layout_height="30dp"
             android:padding="5dp"
-            android:src="@drawable/ic_chevron_right"
-            android:contentDescription="Hide lyrics" />
+            android:background="@drawable/bg_icon_button"
+            android:src="@drawable/ic_chevron_down"
+            android:contentDescription="@string/cd_collapse" />
 
         <ImageView
             android:id="@+id/overlay_settings"
             android:layout_width="30dp"
             android:layout_height="30dp"
             android:padding="5dp"
-            android:layout_marginStart="4dp"
+            android:layout_marginStart="5dp"
+            android:background="@drawable/bg_icon_button"
             android:src="@drawable/ic_settings"
-            android:contentDescription="Settings" />
+            android:contentDescription="@string/cd_settings" />
 
         <ImageView
             android:id="@+id/overlay_close"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:padding="5dp"
-            android:layout_marginStart="4dp"
+            android:padding="6dp"
+            android:layout_marginStart="5dp"
+            android:background="@drawable/bg_icon_button"
             android:src="@drawable/ic_close"
-            android:contentDescription="Close" />
+            android:contentDescription="@string/cd_close" />
     </LinearLayout>
 
+    <!-- ── Controls panel (toggled from the header) ───────────────── -->
     <LinearLayout
         android:id="@+id/overlay_settings_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="8dp"
         android:visibility="gone">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Lyrics Sync Offset"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingBottom="10dp">
 
-        <TextView
-            android:id="@+id/overlay_sync_offset_label"
-            android:layout_width="wrap_content"
+            <ImageView
+                android:id="@+id/overlay_prev"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:padding="8dp"
+                android:background="@drawable/bg_icon_button"
+                android:src="@drawable/ic_skip_previous"
+                android:contentDescription="@string/cd_previous" />
+
+            <ImageView
+                android:id="@+id/overlay_play_pause"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:padding="10dp"
+                android:layout_marginStart="18dp"
+                android:layout_marginEnd="18dp"
+                android:background="@drawable/bg_icon_button"
+                android:src="@drawable/ic_play"
+                android:contentDescription="@string/cd_play_pause" />
+
+            <ImageView
+                android:id="@+id/overlay_next"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:padding="8dp"
+                android:background="@drawable/bg_icon_button"
+                android:src="@drawable/ic_skip_next"
+                android:contentDescription="@string/cd_next" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/divider"
+            android:layout_marginBottom="10dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="0 ms (lyrics later)"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp"
-            android:layout_marginTop="2dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:baselineAligned="false">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/sync_title"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/overlay_sync_offset_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 ms"
+                android:textColor="@color/accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <SeekBar
             android:id="@+id/overlay_sync_offset_slider"
+            style="@style/Widget.LyricSync.SeekBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="1500"
-            android:min="-1500"
-            android:progress="0"
+            android:max="3000"
+            android:progress="1500"
             android:layout_marginTop="2dp" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Lyrics ahead of singing? Increase. Lagging? Decrease."
-            android:textColor="@color/text_dim"
-            android:textSize="11sp"
-            android:layout_marginTop="4dp" />
-    </LinearLayout>
-
-    <ScrollView
-        android:id="@+id/overlay_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:maxHeight="400dp"
-        android:scrollbars="none"
-        android:overScrollMode="never"
-        android:requiresFadingEdge="vertical"
-        android:fadingEdgeLength="36dp"
-        android:fillViewport="true">
-
-        <LinearLayout
-            android:id="@+id/overlay_lyrics_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:text="@string/sync_hint_short"
+            android:textColor="@color/text_dim"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <!-- ── Body: lyrics / loading / empty ─────────────────────────── -->
+    <FrameLayout
+        android:id="@+id/overlay_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <ScrollView
+            android:id="@+id/overlay_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:requiresFadingEdge="vertical"
+            android:fadingEdgeLength="36dp"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:id="@+id/overlay_lyrics_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp" />
+        </ScrollView>
+
+        <!-- Skeleton shown while providers are being queried. -->
+        <LinearLayout
+            android:id="@+id/overlay_skeleton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:orientation="vertical"
-            android:paddingTop="12dp"
-            android:paddingBottom="12dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp" />
-    </ScrollView>
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:visibility="gone">
+
+            <View
+                android:id="@+id/skeleton_1"
+                android:layout_width="match_parent"
+                android:layout_height="15dp"
+                android:background="@drawable/bg_skeleton" />
+
+            <View
+                android:id="@+id/skeleton_2"
+                android:layout_width="match_parent"
+                android:layout_height="15dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginEnd="72dp"
+                android:background="@drawable/bg_skeleton" />
+
+            <View
+                android:id="@+id/skeleton_3"
+                android:layout_width="match_parent"
+                android:layout_height="15dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginEnd="28dp"
+                android:background="@drawable/bg_skeleton" />
+
+            <View
+                android:id="@+id/skeleton_4"
+                android:layout_width="match_parent"
+                android:layout_height="15dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginEnd="104dp"
+                android:background="@drawable/bg_skeleton" />
+
+            <TextView
+                android:id="@+id/overlay_loading_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="@string/lyrics_loading"
+                android:textColor="@color/text_dim"
+                android:textSize="11sp"
+                android:layout_marginTop="18dp" />
+        </LinearLayout>
+
+        <!-- Nothing found for this track. -->
+        <LinearLayout
+            android:id="@+id/overlay_empty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:src="@drawable/ic_music_note"
+                android:tint="@color/text_faint"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:id="@+id/overlay_empty_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/lyrics_none"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginTop="10dp" />
+
+            <TextView
+                android:id="@+id/overlay_empty_desc"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/lyrics_none_desc"
+                android:textColor="@color/text_dim"
+                android:textSize="11sp"
+                android:gravity="center"
+                android:layout_marginTop="3dp" />
+        </LinearLayout>
+    </FrameLayout>
 </LinearLayout>

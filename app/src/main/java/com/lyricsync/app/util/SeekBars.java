@@ -6,7 +6,12 @@ public final class SeekBars {
     private SeekBars() {}
 
     public interface ProgressListener {
-        void onChanged(int progress);
+        /**
+         * @param fromUser true when the user dragged the bar. Programmatic setProgress()
+         *                 calls also land here, so anything with side effects the user
+         *                 would notice (haptics, sounds) must check this flag.
+         */
+        void onChanged(int progress, boolean fromUser);
     }
 
     public static void bind(SeekBar seekBar, int progress, ProgressListener listener) {
@@ -14,7 +19,7 @@ public final class SeekBars {
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                listener.onChanged(progress);
+                listener.onChanged(progress, fromUser);
             }
 
             @Override
