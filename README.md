@@ -12,10 +12,13 @@ It reads what's playing from the media notification (Spotify, YT Music, etc.), p
 
 ## What it does
 - Word / syllable highlighting that follows the beat, with a smooth spring scroll
+- **8 lyric animation styles** — Spring Pop, Bubble, Wave, Pulse, Rise, Typewriter, Calm, Neon Glow — each with its own spring physics, pickable from the app or the overlay (live animated previews in the app)
+- **Font picker** — Montserrat, Poppins, Barlow, Lato, or the system font, all bundled (OFL) so no downloads are needed
 - Auto-syncs to the player position (no manual seeking) and self-corrects drift
 - **Tap any line to jump the player there**
 - **Playback controls** (previous / play-pause / next) right in the overlay
-- **Colour picked from the album art** — the overlay retints itself each track
+- **Colour picked from the album art** — the overlay retints itself each track, including covers loaded from URIs
+- Bubble-motion overlay: springy entrance, track-change pulse, and settle-on-drop drag physics
 - Manual offset slider if a song is still a touch early or late
 - Album art, adjustable size, font scale, and a per-song sync tweak
 - Draggable anywhere on screen; position is remembered and stays on-screen
