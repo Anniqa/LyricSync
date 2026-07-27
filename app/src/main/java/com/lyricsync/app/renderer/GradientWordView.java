@@ -8,10 +8,6 @@ import android.graphics.Shader;
 import android.util.TypedValue;
 import android.widget.TextView;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
 public class GradientWordView extends TextView {
     // SpicyLyrics: --gradient-alpha 0.85 (sung/bright), --gradient-alpha-end 0.35 (not-sung/dim)
     // bg-line: --gradient-alpha 0.6, --gradient-alpha-end 0.3 (dimmer, secondary)
@@ -26,26 +22,27 @@ public class GradientWordView extends TextView {
     private boolean backgroundMode = false;
 
     // Springs tuned for a slightly livelier, springier pop while staying smooth.
-    private static final double SCALE_FREQ = 0.95;
-    private static final double SCALE_DAMP = 0.58;
     private static final double YOFFSET_FREQ = 1.55;
     private static final double YOFFSET_DAMP = 0.42;
     private static final double GLOW_FREQ = 1.25;
     private static final double GLOW_DAMP = 0.5;
 
-    // SpicyLyrics-inspired cubic spline ranges, tuned for a more expressive lift.
-    // Scale: rest 0.95, overshoot ~1.10 near the sung peak, settle back to 1.0.
-    private static final Spline SCALE_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.65, 1.0), Arrays.asList(0.95, 1.10, 1.0));
-    // YOffset: gentle dip up (negative = rise) then settle.
-    private static final Spline YOFFSET_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.85, 1.0), Arrays.asList(0.012, -0.026, 0.0));
-    // Glow: quick bloom in, hold, fade out.
-    private static final Spline GLOW_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.12, 0.55, 1.0), Arrays.asList(0.0, 1.0, 1.0, 0.0));
+    // Motion parameters for the default SPRING variant. Other variants swap these
+    // via LyricAnimStyle when setAnimStyle() is called.
+    private Spline scaleSpline = LyricAnimStyle.scaleSpline(LyricAnimStyle.SPRING);
+    private Spline yOffsetSpline = LyricAnimStyle.yOffsetSpline(LyricAnimStyle.SPRING);
+    private Spline glowSplineTable = LyricAnimStyle.glowSpline(LyricAnimStyle.SPRING);
+    private Spline letterScaleSpline = LyricAnimStyle.letterScaleSpline(LyricAnimStyle.SPRING);
+    private Spline letterYOffsetSpline = LyricAnimStyle.letterYOffsetSpline(LyricAnimStyle.SPRING);
+    private boolean springsEnabled = true;
+    private boolean glowEnabled = true;
+    private float glowBoost = 1.0f;
+    private int animStyle = LyricAnimStyle.SPRING;
 
     // Letter-level emphasis (SpicyLyrics IsLetterCapable + Emphasize)
-    private static final long LETTER_MIN_DURATION = 1000;
+    // Min word duration is per-variant (LyricAnimStyle.letterMinDuration): SPRING/
+    // BUBBLE use SpicyLyrics' 1000ms, TYPEWRITER strikes letters on every word.
+    private static final int TYPEWRITER_DIM = 0x2EFFFFFF; // 0.18 alpha "paper" before the strike
     // SpicyLyrics non-SLM IsLetterCapable: only duration >= 1000, no count cap.
     // Distribute the per-letter emphasis across the FULL word so the last letter does
     // not finish early and snap back to idle (the old 250ms end trim left a dead zone).
@@ -55,26 +52,27 @@ public class GradientWordView extends TextView {
     private static final float LETTER_GLOW_MULTIPLIER = 1.85f;
     private static final float LETTER_IDLE_SCALE = 0.95f;
 
-    // Spicy EX Android: letterScaleRange 0->0.95, 0.7->1.18, 1->1.0
-    private static final Spline LETTER_SCALE_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.65, 1.0), Arrays.asList(0.95, 1.22, 1.0));
-    // Spicy EX Android: letterYOffsetRange 0->0.01, 0.9->-1/50, 1->0
-    private static final Spline LETTER_YOFFSET_SPLINE = makeSpline(
-            Arrays.asList(0.0, 0.85, 1.0), Arrays.asList(0.012, -0.028, 0.0));
-
     private long startTime;
     private long endTime;
     private float progress;
     private boolean isActive;
     private float cachedTextWidth = -1f;
-    private float lastShaderProgress = -1f;
-    private LinearGradient cachedShader;
     private float appliedSizeSp = -1f;
     private android.graphics.Typeface appliedTypeface = null;
 
     private final Spring scaleSpring;
     private final Spring yOffsetSpring;
     private final Spring glowSpring;
+
+    // Wave variant: the Y offset is a travelling sine along the line, driven by the
+    // playback clock (not a progress spline), with amplitude eased so the ripple
+    // never pops in/out on line changes.
+    private final Spring waveAmpSpring;
+    private int wordIndex;
+    private boolean lineActive;
+    private long lastPositionMs;
+    private boolean waveStyle;
+    private boolean binaryLetters;
 
     private final Paint glowPaint;
     // Soft blurred bloom drawn under the active word for a real light-glow look.
@@ -96,14 +94,58 @@ public class GradientWordView extends TextView {
         glowPaint.setColor(brightColor);
         bloomPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         bloomPaint.setColor(0xFFFFFFFF);
-        scaleSpring = new Spring(0.95, SCALE_DAMP, SCALE_FREQ);
+        scaleSpring = new Spring(0.95,
+                LyricAnimStyle.scaleDamp(animStyle), LyricAnimStyle.scaleFreq(animStyle));
         yOffsetSpring = new Spring(0, YOFFSET_DAMP, YOFFSET_FREQ);
         glowSpring = new Spring(0, GLOW_DAMP, GLOW_FREQ);
+        waveAmpSpring = new Spring(0, 0.60, 1.20);
+    }
+
+    /** Switch the animation variant. Safe to call before the view is shown. */
+    public void setAnimStyle(int style) {
+        animStyle = style;
+        scaleSpline = LyricAnimStyle.scaleSpline(style);
+        yOffsetSpline = LyricAnimStyle.yOffsetSpline(style);
+        glowSplineTable = LyricAnimStyle.glowSpline(style);
+        letterScaleSpline = LyricAnimStyle.letterScaleSpline(style);
+        letterYOffsetSpline = LyricAnimStyle.letterYOffsetSpline(style);
+        springsEnabled = LyricAnimStyle.springsEnabled(style);
+        glowEnabled = LyricAnimStyle.glowEnabled(style);
+        glowBoost = LyricAnimStyle.glowBoost(style);
+        waveStyle = LyricAnimStyle.waveEnabled(style);
+        binaryLetters = LyricAnimStyle.binaryLetterReveal(style);
+        // Re-tune the scale spring for the variant's bounce character.
+        scaleSpring.dampingRatio = LyricAnimStyle.scaleDamp(style);
+        scaleSpring.frequency = LyricAnimStyle.scaleFreq(style);
+        if (!springsEnabled) {
+            // Pin every spring to rest so nothing drifts when updates skip them.
+            scaleSpring.set(1.0);
+            yOffsetSpring.set(0);
+            glowSpring.set(0);
+        }
+        if (!LyricAnimStyle.letterEmphasisEnabled(style)) {
+            letterCapable = false;
+            letters = null;
+            letterScaleSprings = null;
+            letterGlowSprings = null;
+        }
+        cachedTextWidth = -1f;
+        invalidate();
     }
 
     public void setTiming(long startTime, long endTime) {
         this.startTime = startTime;
         this.endTime = endTime;
+    }
+
+    /** Index of this word within its line; the Wave variant uses it as ripple phase. */
+    public void setWordIndex(int index) {
+        wordIndex = index;
+    }
+
+    /** Whether the line containing this word is currently active (Wave amplitude). */
+    public void setLineActive(boolean active) {
+        lineActive = active;
     }
 
     public void setBackgroundMode(boolean bg) {
@@ -126,8 +168,11 @@ public class GradientWordView extends TextView {
             bloomPaint.setTextSize(getPaint().getTextSize());
             bloomPaint.setTypeface(typeface);
             bloomRadiusPx = Math.max(2f, getPaint().getTextSize() * 0.14f);
-            int horizontalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.04f));
-            int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
+            // Generous padding: word scale peaks (~1.10-1.14x) and letter pops draw
+            // outside the raw text bounds, so give the glyph room before the parent's
+            // (disabled) clipping ever matters. Prevents "cut off" letters.
+            int horizontalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
+            int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.16f));
             setPadding(horizontalPad, verticalPad, horizontalPad, verticalPad);
             appliedSizeSp = sizeSp;
             appliedTypeface = typeface;
@@ -137,7 +182,8 @@ public class GradientWordView extends TextView {
 
     public void initLetterEmphasis(String wordText, long wordStart, long wordEnd) {
         long duration = wordEnd - wordStart - LETTER_SUBSTRACT_START - LETTER_SUBSTRACT_END;
-        if (!isLetterCapable(wordText.length(), duration)) {
+        if (!LyricAnimStyle.letterEmphasisEnabled(animStyle)
+                || !isLetterCapable(wordText.length(), duration, animStyle)) {
             letterCapable = false;
             return;
         }
@@ -158,15 +204,17 @@ public class GradientWordView extends TextView {
             letterStartTimes[i] = adjStart + i * letterDur;
             letterEndTimes[i] = letterStartTimes[i] + letterDur;
             letterProgress[i] = 0f;
-            letterScaleSprings[i] = new Spring(LETTER_IDLE_SCALE, SCALE_DAMP, SCALE_FREQ);
+            letterScaleSprings[i] = new Spring(LETTER_IDLE_SCALE,
+                    LyricAnimStyle.scaleDamp(animStyle), LyricAnimStyle.scaleFreq(animStyle));
             letterGlowSprings[i] = new Spring(0, GLOW_DAMP, GLOW_FREQ);
         }
     }
 
-    private static boolean isLetterCapable(int letterCount, long duration) {
-        // SpicyLyrics non-SLM IsLetterCapable: duration >= 1000ms, no letter count limit.
+    private static boolean isLetterCapable(int letterCount, long duration, int style) {
+        // SpicyLyrics non-SLM IsLetterCapable: no letter count limit; the duration
+        // threshold is per-variant (TYPEWRITER: none — it must strike every word).
         if (letterCount <= 0) return false;
-        return duration >= LETTER_MIN_DURATION;
+        return duration >= LyricAnimStyle.letterMinDuration(style);
     }
 
     private static String[] splitLetters(String text) {
@@ -195,7 +243,15 @@ public class GradientWordView extends TextView {
         if (getWidth() == 0 || getHeight() == 0) return;
 
         float scale = (float) scaleSpring.position;
-        float yOffset = (float) (yOffsetSpring.position * getHeight());
+        float yOffset;
+        if (waveStyle) {
+            // Travelling ripple: phase advances with the playback clock, each word
+            // trails its neighbour so the wave appears to flow along the line.
+            double angle = lastPositionMs * 0.0075 - wordIndex * 0.85;
+            yOffset = (float) (Math.sin(angle) * waveAmpSpring.position * 0.055 * getHeight());
+        } else {
+            yOffset = (float) (yOffsetSpring.position * getHeight());
+        }
         float glowAlpha = (float) Math.max(0, Math.min(glowSpring.position, 1));
 
         canvas.save();
@@ -229,13 +285,13 @@ public class GradientWordView extends TextView {
 
         // Soft bloom halo around the sung text — a genuine light-glow, drawn via a text
         // shadow layer (hardware-accelerated-safe) modulated by the glow spring.
-        if (glowAlpha > 0.02f && !backgroundMode) {
+        if (glowEnabled && glowAlpha > 0.02f && !backgroundMode) {
             float baseline = getBaseline();
-            int haloAlpha = Math.round(Math.max(0f, Math.min(1f, glowAlpha)) * 150f);
+            int haloAlpha = Math.round(Math.max(0f, Math.min(1f, glowAlpha)) * 150f * glowBoost);
             bloomPaint.setShader(null);
             bloomPaint.setColor(0x00FFFFFF);
-            bloomPaint.setShadowLayer(bloomRadiusPx * (0.6f + 0.9f * glowAlpha), 0, 0,
-                    (haloAlpha << 24) | 0x00FFFFFF);
+            bloomPaint.setShadowLayer(bloomRadiusPx * glowBoost * (0.6f + 0.9f * glowAlpha), 0, 0,
+                    (Math.min(255, haloAlpha) << 24) | 0x00FFFFFF);
             canvas.drawText(text, drawX, baseline, bloomPaint);
             bloomPaint.clearShadowLayer();
         }
@@ -300,14 +356,25 @@ public class GradientWordView extends TextView {
             String letter = letters[i];
             float letterW = getPaint().measureText(letter);
 
-            // Continuous brightness across the word for a smooth left-to-right sweep.
-            float f = centers[i];
-            float a = (dStop - f) / FADE_WIDTH;
-            a = Math.max(0f, Math.min(1f, a));
-            int lo = (dimColor >> 24) & 0xFF;
-            int hi = (brightColor >> 24) & 0xFF;
-            int alpha = (int) (lo + (hi - lo) * a);
-            int letterColor = (alpha << 24) | 0x00FFFFFF;
+            int letterColor;
+            if (binaryLetters) {
+                // Typewriter: each letter strikes in as a binary faint -> bright switch,
+                // no continuous sweep — the pop carries the motion. Unstruck letters
+                // sit at a faint "paper" alpha so the strike reads as typing, not
+                // merely brightening an already-visible word.
+                boolean struck = letterProgress[i] > 0;
+                letterColor = struck ? brightColor
+                        : (backgroundMode ? dimColor : TYPEWRITER_DIM);
+            } else {
+                // Continuous brightness across the word for a smooth left-to-right sweep.
+                float f = centers[i];
+                float a = (dStop - f) / FADE_WIDTH;
+                a = Math.max(0f, Math.min(1f, a));
+                int lo = (dimColor >> 24) & 0xFF;
+                int hi = (brightColor >> 24) & 0xFF;
+                int alpha = (int) (lo + (hi - lo) * a);
+                letterColor = (alpha << 24) | 0x00FFFFFF;
+            }
 
             float lScale = (float) letterScaleSprings[i].position;
             float lGlow = (float) Math.max(0, Math.min(letterGlowSprings[i].position, 1));
@@ -320,14 +387,14 @@ public class GradientWordView extends TextView {
                 double scaleFalloff = 1.0 / (1.0 + Math.pow(dist, 2.8));
                 double glowFalloff = 1.0 / (1.0 + dist * 0.9);
                 double yFalloff = 1.0 / (1.0 + Math.pow(dist, 1.8));
-                float baseScale = (float) LETTER_SCALE_SPLINE.at(activeLetterPct);
-                float resting = (float) LETTER_SCALE_SPLINE.at(0);
+                float baseScale = (float) letterScaleSpline.at(activeLetterPct);
+                float resting = (float) letterScaleSpline.at(0);
                 float targetScale = resting + (baseScale - resting) * (float) scaleFalloff;
                 lScale = Math.max(lScale, targetScale);
                 lGlow = Math.max(lGlow, (float) (glowFalloff * LETTER_GLOW_MULTIPLIER));
-                lYOffset = (float) (LETTER_YOFFSET_SPLINE.at(activeLetterPct) * yFalloff);
+                lYOffset = (float) (letterYOffsetSpline.at(activeLetterPct) * yFalloff);
             } else if (i == activeIndex) {
-                lYOffset = (float) LETTER_YOFFSET_SPLINE.at(activeLetterPct);
+                lYOffset = (float) letterYOffsetSpline.at(activeLetterPct);
             }
 
             canvas.save();
@@ -340,11 +407,11 @@ public class GradientWordView extends TextView {
                 canvas.scale(lScale, lScale, cx, cy);
             }
 
-            if (lGlow > 0.01f) {
+            if (glowEnabled && lGlow > 0.01f) {
                 // Soft bloom via shadow layer instead of a hard white overdraw, so the
                 // emphasised letter radiates light rather than turning into a flat block.
                 float g = (float) Math.min(lGlow, 1.0);
-                int haloAlpha = (int) (g * 165);
+                int haloAlpha = (int) (g * 165 * glowBoost);
                 glowPaint.setShader(null);
                 glowPaint.setColor(0x00FFFFFF);
                 glowPaint.setShadowLayer(bloomRadiusPx * (0.7f + 1.1f * g), 0, 0,
@@ -363,6 +430,11 @@ public class GradientWordView extends TextView {
     }
 
     public void updateState(long position, double deltaTime) {
+        lastPositionMs = position;
+        if (waveStyle) {
+            waveAmpSpring.finalPosition = lineActive ? 1.0 : 0.0;
+            if (deltaTime > 0) waveAmpSpring.update(deltaTime);
+        }
         if (endTime <= startTime) {
             progress = position >= startTime ? 1f : 0f;
         } else {
@@ -370,18 +442,31 @@ public class GradientWordView extends TextView {
             progress = Math.max(0f, Math.min(progress, 1f));
         }
 
-        float scaleTarget = (float) SCALE_SPLINE.at(progress);
-        float yOffsetTarget = (float) YOFFSET_SPLINE.at(progress);
-        float glowTarget = (float) GLOW_SPLINE.at(progress);
+        float scaleTarget = (float) scaleSpline.at(progress);
+        float yOffsetTarget = (float) yOffsetSpline.at(progress);
+        float glowTarget = (float) glowSplineTable.at(progress);
 
-        scaleSpring.finalPosition = scaleTarget;
-        yOffsetSpring.finalPosition = yOffsetTarget;
-        glowSpring.finalPosition = glowTarget;
+        if (springsEnabled) {
+            scaleSpring.finalPosition = scaleTarget;
+            yOffsetSpring.finalPosition = yOffsetTarget;
+            glowSpring.finalPosition = glowTarget;
 
-        if (deltaTime > 0) {
-            scaleSpring.update(deltaTime);
-            yOffsetSpring.update(deltaTime);
-            glowSpring.update(deltaTime);
+            if (deltaTime > 0) {
+                scaleSpring.update(deltaTime);
+                yOffsetSpring.update(deltaTime);
+                glowSpring.update(deltaTime);
+            }
+        } else {
+            // Variants without spring motion (Calm, Neon Glow) snap straight to the
+            // spline values so the sweep itself stays the only movement.
+            scaleSpring.set(scaleTarget);
+            yOffsetSpring.set(yOffsetTarget);
+            if (glowEnabled) {
+                glowSpring.finalPosition = glowTarget;
+                if (deltaTime > 0) glowSpring.update(deltaTime);
+            } else {
+                glowSpring.set(0);
+            }
         }
 
         // Update letter emphasis
@@ -396,15 +481,23 @@ public class GradientWordView extends TextView {
                 }
                 letterProgress[i] = lp;
 
-                float lScaleTarget = (float) LETTER_SCALE_SPLINE.at(lp);
-                float lGlowTarget = (float) GLOW_SPLINE.at(lp);
+                float lScaleTarget = (float) letterScaleSpline.at(lp);
+                float lGlowTarget = (float) glowSplineTable.at(lp);
 
-                letterScaleSprings[i].finalPosition = lScaleTarget;
-                letterGlowSprings[i].finalPosition = lGlowTarget;
+                if (binaryLetters) {
+                    // Typewriter: track the spline exactly. A lagging spring never
+                    // reaches full size within a short letter slot, so letters would
+                    // stay shrunk while sung and grow late, after the word passed.
+                    letterScaleSprings[i].set(lScaleTarget);
+                    letterGlowSprings[i].set(0);
+                } else {
+                    letterScaleSprings[i].finalPosition = lScaleTarget;
+                    letterGlowSprings[i].finalPosition = lGlowTarget;
 
-                if (deltaTime > 0) {
-                    letterScaleSprings[i].update(deltaTime);
-                    letterGlowSprings[i].update(deltaTime);
+                    if (deltaTime > 0) {
+                        letterScaleSprings[i].update(deltaTime);
+                        letterGlowSprings[i].update(deltaTime);
+                    }
                 }
             }
         }
@@ -422,6 +515,12 @@ public class GradientWordView extends TextView {
     }
 
     private boolean springsSettling() {
+        if (waveStyle && (isSpringUnsettled(waveAmpSpring)
+                || (lineActive && waveAmpSpring.position > 0.01))) {
+            // The ripple keeps moving while the line is active and the amplitude
+            // eases out after deactivation, so keep redrawing in both cases.
+            return true;
+        }
         if (isSpringUnsettled(scaleSpring) || isSpringUnsettled(yOffsetSpring)
                 || isSpringUnsettled(glowSpring)) {
             return true;
@@ -442,9 +541,10 @@ public class GradientWordView extends TextView {
     }
 
     public void resetState() {
-        scaleSpring.set(0.95);
+        scaleSpring.set(scaleSpline.at(0));
         yOffsetSpring.set(0);
         glowSpring.set(0);
+        waveAmpSpring.set(0);
         progress = 0;
         isActive = false;
         letterCapable = false;
@@ -459,7 +559,4 @@ public class GradientWordView extends TextView {
         invalidate();
     }
 
-    private static Spline makeSpline(List<Double> times, List<Double> values) {
-        return new Spline(new ArrayList<>(times), new ArrayList<>(values));
-    }
 }

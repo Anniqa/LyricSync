@@ -47,10 +47,14 @@ import com.lyricsync.app.detection.MediaSessionTracker;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
+import com.lyricsync.app.renderer.LyricAnimStyle;
 import com.lyricsync.app.renderer.SpringScroller;
 import com.lyricsync.app.renderer.SyllableHighlighter;
 import com.lyricsync.app.ui.AlbumPalette;
 import com.lyricsync.app.ui.Anim;
+import com.lyricsync.app.ui.AnimStyleChips;
+import com.lyricsync.app.ui.FontChips;
+import com.lyricsync.app.util.AppFont;
 import com.lyricsync.app.util.AppLog;
 import com.lyricsync.app.util.Haptics;
 import com.lyricsync.app.util.NowPlaying;
@@ -95,6 +99,8 @@ public class FloatingOverlayService extends Service {
     private View overlaySettingsPanel;
     private SeekBar overlaySyncOffsetSlider;
     private TextView overlaySyncOffsetLabel;
+    private LinearLayout overlayFontChips;
+    private LinearLayout overlayAnimChips;
     private LinearLayout lyricsContainer;
     private ScrollView scrollView;
     private View overlayBody;
@@ -113,6 +119,7 @@ public class FloatingOverlayService extends Service {
     private int lastActiveLineIndex = -1;
     private Typeface fontBold;
     private Typeface fontMedium;
+    private int lyricAnimStyle = LyricAnimStyle.SPRING;
     private float overlayFontSizeSp = 13f;
     private int overlayWidthPercent = 88;
     private int lyricsHeightPx = 0;
@@ -127,6 +134,10 @@ public class FloatingOverlayService extends Service {
     private int overlayDeep = AlbumPalette.DEFAULT_DEEP;
     /** updateTrackInfo runs on metadata refreshes too; only re-run Palette on new art. */
     private Bitmap lastPaletteArt;
+    /** Same guard for URI-loaded art; the palette runs on the decoded bitmap. */
+    private String lastPaletteArtUri;
+    /** Guards against a slow Glide load landing after the track already changed. */
+    private String pendingArtUri;
 
     private final Runnable applySettingsRunnable = () -> applyRuntimeSettings(true);
     private final SharedPreferences.OnSharedPreferenceChangeListener settingsListener = (prefs, key) -> {
@@ -135,6 +146,19 @@ public class FloatingOverlayService extends Service {
                 || "overlay_height_percent".equals(key)) {
             handler.removeCallbacks(applySettingsRunnable);
             handler.postDelayed(applySettingsRunnable, 100);
+        } else if (AppFont.PREF_KEY.equals(key) || LyricAnimStyle.PREF_KEY.equals(key)) {
+            // Typeface / animation-style changes need a full highlighter rebuild,
+            // and the panel chips must reflect choices made in the activity.
+            handler.removeCallbacks(applySettingsRunnable);
+            handler.postDelayed(applySettingsRunnable, 100);
+            if (overlayFontChips != null) {
+                FontChips.refresh(overlayFontChips,
+                        prefs.getString(AppFont.PREF_KEY, AppFont.DEFAULT_KEY));
+            }
+            if (overlayAnimChips != null) {
+                AnimStyleChips.refresh(overlayAnimChips,
+                        LyricAnimStyle.current(prefs));
+            }
         } else if ("sync_offset_ms".equals(key) && sessionTracker != null) {
             long offset = prefs.getLong("sync_offset_ms", 0);
             sessionTracker.setSyncOffsetMs(offset);
@@ -156,20 +180,13 @@ public class FloatingOverlayService extends Service {
         super.onCreate();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
-        try {
-            fontBold = Typeface.createFromAsset(getAssets(), "fonts/lyrics_font.ttf");
-        } catch (Exception e) {
-            fontBold = Typeface.create("sans-serif", Typeface.BOLD);
-        }
-        try {
-            fontMedium = Typeface.createFromAsset(getAssets(), "fonts/lyrics_font_medium.ttf");
-        } catch (Exception e) {
-            fontMedium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
-        }
-
         sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
+        loadTypefaces();
+        lyricAnimStyle = LyricAnimStyle.current(sharedPrefs);
+
         overlayFontSizeSp = calculateFontSizeSp();
         highlighter = new SyllableHighlighter(this, fontBold, fontMedium, overlayFontSizeSp);
+        highlighter.setAnimStyle(lyricAnimStyle);
         choreographer = Choreographer.getInstance();
         sharedPrefs.registerOnSharedPreferenceChangeListener(settingsListener);
 
@@ -243,7 +260,13 @@ public class FloatingOverlayService extends Service {
         overlaySettingsPanel = overlayView.findViewById(R.id.overlay_settings_panel);
         overlaySyncOffsetSlider = overlayView.findViewById(R.id.overlay_sync_offset_slider);
         overlaySyncOffsetLabel = overlayView.findViewById(R.id.overlay_sync_offset_label);
+        overlayFontChips = overlayView.findViewById(R.id.overlay_font_chips);
+        overlayAnimChips = overlayView.findViewById(R.id.overlay_anim_chips);
         lyricsContainer = overlayView.findViewById(R.id.overlay_lyrics_container);
+        // Word/letter springs and the glow bloom overshoot view bounds; clipping at
+        // the container would slice glyphs mid-animation ("cut letters").
+        lyricsContainer.setClipChildren(false);
+        lyricsContainer.setClipToPadding(false);
         scrollView = overlayView.findViewById(R.id.overlay_scroll);
         overlayBody = overlayView.findViewById(R.id.overlay_body);
         overlaySkeleton = overlayView.findViewById(R.id.overlay_skeleton);
@@ -325,16 +348,8 @@ public class FloatingOverlayService extends Service {
     }
 
     private void playOverlayEntrance() {
-        overlayView.setAlpha(0f);
-        overlayView.setScaleX(0.93f);
-        overlayView.setScaleY(0.93f);
-        overlayView.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(420)
-                .setInterpolator(Anim.DECEL)
-                .start();
+        // Bubble entrance: the overlay inflates from a blob with a rubbery overshoot.
+        Anim.bubbleIn(overlayView);
     }
 
     private void animateOutAndStop() {
@@ -452,6 +467,13 @@ public class FloatingOverlayService extends Service {
         return Math.max(9f, Math.min(30f, baseFontSize * fontScale));
     }
 
+    /** (Re)load the user's chosen typeface pair through the shared registry. */
+    private void loadTypefaces() {
+        AppFont.FontPair pair = AppFont.current(this);
+        fontBold = pair.bold;
+        fontMedium = pair.medium;
+    }
+
     private void applyRuntimeSettings(boolean rebuildLyrics) {
         if (overlayView == null || overlayBody == null || lyricsContainer == null) return;
 
@@ -459,6 +481,12 @@ public class FloatingOverlayService extends Service {
         int newWidthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 55, 100);
         int newHeightPercent = clamp(sharedPrefs.getInt("overlay_height_percent", 36), 20, 70);
         float newFontSizeSp = calculateFontSizeSp();
+        int newAnimStyle = LyricAnimStyle.current(sharedPrefs);
+        Typeface prevBold = fontBold;
+        loadTypefaces();
+        boolean typefaceChanged = fontBold != prevBold;
+        boolean styleChanged = newAnimStyle != lyricAnimStyle;
+        lyricAnimStyle = newAnimStyle;
 
         boolean fontChanged = Math.abs(newFontSizeSp - overlayFontSizeSp) > 0.05f;
         overlayFontSizeSp = newFontSizeSp;
@@ -490,8 +518,9 @@ public class FloatingOverlayService extends Service {
             updateTrackInfo(currentTrack);
         }
 
-        if (rebuildLyrics && currentLyrics != null && fontChanged) {
+        if (rebuildLyrics && currentLyrics != null && (fontChanged || typefaceChanged || styleChanged)) {
             highlighter = new SyllableHighlighter(this, fontBold, fontMedium, overlayFontSizeSp);
+            highlighter.setAnimStyle(lyricAnimStyle);
             renderOverlayLyrics(currentLyrics);
         } else {
             jumpToCurrentLineAfterLayout();
@@ -577,7 +606,9 @@ public class FloatingOverlayService extends Service {
 
         ValueAnimator anim = ValueAnimator.ofInt(from, to);
         anim.setDuration(Anim.D_MED);
-        anim.setInterpolator(show ? Anim.DECEL : Anim.STANDARD);
+        // Expanding gets a gentle rubber-band overshoot; collapsing stays smooth.
+        anim.setInterpolator(show ? new android.view.animation.OvershootInterpolator(0.8f)
+                : Anim.STANDARD);
         anim.addUpdateListener(a -> {
             lp.height = (int) a.getAnimatedValue();
             overlayBody.setLayoutParams(lp);
@@ -611,6 +642,7 @@ public class FloatingOverlayService extends Service {
     private void setupSyncOffsetUi() {
         int saved = clamp((int) sharedPrefs.getLong("sync_offset_ms", 0), -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
         updateSyncOffsetLabel(saved);
+        buildOverlayChips();
 
         overlaySettings.setOnClickListener(v -> {
             Haptics.tick(v);
@@ -643,6 +675,20 @@ public class FloatingOverlayService extends Service {
             overlaySyncOffsetSlider.setProgress(clamped + SYNC_LIMIT_MS);
         }
         updateSyncOffsetLabel(clamped);
+    }
+
+    /** Font + animation chips inside the settings panel; choices apply live via prefs. */
+    private void buildOverlayChips() {
+        if (overlayFontChips != null) {
+            FontChips.build(this, overlayFontChips,
+                    AppFont.currentKey(sharedPrefs), true,
+                    style -> Haptics.tick(overlayFontChips));
+        }
+        if (overlayAnimChips != null) {
+            AnimStyleChips.buildCompact(this, overlayAnimChips,
+                    LyricAnimStyle.current(sharedPrefs),
+                    variant -> Haptics.tick(overlayAnimChips));
+        }
     }
 
     private void updateSyncOffsetLabel(int ms) {
@@ -702,6 +748,8 @@ public class FloatingOverlayService extends Service {
                 case MotionEvent.ACTION_CANCEL:
                     if (isDragging[0]) {
                         persistOverlayPosition(params);
+                        // Let the bubble "land" after a drag instead of stopping dead.
+                        Anim.bubbleSettle(overlayView);
                     }
                     return isDragging[0];
             }
@@ -759,6 +807,8 @@ public class FloatingOverlayService extends Service {
                             fetchLyrics(track);
                             updateNotification();
                             publishNowPlaying();
+                            // Squash-and-bounce once so a new song visibly "lands".
+                            if (overlayView != null) Anim.bubblePulse(overlayView);
                         });
                     }
 
@@ -862,6 +912,7 @@ public class FloatingOverlayService extends Service {
         Anim.setTextAnimated(overlayArtist, track.artist);
 
         if (track.albumArtBitmap != null) {
+            pendingArtUri = null;
             Glide.with(this)
                     .load(track.albumArtBitmap)
                     .transition(DrawableTransitionOptions.withCrossFade(220))
@@ -869,15 +920,41 @@ public class FloatingOverlayService extends Service {
                     .into(overlayCover);
             if (track.albumArtBitmap != lastPaletteArt) {
                 lastPaletteArt = track.albumArtBitmap;
+                lastPaletteArtUri = null;
                 applyAlbumColors(track.albumArtBitmap);
             }
         } else if (track.albumArtUri != null && !track.albumArtUri.trim().isEmpty()) {
+            // Decode through a target (not .into(ImageView)) so the same bitmap can
+            // feed both the cover view and the palette — previously URI art never
+            // re-tinted the overlay at all.
+            final String artUri = track.albumArtUri;
+            pendingArtUri = artUri;
             Glide.with(this)
-                    .load(track.albumArtUri)
-                    .transition(DrawableTransitionOptions.withCrossFade(220))
+                    .asBitmap()
+                    .load(artUri)
                     .transform(new RoundedCorners(dpToPx(10)))
-                    .into(overlayCover);
+                    .into(new com.bumptech.glide.request.target.CustomTarget<Bitmap>() {
+                        @Override
+                        public void onResourceReady(@androidx.annotation.NonNull Bitmap resource,
+                                                    @Nullable com.bumptech.glide.request.transition.Transition<? super Bitmap> transition) {
+                            if (isDestroyed || !artUri.equals(pendingArtUri)) return;
+                            overlayCover.setAlpha(0f);
+                            overlayCover.setImageBitmap(resource);
+                            overlayCover.animate().alpha(1f).setDuration(220).start();
+                            if (!artUri.equals(lastPaletteArtUri)) {
+                                lastPaletteArtUri = artUri;
+                                lastPaletteArt = null;
+                                applyAlbumColors(resource);
+                            }
+                        }
+
+                        @Override
+                        public void onLoadCleared(@Nullable android.graphics.drawable.Drawable placeholder) {
+                        }
+                    });
         } else {
+            pendingArtUri = null;
+            lastPaletteArtUri = null;
             Glide.with(this).clear(overlayCover);
             overlayCover.setImageDrawable(null);
         }
@@ -1123,6 +1200,8 @@ public class FloatingOverlayService extends Service {
         currentTrack = null;
         lyricsStatusText = null;
         lastPaletteArt = null;
+        lastPaletteArtUri = null;
+        pendingArtUri = null;
         clearLyricsOnly();
         Anim.setTextAnimated(overlayTitle, getString(R.string.no_music));
         Anim.setTextAnimated(overlayArtist, "");

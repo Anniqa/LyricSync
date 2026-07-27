@@ -37,8 +37,12 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.button.MaterialButton;
 import com.lyricsync.app.overlay.FloatingOverlayService;
+import com.lyricsync.app.renderer.LyricAnimStyle;
 import com.lyricsync.app.ui.AlbumPalette;
 import com.lyricsync.app.ui.Anim;
+import com.lyricsync.app.ui.AnimStyleChips;
+import com.lyricsync.app.ui.FontChips;
+import com.lyricsync.app.util.AppFont;
 import com.lyricsync.app.util.AppLog;
 import com.lyricsync.app.util.Haptics;
 import com.lyricsync.app.util.NowPlaying;
@@ -86,6 +90,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
     private TextView syncOffsetLabel;
     private SeekBar syncOffsetSlider;
+    private android.widget.LinearLayout fontChips;
+    private android.widget.LinearLayout animChips;
 
     private ObjectAnimator[] eqAnimators;
     private ValueAnimator heroTintAnimator;
@@ -113,6 +119,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         applyWindowInsets();
         setupListeners();
         setupSliders();
+        setupAppearanceChips();
         setupDeveloperSection();
         setupLogViewer();
 
@@ -175,6 +182,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
         syncOffsetLabel = findViewById(R.id.sync_offset_label);
         syncOffsetSlider = findViewById(R.id.sync_offset_slider);
+        fontChips = findViewById(R.id.font_chips);
+        animChips = findViewById(R.id.anim_chips);
     }
 
     /** Draw behind the system bars, then pad the scrolling content back into view. */
@@ -281,6 +290,15 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED;
             AppLog.i(TAG, "POST_NOTIFICATIONS " + (granted ? "granted" : "denied"));
         }
+    }
+
+    // ── Appearance chips (font + lyric animation) ──────────────────────────
+
+    private void setupAppearanceChips() {
+        FontChips.build(this, fontChips, AppFont.currentKey(prefs), false,
+                style -> Haptics.tick(fontChips));
+        AnimStyleChips.buildWithPreviews(this, animChips, LyricAnimStyle.current(prefs),
+                variant -> Haptics.tick(animChips));
     }
 
     // ── Sliders ────────────────────────────────────────────────────────────

@@ -89,6 +89,10 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         sessionManager = (MediaSessionManager) context.getSystemService(Context.MEDIA_SESSION_SERVICE);
         if (sessionManager == null) {
             AppLog.e(TAG, "MediaSessionManager not available");
+            // The poll thread was started above; without a manager it would idle forever.
+            pollThread.quitSafely();
+            pollThread = null;
+            pollHandler = null;
             return;
         }
 
@@ -172,6 +176,15 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     }
 
     private void switchController(MediaController controller) {
+        // onActiveSessionsChanged fires for every session list shuffle, even when the
+        // player we follow did not change. Re-registering + restarting the burst poll
+        // each time wastes a 16ms polling burst for nothing, so keep the existing
+        // binding and just refresh the snapshot.
+        if (controller == currentController) {
+            updateFromController(controller);
+            return;
+        }
+
         if (currentController != null) {
             currentController.unregisterCallback(controllerCallback);
         }

@@ -29,9 +29,16 @@
     <!-- Appearance -->
     <string name="appearance_title">Appearance</string>
     <string name="font_size">Font size</string>
+    <string name="font_family_label">Lyrics font</string>
+    <string name="anim_style_label">Lyrics animation</string>
     <string name="overlay_size">Overlay size</string>
     <string name="overlay_width">Width</string>
     <string name="overlay_height">Height</string>
+
+    <!-- Overlay settings sections -->
+    <string name="section_playback">PLAYBACK</string>
+    <string name="section_font">FONT</string>
+    <string name="section_animation">ANIMATION</string>
 
     <!-- Sync -->
     <string name="sync_title">Lyrics Sync Offset</string>

@@ -24,6 +24,8 @@ public final class Anim {
     public static final Interpolator STANDARD = new PathInterpolator(0.4f, 0f, 0.2f, 1f);
     /** Slight overshoot for taps and confirmations. */
     public static final Interpolator OVERSHOOT = new OvershootInterpolator(1.1f);
+    /** Big, rubbery overshoot — the bubble family of entrances and pulses. */
+    public static final Interpolator BUBBLE = new OvershootInterpolator(2.2f);
 
     public static final long D_FAST = 160;
     public static final long D_MED = 280;
@@ -71,6 +73,74 @@ public final class Anim {
                 .setStartDelay(0)
                 .setDuration(D_MED)
                 .setInterpolator(OVERSHOOT)
+                .start();
+    }
+
+    // ── Bubble family ──────────────────────────────────────────────────────
+
+    /**
+     * Bubble entrance: the view inflates from a small blob with a rubbery overshoot
+     * while fading in. Used when the overlay first appears on screen.
+     */
+    public static void bubbleIn(View v) {
+        if (v == null) return;
+        v.animate().cancel();
+        v.setAlpha(0f);
+        v.setScaleX(0.55f);
+        v.setScaleY(0.55f);
+        v.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(D_SLOW + 40)
+                .setInterpolator(BUBBLE)
+                .start();
+    }
+
+    /**
+     * Track-change pulse: a quick squash inward, then a rubbery rebound. Reads as
+     * the overlay "breathing" once when a new song lands. Alpha is forced to full
+     * because cancelling a still-running entrance could otherwise freeze it midway.
+     */
+    public static void bubblePulse(View v) {
+        if (v == null) return;
+        v.animate().cancel();
+        v.animate()
+                .alpha(1f)
+                .scaleX(0.955f)
+                .scaleY(0.955f)
+                .setDuration(110)
+                .setInterpolator(STANDARD)
+                .withEndAction(() -> v.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(360)
+                        .setInterpolator(BUBBLE)
+                        .start())
+                .start();
+    }
+
+    /**
+     * Drag-release settle: a tiny outward puff that relaxes back, so letting go of
+     * the overlay after a drag feels like dropping a bubble into place.
+     */
+    public static void bubbleSettle(View v) {
+        if (v == null) return;
+        v.animate().cancel();
+        v.animate()
+                .alpha(1f)
+                .scaleX(1.025f)
+                .scaleY(1.025f)
+                .setDuration(90)
+                .setInterpolator(STANDARD)
+                .withEndAction(() -> v.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(300)
+                        .setInterpolator(BUBBLE)
+                        .start())
                 .start();
     }
 

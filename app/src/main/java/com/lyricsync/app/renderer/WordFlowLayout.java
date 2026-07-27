@@ -9,10 +9,19 @@ public class WordFlowLayout extends ViewGroup {
 
     public WordFlowLayout(Context context) {
         super(context);
+        init();
     }
 
     public WordFlowLayout(Context context, AttributeSet attrs) {
         super(context, attrs);
+        init();
+    }
+
+    private void init() {
+        // Word springs overshoot past their view bounds (scale pop, lift, glow bloom);
+        // clipping here would slice glyphs mid-animation and read as "cut letters".
+        setClipChildren(false);
+        setClipToPadding(false);
     }
 
     public static class LayoutParams extends MarginLayoutParams {

@@ -9,6 +9,7 @@ import android.view.View;
 import android.widget.LinearLayout;
 
 import com.lyricsync.app.lyrics.model.LyricsData;
+import com.lyricsync.app.ui.Anim;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +35,7 @@ public class SyllableHighlighter {
     private final float fontSizeSp;
     private final List<LineView> lineViews = new ArrayList<>();
     private boolean syllableMode = true;
+    private int animStyle = LyricAnimStyle.SPRING;
 
     public static class LineView {
         public View rootView;
@@ -48,6 +50,8 @@ public class SyllableHighlighter {
         public boolean usePerWord;
         public int lastState = -1;
         public float lastProgress = -1f;
+        /** Line-level scale spring: the active line grows a touch, others rest at 1. */
+        public Spring lineScale;
     }
 
     public SyllableHighlighter(Context context, Typeface fontBold, Typeface fontMedium, float fontSizeSp) {
@@ -59,6 +63,10 @@ public class SyllableHighlighter {
 
     public void setSyllableMode(boolean syllable) {
         this.syllableMode = syllable;
+    }
+
+    public void setAnimStyle(int style) {
+        this.animStyle = style;
     }
 
     public LineView createLineView(LyricsData.LyricsLine line, LinearLayout.LayoutParams params) {
@@ -114,6 +122,10 @@ public class SyllableHighlighter {
         LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
         container.setLayoutParams(params);
+        // Let word springs paint into the line margins instead of being sliced at
+        // the flow-layout edge (scale pop / lift / glow all overshoot word bounds).
+        container.setClipChildren(false);
+        container.setClipToPadding(false);
 
         WordFlowLayout flow = new WordFlowLayout(context);
         LinearLayout.LayoutParams flowParams = new LinearLayout.LayoutParams(
@@ -126,6 +138,8 @@ public class SyllableHighlighter {
         for (int i = 0; i < line.words.size(); i++) {
             LyricsData.Word word = line.words.get(i);
             GradientWordView wv = new GradientWordView(context);
+            wv.setAnimStyle(animStyle);
+            wv.setWordIndex(i);
             wv.setText(word.text);
             wv.setTiming(word.startTime, word.endTime);
             wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
@@ -241,6 +255,7 @@ public class SyllableHighlighter {
     private GradientWordView makeBackgroundWord(String text, long start, long end,
                                                 int index, int count, float bgSizeSp, WordFlowLayout bgFlow) {
         GradientWordView bwv = new GradientWordView(context);
+        bwv.setAnimStyle(animStyle);
         bwv.setText(text);
         bwv.setTiming(start, end);
         bwv.setBackgroundMode(true);
@@ -289,10 +304,87 @@ public class SyllableHighlighter {
             if (lv.usePerWord && lv.wordViews != null) {
                 updatePerWordHighlight(lv, currentPosition, deltaTime, stateChanged, isActive, isPast);
             } else if (lv.gradientView != null) {
-                updatePerLineHighlight(lv, currentPosition, stateChanged, isActive, isPast);
+                updatePerLineHighlight(lv, currentPosition, deltaTime, stateChanged, isActive, isPast);
             }
+            updateLineScale(lv, isActive, deltaTime);
 
             lv.lastState = state;
+        }
+    }
+
+    /**
+     * The active line grows slightly and relaxes back when it passes — a line-level
+     * motion layered under the per-word springs, so every animation variant gets it.
+     * Kept tiny: with the left edge anchored (pivotX=0), a larger factor would push
+     * the tail of long lines past the container edge where the ScrollView clips it,
+     * reading as a cut-off, forward-shifting lyric.
+     */
+    private static final double ACTIVE_LINE_SCALE = 1.022;
+
+    private void updateLineScale(LineView lv, boolean isActive, double deltaTime) {
+        if (lv.lineScale == null) {
+            lv.lineScale = new Spring(1.0, 0.5, 0.9);
+        }
+        lv.lineScale.finalPosition = isActive ? ACTIVE_LINE_SCALE : 1.0;
+        if (deltaTime > 0) {
+            lv.lineScale.update(deltaTime);
+        }
+        float s = (float) lv.lineScale.position;
+        lv.rootView.setPivotX(0f);
+        lv.rootView.setPivotY(lv.rootView.getHeight() / 2f);
+        lv.rootView.setScaleX(s);
+        lv.rootView.setScaleY(s);
+    }
+
+    /** Fade a line to its new resting alpha instead of snapping it. */
+    private void animateLineAlpha(LineView lv, float target) {
+        if (Math.abs(lv.rootView.getAlpha() - target) < 0.01f
+                && lv.rootView.getTranslationY() == 0f) {
+            lv.rootView.setAlpha(target);
+            return;
+        }
+        lv.rootView.animate().cancel();
+        // translationY is also rehomed: the activation rise could be cancelled
+        // mid-flight by this very state change, leaving the line stuck offset.
+        lv.rootView.animate()
+                .alpha(target)
+                .translationY(0f)
+                .setDuration(Anim.D_MED - 60)
+                .setInterpolator(Anim.STANDARD)
+                .start();
+    }
+
+    /**
+     * Words of a freshly-activated line cascade in (tiny rise + fade, staggered
+     * left-to-right). This is the line's "hello" beat before the per-word sweep
+     * takes over; kept short so it never fights the singing.
+     *
+     * Words already at/past their timing (e.g. after a seek into the middle of the
+     * line) snap straight to visible — re-fading sung words makes the lyric look
+     * like it jumps back and re-advances.
+     */
+    private void playWordCascade(LineView lv, long position) {
+        if (lv.wordViews == null || lv.line == null || lv.line.words == null) return;
+        int k = 0;
+        for (int i = 0; i < lv.wordViews.size(); i++) {
+            GradientWordView wv = lv.wordViews.get(i);
+            wv.animate().cancel();
+            if (i < lv.line.words.size() && position >= lv.line.words.get(i).startTime) {
+                // Already being sung (or done): never hide it again.
+                wv.setAlpha(1f);
+                wv.setTranslationY(0f);
+                continue;
+            }
+            wv.setAlpha(0f);
+            wv.setTranslationY(dpToPx(7));
+            wv.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setStartDelay(Math.min(26L * k, 200))
+                    .setDuration(230)
+                    .setInterpolator(Anim.DECEL)
+                    .start();
+            k++;
         }
     }
 
@@ -304,20 +396,24 @@ public class SyllableHighlighter {
         }
 
         if (stateChanged) {
+            for (GradientWordView wv : lv.wordViews) {
+                wv.setLineActive(isActive);
+            }
             if (isActive) {
                 lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
-                lv.rootView.setAlpha(1.0f);
+                animateLineAlpha(lv, 1.0f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, ACTIVE_COLOR, fontBold);
                 }
+                playWordCascade(lv, position);
             } else if (isPast) {
                 lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-                lv.rootView.setAlpha(0.82f);
+                animateLineAlpha(lv, 0.82f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, PAST_COLOR, fontBold);
                 }
             } else {
-                lv.rootView.setAlpha(0.42f);
+                animateLineAlpha(lv, 0.42f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
                 }
@@ -327,16 +423,24 @@ public class SyllableHighlighter {
         updateBackgroundVocals(lv, position, stateChanged);
     }
 
-    private void updatePerLineHighlight(LineView lv, long position,
+    private void updatePerLineHighlight(LineView lv, long position, double deltaTime,
                                          boolean stateChanged, boolean isActive, boolean isPast) {
         GradientTextView gv = lv.gradientView;
         if (isActive) {
             if (stateChanged) {
                 lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
-                lv.rootView.setAlpha(1.0f);
                 gv.setTypeface(fontBold);
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(ACTIVE_COLOR);
+                // Whole-line rise, the per-line counterpart of the word cascade.
+                lv.rootView.animate().cancel();
+                lv.rootView.setTranslationY(dpToPx(8));
+                lv.rootView.animate()
+                        .alpha(1.0f)
+                        .translationY(0f)
+                        .setDuration(Anim.D_MED)
+                        .setInterpolator(Anim.DECEL)
+                        .start();
             }
             float progress = calculateProgress(lv.line, position);
             if (stateChanged || Math.abs(progress - lv.lastProgress) > 0.5f) {
@@ -349,13 +453,13 @@ public class SyllableHighlighter {
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(PAST_COLOR);
                 gv.setProgress(100f);
-                lv.rootView.setAlpha(0.82f);
+                animateLineAlpha(lv, 0.82f);
             } else {
                 gv.setTypeface(fontBold);
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(INACTIVE_COLOR);
                 gv.setProgress(0f);
-                lv.rootView.setAlpha(0.42f);
+                animateLineAlpha(lv, 0.42f);
             }
             lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             lv.lastProgress = isPast ? 100f : 0f;
