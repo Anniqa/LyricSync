@@ -19,6 +19,7 @@ It reads what's playing from the media notification (Spotify, YT Music, etc.), p
 - **Playback controls** (previous / play-pause / next) right in the overlay
 - **Colour picked from the album art** — the overlay retints itself each track, including covers loaded from URIs
 - Bubble-motion overlay: springy entrance, track-change pulse, and settle-on-drop drag physics
+- **Hideable header buttons** — tap the song title (or cover) to hide the controls so long titles show in full; tap again to bring them back
 - Manual offset slider if a song is still a touch early or late
 - Album art, adjustable size, font scale, and a per-song sync tweak
 - Draggable anywhere on screen; position is remembered and stays on-screen
@@ -32,7 +33,7 @@ It reads what's playing from the media notification (Spotify, YT Music, etc.), p
 Needs Android 8.0+.
 
 ## Build
-Debug APK is built on every push via GitHub Actions and uploaded as the `LyricSync-debug` artifact. Locally:
+Debug APK is built on every push via GitHub Actions and uploaded as the `LyricSync-debug` artifact. Pushing a version tag (`v*`) builds the **minified release APK** (R8) and publishes it on the [Releases](../../releases) page. Locally:
 
 ```
 ./gradlew assembleDebug

@@ -5,10 +5,15 @@ on:
     branches:
       - master
       - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build:
+    # Debug builds run for branch pushes and manual triggers only; tags build the
+    # minified release in the `release` job below.
+    if: github.ref_type == 'branch' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -68,4 +73,78 @@ jobs:
             -F "chat_id=${TELEGRAM_CHAT_ID}" \
             -F "document=@${{ steps.apk.outputs.path }}" \
             -F "caption=LyricSync debug build — ${{ github.event.head_commit.message }}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('OK' if r.get('ok') else 'FAIL: '+str(r))"
+
+  # Tag push (v*): build the minified, R8-optimised release APK and publish it on
+  # a GitHub Release page with auto-generated notes.
+  release:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build release APK (minified)
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Find release APK
+        id: apk
+        run: |
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          ls -la "$APK"
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LyricSync-release
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LyricSync ${{ github.ref_name }}
+          generate_release_notes: true
+          files: ${{ steps.apk.outputs.path }}
+
+      - name: Send release to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets not set — skipping (APK is on the Release page)."
+            exit 0
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${TELEGRAM_CHAT_ID}" \
+            -F "document=@${{ steps.apk.outputs.path }}" \
+            -F "caption=LyricSync ${{ github.ref_name }} — minified release build" \
             | python3 -c "import sys,json; r=json.load(sys.stdin); print('OK' if r.get('ok') else 'FAIL: '+str(r))"

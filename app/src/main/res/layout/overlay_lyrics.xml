@@ -16,6 +16,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
+        android:animateLayoutChanges="true"
         android:layout_marginBottom="10dp">
 
         <ImageView
@@ -27,6 +28,7 @@
             android:contentDescription="@string/cd_album_art" />
 
         <LinearLayout
+            android:id="@+id/overlay_header_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -56,34 +58,43 @@
                 android:ellipsize="end" />
         </LinearLayout>
 
-        <ImageView
-            android:id="@+id/overlay_toggle"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:padding="5dp"
-            android:background="@drawable/bg_icon_button"
-            android:src="@drawable/ic_chevron_down"
-            android:contentDescription="@string/cd_collapse" />
+        <!-- Header actions can be hidden (tap the title) so long titles are not
+             squeezed into an ellipsis. -->
+        <LinearLayout
+            android:id="@+id/overlay_header_actions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
 
-        <ImageView
-            android:id="@+id/overlay_settings"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:padding="5dp"
-            android:layout_marginStart="5dp"
-            android:background="@drawable/bg_icon_button"
-            android:src="@drawable/ic_settings"
-            android:contentDescription="@string/cd_settings" />
+            <ImageView
+                android:id="@+id/overlay_toggle"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:padding="5dp"
+                android:background="@drawable/bg_icon_button"
+                android:src="@drawable/ic_chevron_down"
+                android:contentDescription="@string/cd_collapse" />
 
-        <ImageView
-            android:id="@+id/overlay_close"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:padding="6dp"
-            android:layout_marginStart="5dp"
-            android:background="@drawable/bg_icon_button"
-            android:src="@drawable/ic_close"
-            android:contentDescription="@string/cd_close" />
+            <ImageView
+                android:id="@+id/overlay_settings"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:padding="5dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/bg_icon_button"
+                android:src="@drawable/ic_settings"
+                android:contentDescription="@string/cd_settings" />
+
+            <ImageView
+                android:id="@+id/overlay_close"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:padding="6dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/bg_icon_button"
+                android:src="@drawable/ic_close"
+                android:contentDescription="@string/cd_close" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- ── Controls panel (toggled from the header) ───────────────── -->

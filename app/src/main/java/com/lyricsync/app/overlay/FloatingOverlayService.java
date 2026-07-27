@@ -93,6 +93,8 @@ public class FloatingOverlayService extends Service {
     private ImageView overlayToggle;
     private ImageView overlayClose;
     private ImageView overlaySettings;
+    private View overlayHeaderActions;
+    private boolean compactHeader;
     private ImageView overlayPrev;
     private ImageView overlayPlayPause;
     private ImageView overlayNext;
@@ -254,6 +256,7 @@ public class FloatingOverlayService extends Service {
         overlayToggle = overlayView.findViewById(R.id.overlay_toggle);
         overlayClose = overlayView.findViewById(R.id.overlay_close);
         overlaySettings = overlayView.findViewById(R.id.overlay_settings);
+        overlayHeaderActions = overlayView.findViewById(R.id.overlay_header_actions);
         overlayPrev = overlayView.findViewById(R.id.overlay_prev);
         overlayPlayPause = overlayView.findViewById(R.id.overlay_play_pause);
         overlayNext = overlayView.findViewById(R.id.overlay_next);
@@ -301,6 +304,18 @@ public class FloatingOverlayService extends Service {
             Haptics.confirm(v);
             animateOutAndStop();
         });
+
+        // Tap the title block (or the cover) to hide/show the header buttons, so a
+        // long song title can use the full overlay width instead of being ellipsized.
+        compactHeader = sharedPrefs.getBoolean("overlay_header_compact", false);
+        View.OnClickListener compactToggle = v -> {
+            Haptics.tick(v);
+            setHeaderCompact(!compactHeader, true);
+        };
+        overlayView.findViewById(R.id.overlay_header_text).setOnClickListener(compactToggle);
+        overlayCover.setOnClickListener(compactToggle);
+        setHeaderCompact(compactHeader, false);
+
         setupTransportControls();
         setupSyncOffsetUi();
         setLyricsVisible(lyricsVisible, false, false);
@@ -560,6 +575,43 @@ public class FloatingOverlayService extends Service {
     }
 
     // ── Collapse / expand ──────────────────────────────────────────────────
+
+    /**
+     * Compact header: hide the toggle/settings/close buttons so long titles get the
+     * full overlay width (two lines instead of an ellipsis). Tap the title block to
+     * bring the buttons back. Persisted across restarts.
+     */
+    private void setHeaderCompact(boolean compact, boolean animate) {
+        compactHeader = compact;
+        sharedPrefs.edit().putBoolean("overlay_header_compact", compact).apply();
+        if (overlayHeaderActions == null) return;
+
+        // An open settings panel would be stranded without its gear button.
+        if (compact && overlaySettingsPanel.getVisibility() == View.VISIBLE) {
+            Anim.collapse(overlaySettingsPanel);
+            Anim.rotateTo(overlaySettings, 0f);
+        }
+
+        overlayHeaderActions.animate().cancel();
+        if (animate) {
+            if (!compact) {
+                overlayHeaderActions.setAlpha(0f);
+                overlayHeaderActions.setVisibility(View.VISIBLE);
+            }
+            overlayHeaderActions.animate()
+                    .alpha(compact ? 0f : 1f)
+                    .setDuration(Anim.D_FAST)
+                    .withEndAction(() -> {
+                        if (compact) overlayHeaderActions.setVisibility(View.GONE);
+                    })
+                    .start();
+        } else {
+            overlayHeaderActions.setAlpha(compact ? 0f : 1f);
+            overlayHeaderActions.setVisibility(compact ? View.GONE : View.VISIBLE);
+        }
+
+        overlayTitle.setMaxLines(compact ? 2 : 1);
+    }
 
     private void setLyricsVisible(boolean visible, boolean persist, boolean animate) {
         lyricsVisible = visible;
