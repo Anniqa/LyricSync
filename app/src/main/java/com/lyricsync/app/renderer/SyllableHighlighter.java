@@ -411,7 +411,12 @@ public class SyllableHighlighter {
                 }
                 playWordCascade(lv, position);
             } else if (isPast) {
-                lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                // Hardware layers buffer at view bounds and would slice the
+                // fireworks burst of a line-final word — keep software layers
+                // when that effect is active.
+                boolean needsOverflow = animConfig != null && animConfig.fireworks;
+                lv.rootView.setLayerType(
+                        needsOverflow ? View.LAYER_TYPE_NONE : View.LAYER_TYPE_HARDWARE, null);
                 animateLineAlpha(lv, 0.82f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, PAST_COLOR, fontBold);

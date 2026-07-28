@@ -408,7 +408,7 @@ public class GradientWordView extends TextView {
             getPaint().setShader(null);
             getPaint().setColor(progress > 0f ? brightColor : dimColor);
             canvas.drawText(text, drawX, baseline, getPaint());
-            drawEffects(canvas, text, drawX, baseline, shaderW, p);
+            drawEffects(canvas, text, drawX, baseline, shaderW, p, false);
             return;
         }
 
@@ -446,14 +446,14 @@ public class GradientWordView extends TextView {
         getPaint().setShader(shader);
         canvas.drawText(text, drawX, baseline, getPaint());
 
-        drawEffects(canvas, text, drawX, baseline, shaderW, p);
+        drawEffects(canvas, text, drawX, baseline, shaderW, p, false);
     }
 
     /** Effect overlays (Echo ghosts, Shimmer band) drawn over the just-filled word.
      *  Called from both the word-gradient and the letter-emphasis paths so combos
      *  work identically whichever motion path renders the fill. */
     private void drawEffects(Canvas canvas, String text, float drawX, float baseline,
-                             float shaderW, float p) {
+                             float shaderW, float p, boolean letterFill) {
         // ECHO: two fading ghost copies trailing above the active word, like reverb.
         // Drawn after the main text so they read as afterimages of the sung edge.
         if (echoStyle && progress > 0f && progress < 1f && !backgroundMode) {
@@ -585,13 +585,32 @@ public class GradientWordView extends TextView {
             }
         }
 
+        // True visible fill edge per render path: continuous sweep for word-level
+        // motions, struck-letter width for Typewriter's binary strikes, whole-word
+        // flip for Classic. Fire effects must ride THIS edge, not the raw sweep p.
+        float edgeP = -1f;
+        if ((weldingStyle || burningStyle) && !backgroundMode) {
+            if (binaryLetters && letters != null && letterProgress != null) {
+                float struckW = 0f;
+                for (int i = 0; i < letters.length; i++) {
+                    if (letterProgress[i] > 0) struckW += getPaint().measureText(letters[i]);
+                    else break;
+                }
+                edgeP = Math.min(1f, struckW / Math.max(1f, shaderW));
+            } else if (classicStyle) {
+                edgeP = progress > 0f ? 1f : 0f;
+            } else {
+                edgeP = Math.max(0f, Math.min(1f, p));
+            }
+        }
+
         // WELDING: the karaoke fill edge becomes a welding torch — a flickering
         // white-hot core riding the sweep edge, spitting long amber sparks with
         // gravity. Crackle comes from deterministic 50/260ms clock ticks; all
         // distances scale with the text size so sparks stay visible at any font.
-        if (weldingStyle && !backgroundMode && progress > 0f && progress < 1f) {
+        if (weldingStyle && !backgroundMode && progress > 0f && progress < 1f && edgeP > 0f) {
             float ts = getPaint().getTextSize();
-            float wx = drawX + Math.max(0f, p) * shaderW;
+            float wx = drawX + edgeP * shaderW;
             float wy = baseline - 0.35f * ts;
             float fl = hash01((int) (lastPositionMs / 50 & 0x7fffffff));
             weldingPaint.setStyle(Paint.Style.FILL);
@@ -601,57 +620,66 @@ public class GradientWordView extends TextView {
             canvas.drawCircle(wx, wy, cr * 2.4f, weldingPaint);
             weldingPaint.setColor(0xE6FFFFFF); // 0.9 alpha white core
             canvas.drawCircle(wx, wy, cr, weldingPaint);
-            // Twelve staggered sparks, 380ms life each, re-seeded every cycle.
+            // Fourteen staggered sparks, 520ms life each, re-seeded every cycle.
+            // Two-pass trail (wide glow + hot core) so sparks read at any font size.
             weldingPaint.setStrokeCap(Paint.Cap.ROUND);
             float g = 5.0f * ts;
-            float strokeW = Math.max(2f, ts * 0.035f);
-            weldingPaint.setStrokeWidth(strokeW);
+            float strokeW = Math.max(2.5f, ts * 0.04f);
             weldingPaint.setStyle(Paint.Style.STROKE);
-            for (int i = 0; i < 12; i++) {
-                float local = ((lastPositionMs + i * 41) % 380) / 380f;
-                int s = (int) ((lastPositionMs + i * 41) / 380) * 12 + i * 13 + wordIndex * 7;
-                float ang = -2.6f + 2.0f * hash01(s);            // wide upward fan
-                float spd = (1.2f + 1.2f * hash01(s + 50)) * ts;
+            for (int i = 0; i < 14; i++) {
+                float local = ((lastPositionMs + i * 37) % 520) / 520f;
+                int s = (int) ((lastPositionMs + i * 37) / 520) * 14 + i * 13 + wordIndex * 7;
+                float ang = -2.7f + 2.2f * hash01(s);            // wide upward fan
+                float spd = (1.4f + 1.4f * hash01(s + 50)) * ts;
                 float vx = (float) Math.cos(ang) * spd;
                 float vy = (float) Math.sin(ang) * spd;
-                float lt = local * 0.38f;                        // life in seconds
-                float t0 = Math.max(0f, lt - 0.05f);             // trail 50ms behind
+                float lt = local * 0.52f;                        // life in seconds
+                float t0 = Math.max(0f, lt - 0.06f);             // trail 60ms behind
                 float hx = wx + vx * lt;
                 float hy = wy + vy * lt + 0.5f * g * lt * lt;
                 particleLines[0] = wx + vx * t0;
                 particleLines[1] = wy + vy * t0 + 0.5f * g * t0 * t0;
                 particleLines[2] = hx;
                 particleLines[3] = hy;
-                int alpha = Math.round((1f - local * 0.85f) * 0.95f * 255f);
+                int alpha = Math.round((1f - local * 0.8f) * 0.95f * 255f);
+                // Glow underpass, then the hot core line.
+                weldingPaint.setStrokeWidth(strokeW * 2.2f);
+                weldingPaint.setColor(((alpha / 3) << 24) | 0x00FF6D00);
+                canvas.drawLines(particleLines, 0, 4, weldingPaint);
+                weldingPaint.setStrokeWidth(strokeW);
                 weldingPaint.setColor((alpha << 24) | 0x00FFB300);
                 canvas.drawLines(particleLines, 0, 4, weldingPaint);
                 // Hot white-yellow head so each spark reads as a flying ember.
                 weldingPaint.setStyle(Paint.Style.FILL);
                 weldingPaint.setColor((alpha << 24) | 0x00FFE082);
-                canvas.drawCircle(hx, hy, strokeW * 0.9f, weldingPaint);
+                canvas.drawCircle(hx, hy, strokeW, weldingPaint);
                 weldingPaint.setStyle(Paint.Style.STROKE);
             }
             weldingPaint.setStyle(Paint.Style.FILL);
         }
 
-        // TERBAKAR: the sung part of the word ignites. The fire gradient is clipped
-        // to the sung region (Shimmer pattern) so the dimmed upcoming lyric keeps
-        // its normal look; flame tongues flicker above the sung letters.
-        if (burningStyle && !backgroundMode && progress > 0f) {
+        // BURNING: the sung part of the word ignites. On the word-gradient path the
+        // fire gradient is overd drawn over the straight fill (clip = true sung edge,
+        // Shimmer pattern). On the letter path the sung letters carry the fire
+        // gradient themselves (inside drawLetterEmphasis, so pops/spins/waves stay
+        // aligned); here we only add the flame tongues above the true sung edge.
+        if (burningStyle && !backgroundMode && progress > 0f && edgeP > 0f) {
             float ts = burningPaint.getTextSize();
-            float sungW = Math.max(0f, p) * shaderW;
+            float sungW = edgeP * shaderW;
             if (sungW > 2f) {
-                float flick = 0.75f + 0.15f * (float) Math.sin(lastPositionMs * 0.02);
-                int alpha = Math.round(flick * 255f);
-                burningPaint.setShader(new LinearGradient(0, baseline - ts, 0, baseline,
-                        new int[]{(alpha << 24) | 0x00FFD54F, (alpha << 24) | 0x00FF7043,
-                                (alpha << 24) | 0x00E53935},
-                        new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
-                canvas.save();
-                canvas.clipRect(drawX, 0, drawX + sungW + 2f, getHeight());
-                canvas.drawText(text, drawX, baseline, burningPaint);
-                canvas.restore();
-                burningPaint.setShader(null);
+                if (!letterFill) {
+                    float flick = 0.75f + 0.15f * (float) Math.sin(lastPositionMs * 0.02);
+                    int alpha = Math.round(flick * 255f);
+                    burningPaint.setShader(new LinearGradient(0, baseline - ts, 0, baseline,
+                            new int[]{(alpha << 24) | 0x00FFD54F, (alpha << 24) | 0x00FF7043,
+                                    (alpha << 24) | 0x00E53935},
+                            new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+                    canvas.save();
+                    canvas.clipRect(drawX, 0, drawX + sungW + 2f, getHeight());
+                    canvas.drawText(text, drawX, baseline, burningPaint);
+                    canvas.restore();
+                    burningPaint.setShader(null);
+                }
 
                 // Flame tongues: wobbling teardrops rising from the sung letters,
                 // one reused Path, heights/phases deterministic per word.
@@ -807,15 +835,30 @@ public class GradientWordView extends TextView {
             }
 
             getPaint().setShader(null);
+            // BURNING on the letter path: sung letters carry the fire gradient
+            // themselves, so the flames follow every pop/spin/wave transform.
+            if (burningStyle && !backgroundMode && progress > 0f) {
+                boolean sung = binaryLetters ? letterProgress[i] > 0 : centers[i] < p;
+                if (sung) {
+                    float ts = getPaint().getTextSize();
+                    float flick = 0.75f + 0.15f * (float) Math.sin(lastPositionMs * 0.02);
+                    int fa = Math.round(flick * 255f);
+                    getPaint().setShader(new LinearGradient(0, baseline - ts, 0, baseline,
+                            new int[]{(fa << 24) | 0x00FFD54F, (fa << 24) | 0x00FF7043,
+                                    (fa << 24) | 0x00E53935},
+                            new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+                }
+            }
             getPaint().setColor(letterColor);
             canvas.drawText(letter, cursor, baseline, getPaint());
+            getPaint().setShader(null);
 
             canvas.restore();
             cursor += letterW;
         }
 
         // Effect overlays ride over the letter fill too (combo feature).
-        drawEffects(canvas, getText().toString(), startX, baseline, totalTextW, p);
+        drawEffects(canvas, getText().toString(), startX, baseline, totalTextW, p, true);
     }
 
     public void updateState(long position, double deltaTime) {
