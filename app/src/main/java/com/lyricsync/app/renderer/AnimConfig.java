@@ -32,6 +32,9 @@ public final class AnimConfig {
     public final boolean trail;
     public final boolean flash;
     public final boolean sparkle;
+    public final boolean fireworks;
+    public final boolean welding;
+    public final boolean burning;
 
     public final float glowBoost;
     public final double scaleFreq;
@@ -68,6 +71,9 @@ public final class AnimConfig {
         trail = effect.trail;
         flash = effect.flash;
         sparkle = effect.sparkle;
+        fireworks = effect.fireworks;
+        welding = effect.welding;
+        burning = effect.burning;
         glowBoost = effect.glowBoost;
 
         // Glow: the effect's signature spline wins when it defines one

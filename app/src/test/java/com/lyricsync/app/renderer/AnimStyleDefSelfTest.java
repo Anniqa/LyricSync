@@ -3,7 +3,7 @@ package com.lyricsync.app.renderer;
 public class AnimStyleDefSelfTest {
     public static void main(String[] args) {
         check(AnimStyleDef.Registry.motionStyles().size() == 18, "18 motion styles");
-        check(AnimStyleDef.Registry.effectStyles().size() == 9, "9 effect styles");
+        check(AnimStyleDef.Registry.effectStyles().size() == 12, "12 effect styles");
         check("none".equals(AnimStyleDef.Registry.effectStyles().get(0).key), "first effect is none");
         check(AnimStyleDef.Registry.none().category == AnimStyleDef.Category.EFFECT, "none is EFFECT");
 
@@ -41,7 +41,7 @@ public class AnimStyleDefSelfTest {
             check(AnimStyleDef.Registry.motionByKey(k).category == AnimStyleDef.Category.MOTION,
                     k + " is MOTION");
         }
-        String[] newEffects = {"outline","trail","flash","sparkle"};
+        String[] newEffects = {"outline","trail","flash","sparkle","fireworks","welding","burning"};
         for (String k : newEffects) {
             check(AnimStyleDef.Registry.effectByKey(k).category == AnimStyleDef.Category.EFFECT,
                     k + " is EFFECT");
@@ -58,6 +58,11 @@ public class AnimStyleDefSelfTest {
         check(AnimStyleDef.Registry.effectByKey("flash").flash, "flash flag");
         check(AnimStyleDef.Registry.effectByKey("sparkle").sparkle, "sparkle flag");
         check(!AnimStyleDef.Registry.effectByKey("glow").sparkle, "glow has no sparkle");
+        check(AnimStyleDef.Registry.effectByKey("fireworks").fireworks, "fireworks flag");
+        check(AnimStyleDef.Registry.effectByKey("welding").welding, "welding flag");
+        check(AnimStyleDef.Registry.effectByKey("burning").burning, "burning flag");
+        check(!AnimStyleDef.Registry.effectByKey("sparkle").fireworks, "sparkle has no fireworks");
+        check(!AnimStyleDef.Registry.effectByKey("fireworks").sparkle, "fireworks has no sparkle");
 
         // New effects define no glow spline: they inherit the motion's, like shimmer.
         for (String k : newEffects) {

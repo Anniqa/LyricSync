@@ -71,6 +71,18 @@ public class AnimConfigSelfTest {
         AnimConfig st = AnimConfig.combine(squash, trail);
         check(st.squash && st.trail, "squash x trail");
 
+        // Fire batch: the three fire effects flow from effect only.
+        AnimStyleDef fireworks = AnimStyleDef.Registry.effectByKey("fireworks");
+        AnimStyleDef welding = AnimStyleDef.Registry.effectByKey("welding");
+        AnimStyleDef burning = AnimStyleDef.Registry.effectByKey("burning");
+        AnimConfig bf = AnimConfig.combine(spin, fireworks);
+        check(bf.fireworks && !bf.welding && !bf.burning, "fireworks from effect");
+        check(!AnimConfig.combine(spin, none).fireworks, "motion never sets fireworks");
+        check(AnimConfig.combine(calm, welding).welding, "welding flag flows");
+        check(AnimConfig.combine(calm, burning).burning, "burning flag flows");
+        check(AnimConfig.combine(spring, burning).glowSpline == spring.glowSpline,
+                "burning keeps motion glowSpline");
+
         // New effects inherit the motion's glow spline, like shimmer.
         AnimConfig sf = AnimConfig.combine(spring, flash);
         check(sf.glowSpline == spring.glowSpline, "flash keeps motion glowSpline");

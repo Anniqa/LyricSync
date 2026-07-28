@@ -14,8 +14,8 @@ import java.util.List;
  *  - MOTION (18): how words/letters move — spring, bubble, wave, pulse, rise,
  *    typewriter, drop, zoom, swing, scatter, calm, classic, bounce, elastic,
  *    heartbeat, spin, squash, pop.
- *  - EFFECT (9): a visual overlay — none, glow, echo, shimmer, flicker,
- *    outline, trail, flash, sparkle.
+ *  - EFFECT (12): a visual overlay — none, glow, echo, shimmer, flicker,
+ *    outline, trail, flash, sparkle, fireworks, welding, burning.
  *
  * A motion and an effect are merged into an {@link AnimConfig} for rendering.
  *
@@ -59,6 +59,9 @@ public final class AnimStyleDef {
     public final boolean trail;
     public final boolean flash;
     public final boolean sparkle;
+    public final boolean fireworks;
+    public final boolean welding;
+    public final boolean burning;
 
     private AnimStyleDef(Builder b) {
         key = b.key;
@@ -90,6 +93,9 @@ public final class AnimStyleDef {
         trail = b.trail;
         flash = b.flash;
         sparkle = b.sparkle;
+        fireworks = b.fireworks;
+        welding = b.welding;
+        burning = b.burning;
     }
 
     private static Spline spline(double[] times, double[] values) {
@@ -133,6 +139,9 @@ public final class AnimStyleDef {
         boolean trail = false;
         boolean flash = false;
         boolean sparkle = false;
+        boolean fireworks = false;
+        boolean welding = false;
+        boolean burning = false;
 
         Builder(String key, String displayName, Category category) {
             this.key = key;
@@ -166,6 +175,9 @@ public final class AnimStyleDef {
         Builder trail() { trail = true; return this; }
         Builder flash() { flash = true; return this; }
         Builder sparkle() { sparkle = true; return this; }
+        Builder fireworks() { fireworks = true; return this; }
+        Builder welding() { welding = true; return this; }
+        Builder burning() { burning = true; return this; }
 
         AnimStyleDef build() { return new AnimStyleDef(this); }
     }
@@ -328,6 +340,9 @@ public final class AnimStyleDef {
             e.add(new Builder("trail", "Blur Trail", Category.EFFECT).trail().build());
             e.add(new Builder("flash", "Color Flash", Category.EFFECT).flash().build());
             e.add(new Builder("sparkle", "Sparkle", Category.EFFECT).sparkle().build());
+            e.add(new Builder("fireworks", "Kembang Api", Category.EFFECT).fireworks().build());
+            e.add(new Builder("welding", "Pengelasan", Category.EFFECT).welding().build());
+            e.add(new Builder("burning", "Terbakar", Category.EFFECT).burning().build());
             EFFECT = Collections.unmodifiableList(e);
         }
 
