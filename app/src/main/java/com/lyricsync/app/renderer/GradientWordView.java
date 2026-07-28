@@ -87,6 +87,14 @@ public class GradientWordView extends TextView {
     private boolean squashStyle;
     private boolean outlineStyle;
     private boolean flashStyle;
+    private boolean trailStyle;
+    private boolean sparkleStyle;
+    // Blur Trail: this frame's word yOffset plus the previous two frames'
+    // values (ghost positions). frameYOffset mirrors the frameFlicker pattern
+    // (computed once per onDraw, readable from drawEffects).
+    private float frameYOffset;
+    private float trailY1;
+    private float trailY2;
     // Neon-flicker intensity for the current frame, computed once in onDraw so the
     // word path and the letter path flicker in sync within the same 70ms bucket.
     private float frameFlicker = 1f;
@@ -95,6 +103,10 @@ public class GradientWordView extends TextView {
     private final Paint shimmerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint flashPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint trailPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint sparklePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    // Reused line buffer for sparkle stars — zero per-frame allocation.
+    private final float[] sparkleLines = new float[8];
 
     private final Paint glowPaint;
     // Soft blurred bloom drawn under the active word for a real light-glow look.
@@ -149,6 +161,8 @@ public class GradientWordView extends TextView {
         squashStyle = config.squash;
         outlineStyle = config.outline;
         flashStyle = config.flash;
+        trailStyle = config.trail;
+        sparkleStyle = config.sparkle;
         // Re-tune the scale spring for the combination's bounce character.
         scaleSpring.dampingRatio = config.scaleDamp;
         scaleSpring.frequency = config.scaleFreq;
@@ -210,6 +224,10 @@ public class GradientWordView extends TextView {
             outlinePaint.setTypeface(typeface);
             flashPaint.setTextSize(getPaint().getTextSize());
             flashPaint.setTypeface(typeface);
+            trailPaint.setTextSize(getPaint().getTextSize());
+            trailPaint.setTypeface(typeface);
+            sparklePaint.setTextSize(getPaint().getTextSize());
+            sparklePaint.setTypeface(typeface);
             bloomRadiusPx = Math.max(2f, getPaint().getTextSize() * 0.14f);
             // Generous padding: word scale peaks (~1.10-1.14x) and letter pops draw
             // outside the raw text bounds, so give the glyph room before the parent's
@@ -307,6 +325,7 @@ public class GradientWordView extends TextView {
         } else {
             yOffset = (float) (yOffsetSpring.position * getHeight());
         }
+        frameYOffset = yOffset;
         float glowAlpha = (float) Math.max(0, Math.min(glowSpring.position, 1));
 
         // FLICKER: neon-sign sputter. Deterministic per 70ms bucket so every frame in
@@ -352,6 +371,9 @@ public class GradientWordView extends TextView {
         }
 
         canvas.restore();
+
+        trailY2 = trailY1;
+        trailY1 = frameYOffset;
     }
 
     // Spicy EX Android: gradient-position in -20..100 space; glow nudges the sung edge toward
@@ -462,6 +484,50 @@ public class GradientWordView extends TextView {
             flashPaint.setShader(null);
             flashPaint.setColor((alpha << 24) | 0x00FFFFFF);
             canvas.drawText(text, drawX, baseline, flashPaint);
+        }
+
+        // BLUR TRAIL: two ghost copies at the word's previous vertical positions,
+        // drawn only while the word is moving fast — reads as motion blur.
+        if (trailStyle && progress > 0f && progress < 1f && !backgroundMode) {
+            float d1 = trailY1 - frameYOffset;
+            float d2 = trailY2 - frameYOffset;
+            float gate = 0.0035f * getHeight();
+            if (Math.abs(d1) > gate) {
+                trailPaint.setShader(null);
+                trailPaint.setColor(0x2EFFFFFF); // 0.18 alpha
+                canvas.drawText(text, drawX, baseline + d1, trailPaint);
+                if (Math.abs(d2) > gate) {
+                    trailPaint.setColor(0x17FFFFFF); // 0.09 alpha
+                    canvas.drawText(text, drawX, baseline + d2, trailPaint);
+                }
+            }
+        }
+
+        // SPARKLE: up to six tiny four-point stars popping along the sung word.
+        // Positions are deterministic from the word seed; the line buffer is
+        // reused, so this costs at most 6 small line-draws with zero allocation.
+        if (sparkleStyle && progress > 0f && progress < 0.85f && !backgroundMode) {
+            float ts = sparklePaint.getTextSize();
+            sparklePaint.setStyle(Paint.Style.STROKE);
+            sparklePaint.setStrokeWidth(Math.max(1f, ts * 0.02f));
+            sparklePaint.setStrokeCap(Paint.Cap.ROUND);
+            int seed = wordIndex * 31 + text.length() * 7;
+            for (int i = 0; i < 6; i++) {
+                float lp = (progress - i * 0.09f) / 0.30f;
+                if (lp <= 0f || lp >= 1f) continue;
+                float hx = drawX + hash01(seed + i) * shaderW;
+                float hy = baseline - ts * (0.15f + 0.45f * hash01(seed + i + 100))
+                        - lp * 0.25f * ts;
+                float r = ts * 0.06f * (1f - 0.5f * lp);
+                int alpha = Math.round((1f - lp) * 0.90f * 255f);
+                sparklePaint.setColor((alpha << 24) | 0x00FFFFFF);
+                sparkleLines[0] = hx - r; sparkleLines[1] = hy;
+                sparkleLines[2] = hx + r; sparkleLines[3] = hy;
+                sparkleLines[4] = hx;     sparkleLines[5] = hy - r;
+                sparkleLines[6] = hx;     sparkleLines[7] = hy + r;
+                canvas.drawLines(sparkleLines, sparklePaint);
+            }
+            sparklePaint.setStyle(Paint.Style.FILL);
         }
     }
 
@@ -709,11 +775,19 @@ public class GradientWordView extends TextView {
         return Math.abs(s.position - s.finalPosition) > 0.002 || Math.abs(s.velocity) > 0.01;
     }
 
+    /** Deterministic 0..1 hash, same formula as the flicker/scatter seeds. */
+    private static float hash01(int n) {
+        double h = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+        return (float) (h - Math.floor(h));
+    }
+
     public void resetState() {
         scaleSpring.set(scaleSpline.at(0));
         yOffsetSpring.set(0);
         glowSpring.set(0);
         waveAmpSpring.set(0);
+        trailY1 = 0;
+        trailY2 = 0;
         progress = 0;
         isActive = false;
         letterCapable = false;
