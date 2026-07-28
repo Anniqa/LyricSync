@@ -60,6 +60,13 @@ public class AnimSelectionSelfTest {
         m = AnimSelection.migrate(null);
         check("spring".equals(m[0]) && "none".equals(m[1]), "migrate null");
 
+        // Round-trip a combo made entirely of new keys.
+        p = new MapPrefs();
+        AnimSelection.save(p, "bounce", "sparkle");
+        AnimConfig nc = AnimSelection.current(p);
+        check("bounce".equals(nc.motionKey) && "sparkle".equals(nc.effectKey), "new combo round-trip");
+        check(nc.sparkle && !nc.flash, "new combo flags");
+
         System.out.println("AnimSelectionSelfTest OK");
     }
 

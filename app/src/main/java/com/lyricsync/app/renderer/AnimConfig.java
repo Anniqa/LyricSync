@@ -26,6 +26,12 @@ public final class AnimConfig {
     public final boolean swing;
     public final boolean classic;
     public final boolean scatter;
+    public final boolean spin;
+    public final boolean squash;
+    public final boolean outline;
+    public final boolean trail;
+    public final boolean flash;
+    public final boolean sparkle;
 
     public final float glowBoost;
     public final double scaleFreq;
@@ -48,6 +54,8 @@ public final class AnimConfig {
         swing = motion.swing;
         classic = motion.classic;
         scatter = motion.scatter;
+        spin = motion.spin;
+        squash = motion.squash;
         scaleFreq = motion.scaleFreq;
         scaleDamp = motion.scaleDamp;
         letterMinDuration = motion.letterMinDuration;
@@ -56,6 +64,10 @@ public final class AnimConfig {
         echo = effect.echo;
         shimmer = effect.shimmer;
         flicker = effect.flicker;
+        outline = effect.outline;
+        trail = effect.trail;
+        flash = effect.flash;
+        sparkle = effect.sparkle;
         glowBoost = effect.glowBoost;
 
         // Glow: the effect's signature spline wins when it defines one

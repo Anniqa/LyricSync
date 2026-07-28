@@ -11,9 +11,11 @@ import java.util.List;
  * parameterisation).
  *
  * Styles split into two categories for the combination feature:
- *  - MOTION (12): how words/letters move — spring, bubble, wave, pulse, rise,
- *    typewriter, drop, zoom, swing, scatter, calm, classic.
- *  - EFFECT (5): a visual overlay — none, glow, echo, shimmer, flicker.
+ *  - MOTION (18): how words/letters move — spring, bubble, wave, pulse, rise,
+ *    typewriter, drop, zoom, swing, scatter, calm, classic, bounce, elastic,
+ *    heartbeat, spin, squash, pop.
+ *  - EFFECT (9): a visual overlay — none, glow, echo, shimmer, flicker,
+ *    outline, trail, flash, sparkle.
  *
  * A motion and an effect are merged into an {@link AnimConfig} for rendering.
  *
@@ -39,6 +41,8 @@ public final class AnimStyleDef {
     public final boolean swing;
     public final boolean classic;
     public final boolean scatter;
+    public final boolean spin;
+    public final boolean squash;
     public final double scaleFreq;
     public final double scaleDamp;
     public final long letterMinDuration;
@@ -51,6 +55,10 @@ public final class AnimStyleDef {
     public final boolean echo;
     public final boolean shimmer;
     public final boolean flicker;
+    public final boolean outline;
+    public final boolean trail;
+    public final boolean flash;
+    public final boolean sparkle;
 
     private AnimStyleDef(Builder b) {
         key = b.key;
@@ -67,6 +75,8 @@ public final class AnimStyleDef {
         swing = b.swing;
         classic = b.classic;
         scatter = b.scatter;
+        spin = b.spin;
+        squash = b.squash;
         scaleFreq = b.scaleFreq;
         scaleDamp = b.scaleDamp;
         letterMinDuration = b.letterMinDuration;
@@ -76,6 +86,10 @@ public final class AnimStyleDef {
         echo = b.echo;
         shimmer = b.shimmer;
         flicker = b.flicker;
+        outline = b.outline;
+        trail = b.trail;
+        flash = b.flash;
+        sparkle = b.sparkle;
     }
 
     private static Spline spline(double[] times, double[] values) {
@@ -103,6 +117,8 @@ public final class AnimStyleDef {
         boolean swing = false;
         boolean classic = false;
         boolean scatter = false;
+        boolean spin = false;
+        boolean squash = false;
         double scaleFreq = 0.95;
         double scaleDamp = 0.58;
         long letterMinDuration = 1000;
@@ -113,6 +129,10 @@ public final class AnimStyleDef {
         boolean echo = false;
         boolean shimmer = false;
         boolean flicker = false;
+        boolean outline = false;
+        boolean trail = false;
+        boolean flash = false;
+        boolean sparkle = false;
 
         Builder(String key, String displayName, Category category) {
             this.key = key;
@@ -132,6 +152,8 @@ public final class AnimStyleDef {
         Builder swing() { swing = true; return this; }
         Builder classic() { classic = true; return this; }
         Builder scatter() { scatter = true; return this; }
+        Builder spin() { spin = true; return this; }
+        Builder squash() { squash = true; return this; }
         Builder freq(double f) { scaleFreq = f; return this; }
         Builder damp(double d) { scaleDamp = d; return this; }
         Builder minDur(long ms) { letterMinDuration = ms; return this; }
@@ -140,6 +162,10 @@ public final class AnimStyleDef {
         Builder echo() { echo = true; return this; }
         Builder shimmer() { shimmer = true; return this; }
         Builder flicker() { flicker = true; return this; }
+        Builder outline() { outline = true; return this; }
+        Builder trail() { trail = true; return this; }
+        Builder flash() { flash = true; return this; }
+        Builder sparkle() { sparkle = true; return this; }
 
         AnimStyleDef build() { return new AnimStyleDef(this); }
     }
@@ -235,6 +261,49 @@ public final class AnimStyleDef {
                     .glow(new double[]{0.0, 1.0}, new double[]{0.0, 0.0})
                     .classic()
                     .build());
+            m.add(new Builder("bounce", "Bounce Drop", Category.MOTION)
+                    .scale(new double[]{0.0, 0.55, 1.0}, new double[]{0.94, 1.05, 1.0})
+                    .yOff(new double[]{0.0, 0.55, 0.75, 1.0}, new double[]{-0.50, 0.04, -0.015, 0.0})
+                    .glow(GLOW_STD_T, GLOW_STD_V)
+                    .springs().glowOn()
+                    .freq(1.00).damp(0.40)
+                    .build());
+            m.add(new Builder("elastic", "Elastic Pop", Category.MOTION)
+                    .scale(new double[]{0.0, 0.5, 1.0}, new double[]{0.90, 1.06, 1.0})
+                    .glow(GLOW_STD_T, GLOW_STD_V)
+                    .lScale(new double[]{0.0, 0.50, 0.70, 1.0}, new double[]{0.20, 1.15, 0.96, 1.0})
+                    .lYOff(new double[]{0.0, 0.50, 1.0}, new double[]{0.01, -0.02, 0.0})
+                    .springs().glowOn().letters()
+                    .freq(1.15).damp(0.38)
+                    .build());
+            m.add(new Builder("heartbeat", "Heartbeat", Category.MOTION)
+                    .scale(new double[]{0.0, 0.12, 0.24, 0.36, 0.50, 1.0},
+                            new double[]{1.0, 1.08, 1.0, 1.08, 1.0, 1.0})
+                    .glow(GLOW_SOFT_T, GLOW_SOFT_V)
+                    .springs().glowOn()
+                    .freq(1.30).damp(0.50)
+                    .build());
+            m.add(new Builder("spin", "Spin Settle", Category.MOTION)
+                    .glow(GLOW_SOFT_T, GLOW_SOFT_V)
+                    .lScale(new double[]{0.0, 0.60, 1.0}, new double[]{0.85, 1.12, 1.0})
+                    .springs().glowOn().letters().spin()
+                    .minDur(0)
+                    .freq(1.00).damp(0.50)
+                    .build());
+            m.add(new Builder("squash", "Squash-Stretch", Category.MOTION)
+                    .scale(new double[]{0.0, 0.5, 1.0}, new double[]{0.96, 1.04, 1.0})
+                    .glow(GLOW_STD_T, GLOW_STD_V)
+                    .springs().glowOn().squash()
+                    .freq(1.10).damp(0.52)
+                    .build());
+            m.add(new Builder("pop", "Scatter Pop", Category.MOTION)
+                    .glow(GLOW_SOFT_T, GLOW_SOFT_V)
+                    .lScale(new double[]{0.0, 0.55, 1.0}, new double[]{0.0, 1.18, 1.0})
+                    .lYOff(new double[]{0.0, 0.65, 1.0}, new double[]{-0.06, 0.01, 0.0})
+                    .springs().glowOn().letters().scatter()
+                    .minDur(0)
+                    .freq(1.10).damp(0.48)
+                    .build());
             MOTION = Collections.unmodifiableList(m);
 
             NONE = new Builder("none", "Tanpa", Category.EFFECT).build();
@@ -255,6 +324,10 @@ public final class AnimStyleDef {
                     .glow(new double[]{0.0, 0.08, 1.0}, new double[]{0.0, 1.0, 0.85})
                     .glowOn().flicker().boost(1.6f)
                     .build());
+            e.add(new Builder("outline", "Outline Pop", Category.EFFECT).outline().build());
+            e.add(new Builder("trail", "Blur Trail", Category.EFFECT).trail().build());
+            e.add(new Builder("flash", "Color Flash", Category.EFFECT).flash().build());
+            e.add(new Builder("sparkle", "Sparkle", Category.EFFECT).sparkle().build());
             EFFECT = Collections.unmodifiableList(e);
         }
 

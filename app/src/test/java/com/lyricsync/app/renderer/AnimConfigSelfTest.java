@@ -53,6 +53,29 @@ public class AnimConfigSelfTest {
         check(AnimConfig.combine(AnimStyleDef.Registry.motionByKey("classic"), echo).classic,
                 "classic flag");
 
+        // "Besar" batch: motion-only flags never come from effects and vice versa.
+        AnimStyleDef spin = AnimStyleDef.Registry.motionByKey("spin");
+        AnimStyleDef squash = AnimStyleDef.Registry.motionByKey("squash");
+        AnimStyleDef outline = AnimStyleDef.Registry.effectByKey("outline");
+        AnimStyleDef trail = AnimStyleDef.Registry.effectByKey("trail");
+        AnimStyleDef flash = AnimStyleDef.Registry.effectByKey("flash");
+        AnimStyleDef sparkle = AnimStyleDef.Registry.effectByKey("sparkle");
+
+        AnimConfig so = AnimConfig.combine(spin, outline);
+        check(so.spin && !so.squash, "spin from motion");
+        check(so.outline && !so.trail && !so.flash && !so.sparkle, "outline from effect");
+        check(!AnimConfig.combine(spin, none).outline, "motion never sets effect flags");
+        AnimConfig csp = AnimConfig.combine(calm, sparkle);
+        check(!csp.spin && !csp.squash, "effect never sets motion flags");
+        check(csp.sparkle, "sparkle flag flows");
+        AnimConfig st = AnimConfig.combine(squash, trail);
+        check(st.squash && st.trail, "squash x trail");
+
+        // New effects inherit the motion's glow spline, like shimmer.
+        AnimConfig sf = AnimConfig.combine(spring, flash);
+        check(sf.glowSpline == spring.glowSpline, "flash keeps motion glowSpline");
+        check(sf.glowEnabled, "flash enables glow (non-none effect)");
+
         System.out.println("AnimConfigSelfTest OK");
     }
 

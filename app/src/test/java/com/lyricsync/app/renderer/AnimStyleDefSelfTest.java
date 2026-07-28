@@ -2,8 +2,8 @@ package com.lyricsync.app.renderer;
 
 public class AnimStyleDefSelfTest {
     public static void main(String[] args) {
-        check(AnimStyleDef.Registry.motionStyles().size() == 12, "12 motion styles");
-        check(AnimStyleDef.Registry.effectStyles().size() == 5, "5 effect styles");
+        check(AnimStyleDef.Registry.motionStyles().size() == 18, "18 motion styles");
+        check(AnimStyleDef.Registry.effectStyles().size() == 9, "9 effect styles");
         check("none".equals(AnimStyleDef.Registry.effectStyles().get(0).key), "first effect is none");
         check(AnimStyleDef.Registry.none().category == AnimStyleDef.Category.EFFECT, "none is EFFECT");
 
@@ -34,6 +34,48 @@ public class AnimStyleDefSelfTest {
             check(AnimStyleDef.Registry.effectByKey(k).category == AnimStyleDef.Category.EFFECT,
                     k + " is EFFECT");
         }
+
+        // New "Besar" batch styles.
+        String[] newMotions = {"bounce","elastic","heartbeat","spin","squash","pop"};
+        for (String k : newMotions) {
+            check(AnimStyleDef.Registry.motionByKey(k).category == AnimStyleDef.Category.MOTION,
+                    k + " is MOTION");
+        }
+        String[] newEffects = {"outline","trail","flash","sparkle"};
+        for (String k : newEffects) {
+            check(AnimStyleDef.Registry.effectByKey(k).category == AnimStyleDef.Category.EFFECT,
+                    k + " is EFFECT");
+        }
+
+        // Mechanism flags: exactly where they belong.
+        check(AnimStyleDef.Registry.motionByKey("spin").spin, "spin flag set");
+        check(!AnimStyleDef.Registry.motionByKey("spring").spin, "spring has no spin");
+        check(AnimStyleDef.Registry.motionByKey("squash").squash, "squash flag set");
+        check(!AnimStyleDef.Registry.motionByKey("bounce").squash, "bounce has no squash");
+        check(AnimStyleDef.Registry.motionByKey("pop").scatter, "pop reuses scatter");
+        check(AnimStyleDef.Registry.effectByKey("outline").outline, "outline flag");
+        check(AnimStyleDef.Registry.effectByKey("trail").trail, "trail flag");
+        check(AnimStyleDef.Registry.effectByKey("flash").flash, "flash flag");
+        check(AnimStyleDef.Registry.effectByKey("sparkle").sparkle, "sparkle flag");
+        check(!AnimStyleDef.Registry.effectByKey("glow").sparkle, "glow has no sparkle");
+
+        // New effects define no glow spline: they inherit the motion's, like shimmer.
+        for (String k : newEffects) {
+            check(AnimStyleDef.Registry.effectByKey(k).glowSpline == null,
+                    k + " glowSpline null (inherits motion)");
+        }
+
+        // Spline sanity within the clipping caps.
+        check(Math.abs(AnimStyleDef.Registry.motionByKey("bounce").yOffsetSpline.at(0.0) - (-0.50)) < 1e-6,
+                "bounce starts -0.50");
+        check(Math.abs(AnimStyleDef.Registry.motionByKey("heartbeat").scaleSpline.at(0.12) - 1.08) < 0.02,
+                "heartbeat first beat");
+        check(Math.abs(AnimStyleDef.Registry.motionByKey("heartbeat").scaleSpline.at(0.36) - 1.08) < 0.02,
+                "heartbeat second beat");
+        check(Math.abs(AnimStyleDef.Registry.motionByKey("elastic").letterScaleSpline.at(0.0) - 0.20) < 1e-6,
+                "elastic starts 0.20");
+        check(Math.abs(AnimStyleDef.Registry.motionByKey("pop").letterScaleSpline.at(0.0)) < 1e-6,
+                "pop starts at 0");
 
         // Nullable glowSpline: shimmer + none inherit; glow/echo/flicker define their own.
         check(AnimStyleDef.Registry.effectByKey("shimmer").glowSpline == null, "shimmer glowSpline null");
