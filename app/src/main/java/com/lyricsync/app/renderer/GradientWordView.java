@@ -593,7 +593,12 @@ public class GradientWordView extends TextView {
                 letterColor = (alpha << 24) | 0x00FFFFFF;
             }
 
-            float lScale = (float) letterScaleSprings[i].position;
+            // Unsung words rest at full size: pop-style splines start letters tiny
+            // (0.0-0.2 at t=0) for the grow-in effect, but that rest value would
+            // otherwise shrink/hide the upcoming words of the lyric. The springs
+            // still slide to the spline start so the grow-in plays once the word
+            // actually starts (progress > 0).
+            float lScale = progress <= 0f ? 1f : (float) letterScaleSprings[i].position;
             float lGlow = (float) Math.max(0, Math.min(letterGlowSprings[i].position, 1))
                     * frameFlicker;
             // Per-letter vertical wave: the active letter lifts, neighbours follow with falloff.
