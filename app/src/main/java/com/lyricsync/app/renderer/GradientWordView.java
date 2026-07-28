@@ -83,6 +83,8 @@ public class GradientWordView extends TextView {
     private boolean swingStyle;
     private boolean classicStyle;
     private boolean scatterStyle;
+    private boolean spinStyle;
+    private boolean squashStyle;
     // Neon-flicker intensity for the current frame, computed once in onDraw so the
     // word path and the letter path flicker in sync within the same 70ms bucket.
     private float frameFlicker = 1f;
@@ -139,6 +141,8 @@ public class GradientWordView extends TextView {
         swingStyle = config.swing;
         classicStyle = config.classic;
         scatterStyle = config.scatter;
+        spinStyle = config.spin;
+        squashStyle = config.squash;
         // Re-tune the scale spring for the combination's bounce character.
         scaleSpring.dampingRatio = config.scaleDamp;
         scaleSpring.frequency = config.scaleFreq;
@@ -309,7 +313,13 @@ public class GradientWordView extends TextView {
 
         canvas.save();
         canvas.translate(0, yOffset);
-        if (scale != 1f) {
+        if (squashStyle && progress > 0f && progress < 0.35f) {
+            // Squash-and-stretch at word start: vertical squash + slight horizontal
+            // stretch, pivoting at the word's own centre (no positional movement).
+            float sq = 1f - progress / 0.35f;
+            canvas.scale(scale * (1f + 0.08f * sq), scale * (1f - 0.15f * sq),
+                    getWidth() / 2f, getHeight() / 2f);
+        } else if (scale != 1f) {
             canvas.scale(scale, scale, getWidth() / 2f, getHeight() / 2f);
         }
         if (swingStyle && progress > 0 && progress < 1) {
@@ -520,6 +530,19 @@ public class GradientWordView extends TextView {
             }
             if (lScale != 1f) {
                 canvas.scale(lScale, lScale, cx, cy);
+            }
+
+            if (spinStyle) {
+                // Spin Settle: rotation slaved to the letter's scale spring — the
+                // letter starts tilted (resting scale 0.85) and unwinds through a
+                // small counter-overshoot as the spring settles past 1.0.
+                double sh = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+                float sign = (sh - Math.floor(sh)) < 0.5 ? -1f : 1f;
+                float angle = sign * 12f * (1.0f - lScale) / 0.15f;
+                angle = Math.max(-14f, Math.min(14f, angle));
+                if (angle != 0f) {
+                    canvas.rotate(angle, cx, cy);
+                }
             }
 
             if (glowEnabled && lGlow > 0.01f) {
