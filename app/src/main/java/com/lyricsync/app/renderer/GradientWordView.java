@@ -85,12 +85,16 @@ public class GradientWordView extends TextView {
     private boolean scatterStyle;
     private boolean spinStyle;
     private boolean squashStyle;
+    private boolean outlineStyle;
+    private boolean flashStyle;
     // Neon-flicker intensity for the current frame, computed once in onDraw so the
     // word path and the letter path flicker in sync within the same 70ms bucket.
     private float frameFlicker = 1f;
     private float[] letterScatter;
     private final Paint echoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shimmerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint flashPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final Paint glowPaint;
     // Soft blurred bloom drawn under the active word for a real light-glow look.
@@ -143,6 +147,8 @@ public class GradientWordView extends TextView {
         scatterStyle = config.scatter;
         spinStyle = config.spin;
         squashStyle = config.squash;
+        outlineStyle = config.outline;
+        flashStyle = config.flash;
         // Re-tune the scale spring for the combination's bounce character.
         scaleSpring.dampingRatio = config.scaleDamp;
         scaleSpring.frequency = config.scaleFreq;
@@ -200,6 +206,10 @@ public class GradientWordView extends TextView {
             echoPaint.setTypeface(typeface);
             shimmerPaint.setTextSize(getPaint().getTextSize());
             shimmerPaint.setTypeface(typeface);
+            outlinePaint.setTextSize(getPaint().getTextSize());
+            outlinePaint.setTypeface(typeface);
+            flashPaint.setTextSize(getPaint().getTextSize());
+            flashPaint.setTypeface(typeface);
             bloomRadiusPx = Math.max(2f, getPaint().getTextSize() * 0.14f);
             // Generous padding: word scale peaks (~1.10-1.14x) and letter pops draw
             // outside the raw text bounds, so give the glyph room before the parent's
@@ -434,6 +444,24 @@ public class GradientWordView extends TextView {
             canvas.drawText(text, drawX, baseline, shimmerPaint);
             canvas.restore();
             shimmerPaint.setShader(null);
+        }
+
+        // OUTLINE POP: a brief stroke ring around the word at its start.
+        if (outlineStyle && progress > 0f && progress < 0.22f && !backgroundMode) {
+            int alpha = Math.round((1f - progress / 0.22f) * 0.55f * 255f);
+            outlinePaint.setStyle(Paint.Style.STROKE);
+            outlinePaint.setStrokeWidth(Math.max(1.5f, outlinePaint.getTextSize() * 0.03f));
+            outlinePaint.setColor((alpha << 24) | 0x00FFFFFF);
+            canvas.drawText(text, drawX, baseline, outlinePaint);
+            outlinePaint.setStyle(Paint.Style.FILL);
+        }
+
+        // COLOR FLASH: a bright white flare over the word at its start.
+        if (flashStyle && progress > 0f && progress < 0.15f && !backgroundMode) {
+            int alpha = Math.round((1f - progress / 0.15f) * 0.50f * 255f);
+            flashPaint.setShader(null);
+            flashPaint.setColor((alpha << 24) | 0x00FFFFFF);
+            canvas.drawText(text, drawX, baseline, flashPaint);
         }
     }
 
