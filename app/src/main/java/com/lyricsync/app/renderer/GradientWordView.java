@@ -114,9 +114,9 @@ public class GradientWordView extends TextView {
     private final Paint burningPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     // Reused line buffer for sparkle stars — zero per-frame allocation.
     private final float[] sparkleLines = new float[8];
-    // Reused particle trail buffer (Kembang Api 20 particles + Pengelasan sparks)
-    // and flame tongue path (Terbakar) — zero per-frame allocation.
-    private final float[] particleLines = new float[80];
+    // Reused particle trail buffer (Fireworks 36 particles + Welding sparks)
+    // and flame tongue path (Burning) — zero per-frame allocation.
+    private final float[] particleLines = new float[144];
     private final Path flamePath = new Path();
 
     private final Paint glowPaint;
@@ -551,31 +551,32 @@ public class GradientWordView extends TextView {
             sparklePaint.setStyle(Paint.Style.FILL);
         }
 
-        // KEMBANG API: a 20-particle burst celebrating the word finishing. Particle
-        // parabolas are analytic (seed direction/speed from hash01, phase from the
-        // karaoke clock), so the burst survives seeks with zero per-frame state.
+        // FIREWORKS: a 36-particle burst celebrating the word finishing. Particle
+        // parabolas are analytic (seed direction/speed from hash01, phase in real
+        // seconds from the karaoke clock), so the burst survives seeks with zero
+        // per-frame state. Distances scale with text size so the burst reads big.
         if (fireworksStyle && !backgroundMode && endTime > startTime) {
-            float t = (lastPositionMs - endTime) / 700f;   // seconds since word end
-            if (t > 0f && t < 1f) {
+            float tSec = (lastPositionMs - endTime) / 1000f;
+            if (tSec > 0f && tSec < 0.9f) {
                 float ts = getPaint().getTextSize();
                 float ox = drawX + shaderW / 2f;
                 float oy = baseline - 0.5f * ts;
-                float g = 0.9f * getHeight();
+                float g = 2.2f * ts;
                 int seed = wordIndex * 31 + text.length() * 7;
-                int baseAlpha = Math.round((1f - t) * 0.9f * 255f);
+                int baseAlpha = Math.round((1f - tSec / 0.9f) * 0.9f * 255f);
                 fireworksPaint.setStyle(Paint.Style.STROKE);
-                fireworksPaint.setStrokeWidth(Math.max(1f, ts * 0.025f));
+                fireworksPaint.setStrokeWidth(Math.max(1.5f, ts * 0.03f));
                 fireworksPaint.setStrokeCap(Paint.Cap.ROUND);
-                for (int i = 0; i < 20; i++) {
+                for (int i = 0; i < 36; i++) {
                     float ang = hash01(seed + i * 2) * 6.2832f;
-                    float spd = (0.15f + 0.30f * hash01(seed + i * 2 + 1)) * getHeight();
+                    float spd = (1.2f + 1.4f * hash01(seed + i * 2 + 1)) * ts;
                     float vx = (float) Math.cos(ang) * spd;
-                    float vy = (float) Math.sin(ang) * spd - 0.35f * getHeight();
-                    float t0 = Math.max(0f, t - 0.06f);   // trail 60ms behind
+                    float vy = (float) Math.sin(ang) * spd - 0.8f * ts;
+                    float t0 = Math.max(0f, tSec - 0.09f);   // trail 90ms behind
                     particleLines[i * 4]     = ox + vx * t0;
                     particleLines[i * 4 + 1] = oy + vy * t0 + 0.5f * g * t0 * t0;
-                    particleLines[i * 4 + 2] = ox + vx * t;
-                    particleLines[i * 4 + 3] = oy + vy * t + 0.5f * g * t * t;
+                    particleLines[i * 4 + 2] = ox + vx * tSec;
+                    particleLines[i * 4 + 3] = oy + vy * tSec + 0.5f * g * tSec * tSec;
                     int color = i % 3 == 0 ? 0x00FFFFFF : (i % 3 == 1 ? 0x00FFD54F : 0x00FF7043);
                     fireworksPaint.setColor((baseAlpha << 24) | color);
                     canvas.drawLines(particleLines, i * 4, 4, fireworksPaint);
@@ -584,9 +585,10 @@ public class GradientWordView extends TextView {
             }
         }
 
-        // PENGELASAN: the karaoke fill edge becomes a welding torch — a flickering
-        // white-hot core riding the sweep edge, spitting short amber sparks with
-        // gravity. Crackle comes from deterministic 50/90ms clock ticks.
+        // WELDING: the karaoke fill edge becomes a welding torch — a flickering
+        // white-hot core riding the sweep edge, spitting long amber sparks with
+        // gravity. Crackle comes from deterministic 50/260ms clock ticks; all
+        // distances scale with the text size so sparks stay visible at any font.
         if (weldingStyle && !backgroundMode && progress > 0f && progress < 1f) {
             float ts = getPaint().getTextSize();
             float wx = drawX + Math.max(0f, p) * shaderW;
@@ -594,30 +596,30 @@ public class GradientWordView extends TextView {
             float fl = hash01((int) (lastPositionMs / 50 & 0x7fffffff));
             weldingPaint.setStyle(Paint.Style.FILL);
             // Arc halo first, white-hot core on top.
-            float cr = ts * (0.05f + 0.04f * fl);
-            weldingPaint.setColor(0x9990CAF9); // 0.6 alpha blue arc
-            canvas.drawCircle(wx, wy, cr * 1.8f, weldingPaint);
-            weldingPaint.setColor(0xD9FFFFFF); // 0.85 alpha white core
+            float cr = ts * (0.08f + 0.06f * fl);
+            weldingPaint.setColor(0x8F90CAF9); // 0.56 alpha blue arc
+            canvas.drawCircle(wx, wy, cr * 2.4f, weldingPaint);
+            weldingPaint.setColor(0xE6FFFFFF); // 0.9 alpha white core
             canvas.drawCircle(wx, wy, cr, weldingPaint);
-            // Six staggered sparks, 90ms life each, re-seeded every cycle.
+            // Ten staggered sparks, 260ms life each, re-seeded every cycle.
             weldingPaint.setStyle(Paint.Style.STROKE);
-            weldingPaint.setStrokeWidth(Math.max(1f, ts * 0.02f));
+            weldingPaint.setStrokeWidth(Math.max(1.5f, ts * 0.025f));
             weldingPaint.setStrokeCap(Paint.Cap.ROUND);
-            float g = 1.4f * getHeight();
-            for (int i = 0; i < 6; i++) {
-                float local = ((lastPositionMs + i * 15) % 90) / 90f;
-                int s = (int) ((lastPositionMs + i * 15) / 90) * 6 + i * 13 + wordIndex * 7;
-                float ang = -1.9f + 1.3f * hash01(s);            // biased upward
-                float spd = (0.10f + 0.15f * hash01(s + 50)) * getHeight();
+            float g = 5.0f * ts;
+            for (int i = 0; i < 10; i++) {
+                float local = ((lastPositionMs + i * 37) % 260) / 260f;
+                int s = (int) ((lastPositionMs + i * 37) / 260) * 10 + i * 13 + wordIndex * 7;
+                float ang = -2.4f + 1.8f * hash01(s);            // wide upward fan
+                float spd = (0.9f + 0.9f * hash01(s + 50)) * ts;
                 float vx = (float) Math.cos(ang) * spd;
                 float vy = (float) Math.sin(ang) * spd;
-                float lt = local * 0.09f;                        // life in seconds
-                float t0 = Math.max(0f, lt - 0.03f);             // trail 30ms behind
+                float lt = local * 0.26f;                        // life in seconds
+                float t0 = Math.max(0f, lt - 0.04f);             // trail 40ms behind
                 particleLines[0] = wx + vx * t0;
                 particleLines[1] = wy + vy * t0 + 0.5f * g * t0 * t0;
                 particleLines[2] = wx + vx * lt;
                 particleLines[3] = wy + vy * lt + 0.5f * g * lt * lt;
-                int alpha = Math.round((1f - local) * 0.9f * 255f);
+                int alpha = Math.round((1f - local) * 0.95f * 255f);
                 weldingPaint.setColor((alpha << 24) | 0x00FFB300);
                 canvas.drawLines(particleLines, 0, 4, weldingPaint);
             }

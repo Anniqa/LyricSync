@@ -340,9 +340,9 @@ public final class AnimStyleDef {
             e.add(new Builder("trail", "Blur Trail", Category.EFFECT).trail().build());
             e.add(new Builder("flash", "Color Flash", Category.EFFECT).flash().build());
             e.add(new Builder("sparkle", "Sparkle", Category.EFFECT).sparkle().build());
-            e.add(new Builder("fireworks", "Kembang Api", Category.EFFECT).fireworks().build());
-            e.add(new Builder("welding", "Pengelasan", Category.EFFECT).welding().build());
-            e.add(new Builder("burning", "Terbakar", Category.EFFECT).burning().build());
+            e.add(new Builder("fireworks", "Fireworks", Category.EFFECT).fireworks().build());
+            e.add(new Builder("welding", "Welding", Category.EFFECT).welding().build());
+            e.add(new Builder("burning", "Burning", Category.EFFECT).burning().build());
             EFFECT = Collections.unmodifiableList(e);
         }
 
