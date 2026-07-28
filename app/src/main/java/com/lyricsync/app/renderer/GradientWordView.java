@@ -73,6 +73,15 @@ public class GradientWordView extends TextView {
     private long lastPositionMs;
     private boolean waveStyle;
     private boolean binaryLetters;
+    private boolean echoStyle;
+    private boolean shimmerStyle;
+    private boolean flickerStyle;
+    private boolean swingStyle;
+    private boolean classicStyle;
+    private boolean scatterStyle;
+    private float[] letterScatter;
+    private final Paint echoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint shimmerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final Paint glowPaint;
     // Soft blurred bloom drawn under the active word for a real light-glow look.
@@ -114,6 +123,12 @@ public class GradientWordView extends TextView {
         glowBoost = LyricAnimStyle.glowBoost(style);
         waveStyle = LyricAnimStyle.waveEnabled(style);
         binaryLetters = LyricAnimStyle.binaryLetterReveal(style);
+        echoStyle = LyricAnimStyle.echoEnabled(style);
+        shimmerStyle = LyricAnimStyle.shimmerEnabled(style);
+        flickerStyle = LyricAnimStyle.flickerEnabled(style);
+        swingStyle = LyricAnimStyle.swingEnabled(style);
+        classicStyle = LyricAnimStyle.classicStyle(style);
+        scatterStyle = LyricAnimStyle.scatterEnabled(style);
         // Re-tune the scale spring for the variant's bounce character.
         scaleSpring.dampingRatio = LyricAnimStyle.scaleDamp(style);
         scaleSpring.frequency = LyricAnimStyle.scaleFreq(style);
@@ -167,6 +182,10 @@ public class GradientWordView extends TextView {
             glowPaint.setTypeface(typeface);
             bloomPaint.setTextSize(getPaint().getTextSize());
             bloomPaint.setTypeface(typeface);
+            echoPaint.setTextSize(getPaint().getTextSize());
+            echoPaint.setTypeface(typeface);
+            shimmerPaint.setTextSize(getPaint().getTextSize());
+            shimmerPaint.setTypeface(typeface);
             bloomRadiusPx = Math.max(2f, getPaint().getTextSize() * 0.14f);
             // Generous padding: word scale peaks (~1.10-1.14x) and letter pops draw
             // outside the raw text bounds, so give the glyph room before the parent's
@@ -207,6 +226,19 @@ public class GradientWordView extends TextView {
             letterScaleSprings[i] = new Spring(LETTER_IDLE_SCALE,
                     LyricAnimStyle.scaleDamp(animStyle), LyricAnimStyle.scaleFreq(animStyle));
             letterGlowSprings[i] = new Spring(0, GLOW_DAMP, GLOW_FREQ);
+        }
+
+        if (scatterStyle) {
+            // Deterministic per-letter amplitude spread (0.55..1.35): same word always
+            // scatters the same way, so the effect looks choreographed, not noisy.
+            letterScatter = new float[n];
+            for (int i = 0; i < n; i++) {
+                double h = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+                double frac = h - Math.floor(h);
+                letterScatter[i] = 0.55f + 0.80f * (float) frac;
+            }
+        } else {
+            letterScatter = null;
         }
     }
 
@@ -259,6 +291,12 @@ public class GradientWordView extends TextView {
         if (scale != 1f) {
             canvas.scale(scale, scale, getWidth() / 2f, getHeight() / 2f);
         }
+        if (swingStyle && progress > 0 && progress < 1) {
+            // Decaying pendulum rock driven by the word's own progress: deterministic,
+            // settles exactly when the word ends. Pivots near the top like a hanging sign.
+            float angle = 5f * (float) Math.sin(progress * Math.PI * 2.5) * (1f - progress);
+            canvas.rotate(angle, getWidth() / 2f, getHeight() * 0.15f);
+        }
 
         String text = getText().toString();
         if (cachedTextWidth < 0) {
@@ -282,11 +320,30 @@ public class GradientWordView extends TextView {
         float dStop = p + FADE_WIDTH;
         float drawX = getPaddingLeft();
         float shaderW = Math.max(1f, cachedTextWidth);
+        float baseline = getBaseline();
+
+        // CLASSIC: old-school karaoke. No sweep, no glow — the whole word flips
+        // dim -> bright the instant it starts being sung.
+        if (classicStyle) {
+            getPaint().setShader(null);
+            getPaint().setColor(progress > 0f ? brightColor : dimColor);
+            canvas.drawText(text, drawX, baseline, getPaint());
+            return;
+        }
+
+        // FLICKER: neon-sign sputter. Deterministic per 70ms bucket so every frame in
+        // the same bucket agrees; occasional deep dips sell the failing-tube feel.
+        if (flickerStyle && progress > 0f && progress < 1f) {
+            double bucket = Math.floor(lastPositionMs / 70.0) + wordIndex * 31.0;
+            double h = Math.sin(bucket * 12.9898 + 4.1414) * 43758.5453;
+            double frac = h - Math.floor(h);
+            glowAlpha *= (frac < 0.14) ? 0.35f + 0.5f * (float) (frac / 0.14)
+                    : 0.85f + 0.15f * (float) frac;
+        }
 
         // Soft bloom halo around the sung text — a genuine light-glow, drawn via a text
         // shadow layer (hardware-accelerated-safe) modulated by the glow spring.
         if (glowEnabled && glowAlpha > 0.02f && !backgroundMode) {
-            float baseline = getBaseline();
             int haloAlpha = Math.round(Math.max(0f, Math.min(1f, glowAlpha)) * 150f * glowBoost);
             bloomPaint.setShader(null);
             bloomPaint.setColor(0x00FFFFFF);
@@ -316,7 +373,37 @@ public class GradientWordView extends TextView {
         }
 
         getPaint().setShader(shader);
-        canvas.drawText(text, drawX, getBaseline(), getPaint());
+        canvas.drawText(text, drawX, baseline, getPaint());
+
+        // ECHO: two fading ghost copies trailing above the active word, like reverb.
+        // Drawn after the main text so they read as afterimages of the sung edge.
+        if (echoStyle && progress > 0f && progress < 1f && !backgroundMode) {
+            float fade = (float) Math.sin(progress * Math.PI); // in/out over the word
+            for (int t = 1; t <= 2; t++) {
+                int alpha = Math.round((t == 1 ? 0.10f : 0.05f) * 255f * fade);
+                echoPaint.setShader(new LinearGradient(drawX, 0, drawX + shaderW, 0,
+                        (alpha << 24) | 0x00FFFFFF, 0x00000000, Shader.TileMode.CLAMP));
+                canvas.drawText(text, drawX, baseline - t * 0.045f * getHeight(), echoPaint);
+            }
+            echoPaint.setShader(null);
+        }
+
+        // SHIMMER: a narrow light band that sweeps across the already-sung part of
+        // the word once per word, trailing the fill edge.
+        if (shimmerStyle && progress > 0.05f && progress < 0.98f && !backgroundMode) {
+            float band = (progress - 0.05f) / 0.93f;          // 0..1 across the word
+            float cx = drawX + band * shaderW;
+            float halfW = 0.06f * shaderW;
+            shimmerPaint.setShader(new LinearGradient(cx - halfW, 0, cx + halfW, 0,
+                    new int[]{0x00FFFFFF, 0x66FFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
+            // Clip the band to the sung region only (left of the fill edge).
+            canvas.save();
+            canvas.clipRect(drawX, 0, drawX + Math.max(0f, p) * shaderW + 2f, getHeight());
+            canvas.drawText(text, drawX, baseline, shimmerPaint);
+            canvas.restore();
+            shimmerPaint.setShader(null);
+        }
     }
 
     // Smooth left-to-right sweep: each letter's brightness is sampled from a continuous
@@ -381,6 +468,11 @@ public class GradientWordView extends TextView {
             // Per-letter vertical wave: the active letter lifts, neighbours follow with falloff.
             float lYOffset = 0f;
 
+            // SCATTER: deterministic per-letter amplitude spread, applied to both the
+            // lift and the pop so each letter jumps to its own height/strength.
+            float scatter = (letterScatter != null && i < letterScatter.length)
+                    ? letterScatter[i] : 1f;
+
             if (activeIndex >= 0 && i != activeIndex) {
                 int dist = Math.abs(i - activeIndex);
                 // SpicyLyrics: falloff = 1/(1+dist^2.8) (scale), 1/(1+dist*0.9) (glow)
@@ -390,11 +482,12 @@ public class GradientWordView extends TextView {
                 float baseScale = (float) letterScaleSpline.at(activeLetterPct);
                 float resting = (float) letterScaleSpline.at(0);
                 float targetScale = resting + (baseScale - resting) * (float) scaleFalloff;
-                lScale = Math.max(lScale, targetScale);
+                lScale = Math.max(lScale, 1f + (targetScale - 1f) * scatter);
                 lGlow = Math.max(lGlow, (float) (glowFalloff * LETTER_GLOW_MULTIPLIER));
-                lYOffset = (float) (letterYOffsetSpline.at(activeLetterPct) * yFalloff);
+                lYOffset = (float) (letterYOffsetSpline.at(activeLetterPct) * yFalloff) * scatter;
             } else if (i == activeIndex) {
-                lYOffset = (float) letterYOffsetSpline.at(activeLetterPct);
+                lYOffset = (float) letterYOffsetSpline.at(activeLetterPct) * scatter;
+                lScale = 1f + (lScale - 1f) * scatter;
             }
 
             canvas.save();

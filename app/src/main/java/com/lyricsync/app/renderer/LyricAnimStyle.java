@@ -30,6 +30,14 @@ public final class LyricAnimStyle {
     public static final int PULSE = 5;
     public static final int RISE = 6;
     public static final int TYPEWRITER = 7;
+    public static final int DROP = 8;
+    public static final int ZOOM = 9;
+    public static final int ECHO = 10;
+    public static final int SHIMMER = 11;
+    public static final int FLICKER = 12;
+    public static final int SWING = 13;
+    public static final int CLASSIC = 14;
+    public static final int SCATTER = 15;
 
     public static final class Variant {
         public final int id;
@@ -53,6 +61,14 @@ public final class LyricAnimStyle {
         v.add(new Variant(PULSE, "pulse", "Pulse"));
         v.add(new Variant(RISE, "rise", "Rise"));
         v.add(new Variant(TYPEWRITER, "typewriter", "Typewriter"));
+        v.add(new Variant(DROP, "drop", "Drop"));
+        v.add(new Variant(ZOOM, "zoom", "Zoom"));
+        v.add(new Variant(ECHO, "echo", "Echo"));
+        v.add(new Variant(SHIMMER, "shimmer", "Shimmer"));
+        v.add(new Variant(SWING, "swing", "Swing"));
+        v.add(new Variant(SCATTER, "scatter", "Scatter"));
+        v.add(new Variant(FLICKER, "flicker", "Neon Flicker"));
+        v.add(new Variant(CLASSIC, "classic", "Classic"));
         v.add(new Variant(CALM, "calm", "Calm"));
         v.add(new Variant(GLOW, "glow", "Neon Glow"));
         VARIANTS = Collections.unmodifiableList(v);
@@ -103,10 +119,24 @@ public final class LyricAnimStyle {
                         new double[]{0.97, 1.12, 0.99, 1.06, 1.0});
             case RISE:
                 return spline(new double[]{0.0, 0.5, 1.0}, new double[]{0.98, 1.02, 1.0});
+            case DROP:
+                // Slight anticipation shrink, then a firm landing pop.
+                return spline(new double[]{0.0, 0.55, 1.0}, new double[]{0.92, 1.06, 1.0});
+            case ZOOM:
+                // Reverse-feel pop: idle at 1.0 (matching neighbours), spikes early,
+                // then shrinks back — reads as the word coming at you and settling.
+                return spline(new double[]{0.0, 0.28, 1.0}, new double[]{1.0, 1.16, 1.0});
+            case ECHO:
+                return spline(new double[]{0.0, 0.60, 1.0}, new double[]{0.96, 1.05, 1.0});
+            case SWING:
+                return spline(new double[]{0.0, 0.55, 1.0}, new double[]{0.97, 1.06, 1.0});
             case CALM:
             case GLOW:
             case WAVE:
             case TYPEWRITER:
+            case SHIMMER:
+            case FLICKER:
+            case CLASSIC:
                 return spline(new double[]{0.0, 1.0}, new double[]{1.0, 1.0});
             case SPRING:
             default:
@@ -125,10 +155,21 @@ public final class LyricAnimStyle {
                 return spline(new double[]{0.0, 0.62, 1.0}, new double[]{0.09, -0.05, 0.0});
             case PULSE:
                 return spline(new double[]{0.0, 0.5, 1.0}, new double[]{0.0, -0.02, 0.0});
+            case DROP:
+                // Falls from well above the line and lands with a tiny rebound.
+                return spline(new double[]{0.0, 0.70, 1.0}, new double[]{-0.30, 0.03, 0.0});
+            case ZOOM:
+                return spline(new double[]{0.0, 0.60, 1.0}, new double[]{0.01, -0.01, 0.0});
+            case ECHO:
+                return spline(new double[]{0.0, 0.70, 1.0}, new double[]{0.0, -0.02, 0.0});
+            case SWING:
             case CALM:
             case GLOW:
             case WAVE:
             case TYPEWRITER:
+            case SHIMMER:
+            case FLICKER:
+            case CLASSIC:
                 return spline(new double[]{0.0, 1.0}, new double[]{0.0, 0.0});
             case SPRING:
             default:
@@ -146,8 +187,20 @@ public final class LyricAnimStyle {
                 return spline(new double[]{0.0, 0.15, 0.6, 1.0}, new double[]{0.0, 0.8, 0.8, 0.0});
             case PULSE:
                 return spline(new double[]{0.0, 0.10, 0.5, 1.0}, new double[]{0.0, 1.0, 1.0, 0.0});
+            case DROP:
+            case ZOOM:
+            case SWING:
+            case SCATTER:
+                return spline(new double[]{0.0, 0.14, 0.55, 1.0}, new double[]{0.0, 0.9, 0.9, 0.0});
+            case ECHO:
+                return spline(new double[]{0.0, 0.12, 0.55, 1.0}, new double[]{0.0, 0.7, 0.7, 0.0});
+            case FLICKER:
+                // Held high the whole word — the flicker modulation happens per-frame.
+                return spline(new double[]{0.0, 0.08, 1.0}, new double[]{0.0, 1.0, 0.85});
             case CALM:
             case TYPEWRITER:
+            case SHIMMER:
+            case CLASSIC:
                 return spline(new double[]{0.0, 1.0}, new double[]{0.0, 0.0});
             case SPRING:
             case BUBBLE:
@@ -164,6 +217,9 @@ public final class LyricAnimStyle {
             case TYPEWRITER:
                 // Each letter snaps in from small with a quick pop, like a key strike.
                 return spline(new double[]{0.0, 0.35, 1.0}, new double[]{0.60, 1.16, 1.0});
+            case SCATTER:
+                // Pop amplitude is additionally randomised per letter at draw time.
+                return spline(new double[]{0.0, 0.55, 1.0}, new double[]{0.88, 1.20, 1.0});
             case SPRING:
             default:
                 return spline(new double[]{0.0, 0.65, 1.0}, new double[]{0.95, 1.22, 1.0});
@@ -177,6 +233,9 @@ public final class LyricAnimStyle {
             case TYPEWRITER:
                 // No initial downward dip: keys strike in place, they don't slide up.
                 return spline(new double[]{0.0, 0.50, 1.0}, new double[]{0.0, -0.02, 0.0});
+            case SCATTER:
+                // Bigger lift; the per-letter hash factor spreads the heights out.
+                return spline(new double[]{0.0, 0.65, 1.0}, new double[]{0.0, -0.07, 0.0});
             case SPRING:
             default:
                 return spline(new double[]{0.0, 0.85, 1.0}, new double[]{0.012, -0.028, 0.0});
@@ -186,32 +245,37 @@ public final class LyricAnimStyle {
     /** Whether the word/letter springs run. CALM/GLOW have no spring motion; WAVE
      *  drives its offset procedurally from the playback clock instead. */
     public static boolean springsEnabled(int style) {
-        return style != CALM && style != GLOW && style != WAVE;
+        return style != CALM && style != GLOW && style != WAVE
+                && style != SHIMMER && style != FLICKER && style != CLASSIC;
     }
 
     /** Whether the sung-edge light bloom is drawn. */
     public static boolean glowEnabled(int style) {
         return style == SPRING || style == BUBBLE || style == GLOW
-                || style == WAVE || style == PULSE || style == RISE;
+                || style == WAVE || style == PULSE || style == RISE
+                || style == DROP || style == ZOOM || style == ECHO
+                || style == SWING || style == SCATTER || style == FLICKER;
     }
 
     /** Multiplier on the bloom radius; GLOW reads as neon, others stay subtle. */
     public static float glowBoost(int style) {
-        return style == GLOW ? 1.8f : 1.0f;
+        if (style == GLOW) return 1.8f;
+        if (style == FLICKER) return 1.6f;
+        return 1.0f;
     }
 
     /** Letter-by-letter emphasis only makes sense when springs are active. */
     public static boolean letterEmphasisEnabled(int style) {
-        return style == SPRING || style == BUBBLE || style == TYPEWRITER;
+        return style == SPRING || style == BUBBLE || style == TYPEWRITER || style == SCATTER;
     }
 
     /** Minimum word duration (ms) for letter-by-letter emphasis. SPRING/BUBBLE follow
      *  SpicyLyrics (>= 1000ms) so the wave only decorates long held words; TYPEWRITER's
-     *  whole identity is the per-letter strike, so it must work on EVERY word —
+     *  and SCATTER's whole identity is per-letter, so they must work on EVERY word —
      *  otherwise short words silently fall back to the plain sweep and the variant
      *  looks identical to Calm. */
     public static long letterMinDuration(int style) {
-        return style == TYPEWRITER ? 0 : 1000;
+        return (style == TYPEWRITER || style == SCATTER) ? 0 : 1000;
     }
 
     /** TYPEWRITER reveals letters as a binary strike (dim -> bright) instead of the
@@ -225,6 +289,36 @@ public final class LyricAnimStyle {
         return style == WAVE;
     }
 
+    /** ECHO draws fading ghost copies trailing above the active word. */
+    public static boolean echoEnabled(int style) {
+        return style == ECHO;
+    }
+
+    /** SHIMMER sweeps a light band across the sung part of the word. */
+    public static boolean shimmerEnabled(int style) {
+        return style == SHIMMER;
+    }
+
+    /** FLICKER modulates the glow with a deterministic neon-sign sputter. */
+    public static boolean flickerEnabled(int style) {
+        return style == FLICKER;
+    }
+
+    /** SWING rocks the active word a few degrees like a hanging sign. */
+    public static boolean swingEnabled(int style) {
+        return style == SWING;
+    }
+
+    /** CLASSIC is old-school karaoke: an instant dim->bright swap, zero motion. */
+    public static boolean classicStyle(int style) {
+        return style == CLASSIC;
+    }
+
+    /** SCATTER randomises each letter's pop amplitude (draw-time hash). */
+    public static boolean scatterEnabled(int style) {
+        return style == SCATTER;
+    }
+
     /** Spring tuning for the scale spring; each variant keeps its own bounce
      *  character but settles fast enough that words never lurch past their slot. */
     public static double scaleFreq(int style) {
@@ -233,6 +327,11 @@ public final class LyricAnimStyle {
             case PULSE: return 1.15;
             case RISE: return 1.20;
             case TYPEWRITER: return 1.30;
+            case DROP: return 1.00;
+            case ZOOM: return 1.10;
+            case ECHO: return 0.95;
+            case SWING: return 0.90;
+            case SCATTER: return 1.10;
             case SPRING:
             default: return 0.95;
         }
@@ -244,6 +343,11 @@ public final class LyricAnimStyle {
             case PULSE: return 0.50;
             case RISE: return 0.50;
             case TYPEWRITER: return 0.55;
+            case DROP: return 0.42;   // bouncy landing
+            case ZOOM: return 0.55;
+            case ECHO: return 0.56;
+            case SWING: return 0.50;
+            case SCATTER: return 0.48;
             case SPRING:
             default: return 0.58;
         }
