@@ -133,6 +133,10 @@ public class SyllableHighlighter {
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         flow.setLayoutParams(flowParams);
         flow.setPadding(0, dpToPx(6), 0, dpToPx(2));
+        // Word views must paint outside their own box too (fireworks bursts and
+        // welding sparks fly beyond the word); without this the flow slices them.
+        flow.setClipChildren(false);
+        flow.setClipToPadding(false);
 
         lv.wordViews = new ArrayList<>();
         for (int i = 0; i < line.words.size(); i++) {

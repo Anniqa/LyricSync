@@ -601,27 +601,35 @@ public class GradientWordView extends TextView {
             canvas.drawCircle(wx, wy, cr * 2.4f, weldingPaint);
             weldingPaint.setColor(0xE6FFFFFF); // 0.9 alpha white core
             canvas.drawCircle(wx, wy, cr, weldingPaint);
-            // Ten staggered sparks, 260ms life each, re-seeded every cycle.
-            weldingPaint.setStyle(Paint.Style.STROKE);
-            weldingPaint.setStrokeWidth(Math.max(1.5f, ts * 0.025f));
+            // Twelve staggered sparks, 380ms life each, re-seeded every cycle.
             weldingPaint.setStrokeCap(Paint.Cap.ROUND);
             float g = 5.0f * ts;
-            for (int i = 0; i < 10; i++) {
-                float local = ((lastPositionMs + i * 37) % 260) / 260f;
-                int s = (int) ((lastPositionMs + i * 37) / 260) * 10 + i * 13 + wordIndex * 7;
-                float ang = -2.4f + 1.8f * hash01(s);            // wide upward fan
-                float spd = (0.9f + 0.9f * hash01(s + 50)) * ts;
+            float strokeW = Math.max(2f, ts * 0.035f);
+            weldingPaint.setStrokeWidth(strokeW);
+            weldingPaint.setStyle(Paint.Style.STROKE);
+            for (int i = 0; i < 12; i++) {
+                float local = ((lastPositionMs + i * 41) % 380) / 380f;
+                int s = (int) ((lastPositionMs + i * 41) / 380) * 12 + i * 13 + wordIndex * 7;
+                float ang = -2.6f + 2.0f * hash01(s);            // wide upward fan
+                float spd = (1.2f + 1.2f * hash01(s + 50)) * ts;
                 float vx = (float) Math.cos(ang) * spd;
                 float vy = (float) Math.sin(ang) * spd;
-                float lt = local * 0.26f;                        // life in seconds
-                float t0 = Math.max(0f, lt - 0.04f);             // trail 40ms behind
+                float lt = local * 0.38f;                        // life in seconds
+                float t0 = Math.max(0f, lt - 0.05f);             // trail 50ms behind
+                float hx = wx + vx * lt;
+                float hy = wy + vy * lt + 0.5f * g * lt * lt;
                 particleLines[0] = wx + vx * t0;
                 particleLines[1] = wy + vy * t0 + 0.5f * g * t0 * t0;
-                particleLines[2] = wx + vx * lt;
-                particleLines[3] = wy + vy * lt + 0.5f * g * lt * lt;
-                int alpha = Math.round((1f - local) * 0.95f * 255f);
+                particleLines[2] = hx;
+                particleLines[3] = hy;
+                int alpha = Math.round((1f - local * 0.85f) * 0.95f * 255f);
                 weldingPaint.setColor((alpha << 24) | 0x00FFB300);
                 canvas.drawLines(particleLines, 0, 4, weldingPaint);
+                // Hot white-yellow head so each spark reads as a flying ember.
+                weldingPaint.setStyle(Paint.Style.FILL);
+                weldingPaint.setColor((alpha << 24) | 0x00FFE082);
+                canvas.drawCircle(hx, hy, strokeW * 0.9f, weldingPaint);
+                weldingPaint.setStyle(Paint.Style.STROKE);
             }
             weldingPaint.setStyle(Paint.Style.FILL);
         }
