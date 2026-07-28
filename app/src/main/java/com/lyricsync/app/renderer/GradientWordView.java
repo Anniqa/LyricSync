@@ -29,7 +29,7 @@ public class GradientWordView extends TextView {
 
     // Motion parameters for the default SPRING variant. setAnimConfig() swaps these
     // from the resolved motion×effect combination.
-    private AnimConfig animConfig = LyricAnimStyle.configOf(LyricAnimStyle.SPRING);
+    private AnimConfig animConfig = AnimConfig.defaultConfig();
     private Spline scaleSpline = animConfig.scaleSpline;
     private Spline yOffsetSpline = animConfig.yOffsetSpline;
     private Spline glowSplineTable = animConfig.glowSpline;
@@ -44,7 +44,7 @@ public class GradientWordView extends TextView {
     private double scaleDamp = animConfig.scaleDamp;
 
     // Letter-level emphasis (SpicyLyrics IsLetterCapable + Emphasize)
-    // Min word duration is per-variant (LyricAnimStyle.letterMinDuration): SPRING/
+    // Min word duration comes from the resolved AnimConfig (letterMinDuration): SPRING/
     // BUBBLE use SpicyLyrics' 1000ms, TYPEWRITER strikes letters on every word.
     private static final int TYPEWRITER_DIM = 0x2EFFFFFF; // 0.18 alpha "paper" before the strike
     // SpicyLyrics non-SLM IsLetterCapable: only duration >= 1000, no count cap.
@@ -156,12 +156,6 @@ public class GradientWordView extends TextView {
         }
         cachedTextWidth = -1f;
         invalidate();
-    }
-
-    /** @deprecated Legacy flat-style entry point kept for callers not yet migrated. */
-    @Deprecated
-    public void setAnimStyle(int style) {
-        setAnimConfig(LyricAnimStyle.configOf(style));
     }
 
     public void setTiming(long startTime, long endTime) {

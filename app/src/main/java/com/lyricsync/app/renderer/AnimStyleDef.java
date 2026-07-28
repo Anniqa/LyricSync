@@ -7,8 +7,8 @@ import java.util.List;
 /**
  * Immutable definition of one lyric animation style. All 16 styles live here as
  * DATA in the {@link Registry} — adding a style means adding one entry, not
- * editing switch statements (this class replaces the old switch-heavy
- * LyricAnimStyle parameterisation).
+ * editing switch statements (this class replaced the old switch-heavy
+ * parameterisation).
  *
  * Styles split into two categories for the combination feature:
  *  - MOTION (12): how words/letters move — spring, bubble, wave, pulse, rise,
@@ -86,8 +86,6 @@ public final class AnimStyleDef {
         return new Spline(t, val);
     }
 
-    // Package-private so the transitional LyricAnimStyle facade can build the four
-    // legacy standalone effect styles with their exact legacy motion values.
     static final class Builder {
         final String key;
         final String displayName;

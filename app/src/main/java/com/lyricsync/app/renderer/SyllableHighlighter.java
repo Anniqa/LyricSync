@@ -35,7 +35,7 @@ public class SyllableHighlighter {
     private final float fontSizeSp;
     private final List<LineView> lineViews = new ArrayList<>();
     private boolean syllableMode = true;
-    private AnimConfig animConfig = LyricAnimStyle.configOf(LyricAnimStyle.SPRING);
+    private AnimConfig animConfig = AnimConfig.defaultConfig();
 
     public static class LineView {
         public View rootView;
@@ -67,12 +67,6 @@ public class SyllableHighlighter {
 
     public void setAnimConfig(AnimConfig config) {
         this.animConfig = config;
-    }
-
-    /** @deprecated Legacy flat-style entry point kept for callers not yet migrated. */
-    @Deprecated
-    public void setAnimStyle(int style) {
-        setAnimConfig(LyricAnimStyle.configOf(style));
     }
 
     public LineView createLineView(LyricsData.LyricsLine line, LinearLayout.LayoutParams params) {

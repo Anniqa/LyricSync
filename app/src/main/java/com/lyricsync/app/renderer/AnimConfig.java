@@ -72,4 +72,9 @@ public final class AnimConfig {
         if (effect == null) effect = AnimStyleDef.Registry.none();
         return new AnimConfig(motion, effect);
     }
+
+    /** Spring × none — the out-of-the-box configuration. */
+    public static AnimConfig defaultConfig() {
+        return combine(AnimStyleDef.Registry.motionByKey(null), AnimStyleDef.Registry.none());
+    }
 }

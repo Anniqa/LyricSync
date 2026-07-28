@@ -31,6 +31,8 @@
     <string name="font_size">Font size</string>
     <string name="font_family_label">Lyrics font</string>
     <string name="anim_style_label">Lyrics animation</string>
+    <string name="anim_motion_label">Gerakan</string>
+    <string name="anim_effect_label">Efek</string>
     <string name="overlay_size">Overlay size</string>
     <string name="overlay_width">Width</string>
     <string name="overlay_height">Height</string>

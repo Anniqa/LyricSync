@@ -1,7 +1,6 @@
 package com.lyricsync.app.ui;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
@@ -11,15 +10,17 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.lyricsync.app.renderer.AnimConfig;
+import com.lyricsync.app.renderer.AnimStyleDef;
 import com.lyricsync.app.renderer.GradientWordView;
-import com.lyricsync.app.renderer.LyricAnimStyle;
 import com.lyricsync.app.util.AppFont;
 
 /**
- * Builds the lyric-animation variant chips. In the main activity each chip carries
- * a LIVE preview — a tiny GradientWordView driven by a looping fake playback clock,
- * so the user sees Spring/Bubble/Calm/Glow before picking one. The overlay panel
- * uses the compact text-only form.
+ * Builds the two-row lyric-animation combo picker: one row of MOTION chips and one
+ * row of EFFECT chips. In the main activity each chip carries a LIVE preview — a
+ * tiny GradientWordView driven by a looping fake playback clock, rendering the REAL
+ * combination (chip × the other row's current selection) so the user sees exactly
+ * what they'll get. The overlay panel uses the compact text-only form.
  */
 public final class AnimStyleChips {
     private AnimStyleChips() {}
@@ -35,55 +36,112 @@ public final class AnimStyleChips {
     private static final long PREVIEW_WORD_MS = 1400;
     private static final long PREVIEW_PAUSE_MS = 600;
 
-    public interface OnStyleChosen {
-        void onChosen(LyricAnimStyle.Variant variant);
+    public interface OnComboChosen {
+        void onChosen(String motionKey, String effectKey);
     }
 
-    /** Full chips with animated previews (main activity). */
-    public static void buildWithPreviews(Context context, LinearLayout container,
-                                         int selectedStyle, OnStyleChosen callback) {
-        container.removeAllViews();
+    /** Resolves the config a preview should render; re-called every preview cycle. */
+    private interface ConfigSupplier {
+        AnimConfig get();
+    }
+
+    /** Full two-row chips with animated previews (main activity). */
+    public static void buildWithPreviews(Context context, LinearLayout motionRow,
+                                         LinearLayout effectRow, TextView comboLabel,
+                                         AnimSelection.Prefs prefs, OnComboChosen callback) {
+        String motionKey = AnimSelection.motionKey(prefs);
+        String effectKey = AnimSelection.effectKey(prefs);
+        Runnable rebuild = () -> buildWithPreviews(context, motionRow, effectRow,
+                comboLabel, prefs, callback);
+
+        motionRow.removeAllViews();
         // Previews animate past their bounds; keep the container from slicing them.
-        container.setClipChildren(false);
-        container.setClipToPadding(false);
-        for (LyricAnimStyle.Variant variant : LyricAnimStyle.variants()) {
-            container.addView(makePreviewChip(context, container, variant, selectedStyle, callback));
+        motionRow.setClipChildren(false);
+        motionRow.setClipToPadding(false);
+        for (AnimStyleDef def : AnimStyleDef.Registry.motionStyles()) {
+            motionRow.addView(makePreviewChip(context, def, def.key.equals(motionKey),
+                    () -> AnimConfig.combine(def,
+                            AnimStyleDef.Registry.effectByKey(AnimSelection.effectKey(prefs))),
+                    v -> choose(prefs, def.key, null, callback, rebuild)));
+        }
+
+        effectRow.removeAllViews();
+        effectRow.setClipChildren(false);
+        effectRow.setClipToPadding(false);
+        for (AnimStyleDef def : AnimStyleDef.Registry.effectStyles()) {
+            effectRow.addView(makePreviewChip(context, def, def.key.equals(effectKey),
+                    () -> AnimConfig.combine(
+                            AnimStyleDef.Registry.motionByKey(AnimSelection.motionKey(prefs)), def),
+                    v -> choose(prefs, null, def.key, callback, rebuild)));
+        }
+
+        updateComboLabel(comboLabel, motionKey, effectKey);
+    }
+
+    /** Compact text-only two-row chips (overlay settings panel, no combo label). */
+    public static void buildCompact(Context context, LinearLayout motionRow,
+                                    LinearLayout effectRow,
+                                    AnimSelection.Prefs prefs, OnComboChosen callback) {
+        String motionKey = AnimSelection.motionKey(prefs);
+        String effectKey = AnimSelection.effectKey(prefs);
+        Runnable rebuild = () -> buildCompact(context, motionRow, effectRow, prefs, callback);
+
+        motionRow.removeAllViews();
+        for (AnimStyleDef def : AnimStyleDef.Registry.motionStyles()) {
+            motionRow.addView(makeCompactChip(context, def, def.key.equals(motionKey),
+                    v -> choose(prefs, def.key, null, callback, rebuild)));
+        }
+
+        effectRow.removeAllViews();
+        for (AnimStyleDef def : AnimStyleDef.Registry.effectStyles()) {
+            effectRow.addView(makeCompactChip(context, def, def.key.equals(effectKey),
+                    v -> choose(prefs, null, def.key, callback, rebuild)));
         }
     }
 
-    /** Compact text-only chips (overlay settings panel). */
-    public static void buildCompact(Context context, LinearLayout container,
-                                    int selectedStyle, OnStyleChosen callback) {
-        container.removeAllViews();
-        for (LyricAnimStyle.Variant variant : LyricAnimStyle.variants()) {
-            container.addView(makeCompactChip(context, container, variant, selectedStyle, callback));
-        }
-    }
-
-    public static void refresh(LinearLayout container, int selectedStyle) {
-        for (int i = 0; i < container.getChildCount(); i++) {
-            View chip = container.getChildAt(i);
+    /** Re-styles one row's chips against that row's current key (cheap prefs sync). */
+    public static void refresh(LinearLayout row, String currentKey) {
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View chip = row.getChildAt(i);
             Object tag = chip.getTag();
-            if (tag instanceof LyricAnimStyle.Variant) {
-                LyricAnimStyle.Variant v = (LyricAnimStyle.Variant) tag;
-                styleChip(chip, v.id == selectedStyle);
+            if (tag instanceof AnimStyleDef) {
+                styleChip(chip, ((AnimStyleDef) tag).key.equals(currentKey));
             }
         }
     }
 
-    private static View makePreviewChip(Context context, LinearLayout container,
-                                        LyricAnimStyle.Variant variant, int selectedStyle,
-                                        OnStyleChosen callback) {
+    /** Persist the tapped slot, rebuild both rows so previews/selections track it. */
+    private static void choose(AnimSelection.Prefs prefs, String newMotion, String newEffect,
+                               OnComboChosen callback, Runnable rebuild) {
+        String motion = newMotion != null ? newMotion : AnimSelection.motionKey(prefs);
+        String effect = newEffect != null ? newEffect : AnimSelection.effectKey(prefs);
+        AnimSelection.save(prefs, motion, effect);
+        rebuild.run();
+        if (callback != null) callback.onChosen(motion, effect);
+    }
+
+    private static void updateComboLabel(TextView label, String motionKey, String effectKey) {
+        if (label == null) return;
+        AnimStyleDef motion = AnimStyleDef.Registry.motionByKey(motionKey);
+        AnimStyleDef effect = AnimStyleDef.Registry.effectByKey(effectKey);
+        label.setText(effect == AnimStyleDef.Registry.none()
+                ? motion.displayName
+                : motion.displayName + " × " + effect.displayName);
+    }
+
+    private static View makePreviewChip(Context context, AnimStyleDef def, boolean selected,
+                                        ConfigSupplier configSupplier,
+                                        View.OnClickListener onChoose) {
         float density = context.getResources().getDisplayMetrics().density;
 
-        LinearLayout chip = baseChip(context, variant, selectedStyle == variant.id);
+        LinearLayout chip = baseChip(context, def, selected);
         chip.setMinimumWidth(Math.round(76 * density));
         chip.setPadding(Math.round(10 * density), Math.round(10 * density),
                 Math.round(10 * density), Math.round(8 * density));
 
         AppFont.FontPair pair = AppFont.current(context);
         GradientWordView preview = new GradientWordView(context);
-        preview.setAnimStyle(variant.id);
+        preview.setAnimConfig(configSupplier.get());
         preview.setWordIndex(0);
         // The preview is always "the active line" so the Wave ripple is visible.
         preview.setLineActive(true);
@@ -93,43 +151,44 @@ public final class AnimStyleChips {
         chip.addView(preview);
 
         TextView name = new TextView(context);
-        name.setText(variant.displayName);
+        name.setText(def.displayName);
         name.setTextSize(10.5f);
         name.setTextColor(COLOR_TEXT_DIM);
         name.setPadding(0, Math.round(5 * density), 0, 0);
         chip.addView(name);
 
-        attachPreviewLoop(preview, variant.id);
-        wireClick(context, chip, container, variant, callback);
+        attachPreviewLoop(preview, configSupplier);
+        chip.setOnClickListener(onChoose);
+        FontChips.addPressFeedback(chip);
         return chip;
     }
 
-    private static View makeCompactChip(Context context, LinearLayout container,
-                                        LyricAnimStyle.Variant variant, int selectedStyle,
-                                        OnStyleChosen callback) {
+    private static View makeCompactChip(Context context, AnimStyleDef def, boolean selected,
+                                        View.OnClickListener onChoose) {
         float density = context.getResources().getDisplayMetrics().density;
 
-        LinearLayout chip = baseChip(context, variant, selectedStyle == variant.id);
+        LinearLayout chip = baseChip(context, def, selected);
         chip.setPadding(Math.round(11 * density), Math.round(7 * density),
                 Math.round(11 * density), Math.round(7 * density));
 
         TextView name = new TextView(context);
-        name.setText(variant.displayName);
+        name.setText(def.displayName);
         name.setTextSize(11);
-        name.setTextColor(selectedStyle == variant.id ? COLOR_ACCENT : COLOR_TEXT);
+        name.setTextColor(selected ? COLOR_ACCENT : COLOR_TEXT);
         name.setTypeface(Typeface.DEFAULT_BOLD);
         chip.addView(name);
 
-        wireClick(context, chip, container, variant, callback);
+        chip.setOnClickListener(onChoose);
+        FontChips.addPressFeedback(chip);
         return chip;
     }
 
-    private static LinearLayout baseChip(Context context, LyricAnimStyle.Variant variant, boolean selected) {
+    private static LinearLayout baseChip(Context context, AnimStyleDef def, boolean selected) {
         float density = context.getResources().getDisplayMetrics().density;
         LinearLayout chip = new LinearLayout(context);
         chip.setOrientation(LinearLayout.VERTICAL);
         chip.setGravity(Gravity.CENTER);
-        chip.setTag(variant);
+        chip.setTag(def);
         // The live word preview pops past its own bounds; don't slice it.
         chip.setClipChildren(false);
         chip.setClipToPadding(false);
@@ -161,24 +220,13 @@ public final class AnimStyleChips {
         }
     }
 
-    private static void wireClick(Context context, View chip, LinearLayout container,
-                                  LyricAnimStyle.Variant variant, OnStyleChosen callback) {
-        chip.setOnClickListener(v -> {
-            SharedPreferences prefs =
-                    context.getSharedPreferences("lyricsync", Context.MODE_PRIVATE);
-            prefs.edit().putString(LyricAnimStyle.PREF_KEY, variant.key).apply();
-            refresh(container, variant.id);
-            if (callback != null) callback.onChosen(variant);
-        });
-        FontChips.addPressFeedback(chip);
-    }
-
     /**
      * Drives a GradientWordView with a looping fake playback position: the word is
-     * "sung" over PREVIEW_WORD_MS, rests, then restarts. The loop stops when the
-     * view detaches from the window.
+     * "sung" over PREVIEW_WORD_MS, rests, then restarts. The config is re-resolved
+     * every cycle so the preview always shows the chip × the other row's CURRENT
+     * selection. The loop stops when the view detaches from the window.
      */
-    private static void attachPreviewLoop(GradientWordView view, int styleId) {
+    private static void attachPreviewLoop(GradientWordView view, ConfigSupplier configSupplier) {
         Handler handler = new Handler(Looper.getMainLooper());
         final long[] cycleStart = {0};
         final long[] lastTick = {0};
@@ -205,9 +253,9 @@ public final class AnimStyleChips {
                     cycleStart[0] = now;
                     lastTick[0] = now;
                     position = 0;
-                    // Re-arm letter emphasis for the new cycle.
+                    // Re-arm with the freshly resolved combo for the new cycle.
                     view.resetState();
-                    view.setAnimStyle(styleId);
+                    view.setAnimConfig(configSupplier.get());
                     view.setTiming(0, PREVIEW_WORD_MS);
                     view.initLetterEmphasis("Lyric", 0, PREVIEW_WORD_MS);
                 }
