@@ -35,7 +35,7 @@ public class SyllableHighlighter {
     private final float fontSizeSp;
     private final List<LineView> lineViews = new ArrayList<>();
     private boolean syllableMode = true;
-    private int animStyle = LyricAnimStyle.SPRING;
+    private AnimConfig animConfig = LyricAnimStyle.configOf(LyricAnimStyle.SPRING);
 
     public static class LineView {
         public View rootView;
@@ -65,8 +65,14 @@ public class SyllableHighlighter {
         this.syllableMode = syllable;
     }
 
+    public void setAnimConfig(AnimConfig config) {
+        this.animConfig = config;
+    }
+
+    /** @deprecated Legacy flat-style entry point kept for callers not yet migrated. */
+    @Deprecated
     public void setAnimStyle(int style) {
-        this.animStyle = style;
+        setAnimConfig(LyricAnimStyle.configOf(style));
     }
 
     public LineView createLineView(LyricsData.LyricsLine line, LinearLayout.LayoutParams params) {
@@ -138,7 +144,7 @@ public class SyllableHighlighter {
         for (int i = 0; i < line.words.size(); i++) {
             LyricsData.Word word = line.words.get(i);
             GradientWordView wv = new GradientWordView(context);
-            wv.setAnimStyle(animStyle);
+            wv.setAnimConfig(animConfig);
             wv.setWordIndex(i);
             wv.setText(word.text);
             wv.setTiming(word.startTime, word.endTime);
@@ -255,7 +261,7 @@ public class SyllableHighlighter {
     private GradientWordView makeBackgroundWord(String text, long start, long end,
                                                 int index, int count, float bgSizeSp, WordFlowLayout bgFlow) {
         GradientWordView bwv = new GradientWordView(context);
-        bwv.setAnimStyle(animStyle);
+        bwv.setAnimConfig(animConfig);
         bwv.setText(text);
         bwv.setTiming(start, end);
         bwv.setBackgroundMode(true);

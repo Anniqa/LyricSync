@@ -15,3 +15,6 @@ app/build/
 # opencode local config
 opencode.json
 .playwright-mcp/
+
+# superpowers design docs (local only, never publish)
+docs/superpowers/

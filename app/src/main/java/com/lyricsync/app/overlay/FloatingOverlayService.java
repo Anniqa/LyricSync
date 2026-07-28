@@ -47,11 +47,14 @@ import com.lyricsync.app.detection.MediaSessionTracker;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
+import com.lyricsync.app.renderer.AnimConfig;
 import com.lyricsync.app.renderer.LyricAnimStyle;
 import com.lyricsync.app.renderer.SpringScroller;
 import com.lyricsync.app.renderer.SyllableHighlighter;
 import com.lyricsync.app.ui.AlbumPalette;
+import com.lyricsync.app.ui.AndroidPrefs;
 import com.lyricsync.app.ui.Anim;
+import com.lyricsync.app.ui.AnimSelection;
 import com.lyricsync.app.ui.AnimStyleChips;
 import com.lyricsync.app.ui.FontChips;
 import com.lyricsync.app.util.AppFont;
@@ -121,7 +124,7 @@ public class FloatingOverlayService extends Service {
     private int lastActiveLineIndex = -1;
     private Typeface fontBold;
     private Typeface fontMedium;
-    private int lyricAnimStyle = LyricAnimStyle.SPRING;
+    private AnimConfig lyricAnimConfig = LyricAnimStyle.configOf(LyricAnimStyle.SPRING);
     private float overlayFontSizeSp = 13f;
     private int overlayWidthPercent = 88;
     private int lyricsHeightPx = 0;
@@ -148,7 +151,8 @@ public class FloatingOverlayService extends Service {
                 || "overlay_height_percent".equals(key)) {
             handler.removeCallbacks(applySettingsRunnable);
             handler.postDelayed(applySettingsRunnable, 100);
-        } else if (AppFont.PREF_KEY.equals(key) || LyricAnimStyle.PREF_KEY.equals(key)) {
+        } else if (AppFont.PREF_KEY.equals(key) || LyricAnimStyle.PREF_KEY.equals(key)
+                || AnimSelection.PREF_MOTION.equals(key) || AnimSelection.PREF_EFFECT.equals(key)) {
             // Typeface / animation-style changes need a full highlighter rebuild,
             // and the panel chips must reflect choices made in the activity.
             handler.removeCallbacks(applySettingsRunnable);
@@ -159,7 +163,7 @@ public class FloatingOverlayService extends Service {
             }
             if (overlayAnimChips != null) {
                 AnimStyleChips.refresh(overlayAnimChips,
-                        LyricAnimStyle.current(prefs));
+                        LyricAnimStyle.byKey(AnimSelection.motionKey(new AndroidPrefs(prefs))));
             }
         } else if ("sync_offset_ms".equals(key) && sessionTracker != null) {
             long offset = prefs.getLong("sync_offset_ms", 0);
@@ -184,11 +188,11 @@ public class FloatingOverlayService extends Service {
 
         sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
         loadTypefaces();
-        lyricAnimStyle = LyricAnimStyle.current(sharedPrefs);
+        lyricAnimConfig = AnimSelection.current(new AndroidPrefs(sharedPrefs));
 
         overlayFontSizeSp = calculateFontSizeSp();
         highlighter = new SyllableHighlighter(this, fontBold, fontMedium, overlayFontSizeSp);
-        highlighter.setAnimStyle(lyricAnimStyle);
+        highlighter.setAnimConfig(lyricAnimConfig);
         choreographer = Choreographer.getInstance();
         sharedPrefs.registerOnSharedPreferenceChangeListener(settingsListener);
 
@@ -496,12 +500,12 @@ public class FloatingOverlayService extends Service {
         int newWidthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 55, 100);
         int newHeightPercent = clamp(sharedPrefs.getInt("overlay_height_percent", 36), 20, 70);
         float newFontSizeSp = calculateFontSizeSp();
-        int newAnimStyle = LyricAnimStyle.current(sharedPrefs);
+        AnimConfig newAnimConfig = AnimSelection.current(new AndroidPrefs(sharedPrefs));
         Typeface prevBold = fontBold;
         loadTypefaces();
         boolean typefaceChanged = fontBold != prevBold;
-        boolean styleChanged = newAnimStyle != lyricAnimStyle;
-        lyricAnimStyle = newAnimStyle;
+        boolean styleChanged = newAnimConfig != lyricAnimConfig;
+        lyricAnimConfig = newAnimConfig;
 
         boolean fontChanged = Math.abs(newFontSizeSp - overlayFontSizeSp) > 0.05f;
         overlayFontSizeSp = newFontSizeSp;
@@ -535,7 +539,7 @@ public class FloatingOverlayService extends Service {
 
         if (rebuildLyrics && currentLyrics != null && (fontChanged || typefaceChanged || styleChanged)) {
             highlighter = new SyllableHighlighter(this, fontBold, fontMedium, overlayFontSizeSp);
-            highlighter.setAnimStyle(lyricAnimStyle);
+            highlighter.setAnimConfig(lyricAnimConfig);
             renderOverlayLyrics(currentLyrics);
         } else {
             jumpToCurrentLineAfterLayout();
@@ -738,7 +742,7 @@ public class FloatingOverlayService extends Service {
         }
         if (overlayAnimChips != null) {
             AnimStyleChips.buildCompact(this, overlayAnimChips,
-                    LyricAnimStyle.current(sharedPrefs),
+                    LyricAnimStyle.byKey(AnimSelection.motionKey(new AndroidPrefs(sharedPrefs))),
                     variant -> Haptics.tick(overlayAnimChips));
         }
     }

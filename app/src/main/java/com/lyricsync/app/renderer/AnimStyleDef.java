@@ -86,7 +86,9 @@ public final class AnimStyleDef {
         return new Spline(t, val);
     }
 
-    private static final class Builder {
+    // Package-private so the transitional LyricAnimStyle facade can build the four
+    // legacy standalone effect styles with their exact legacy motion values.
+    static final class Builder {
         final String key;
         final String displayName;
         final Category category;

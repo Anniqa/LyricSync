@@ -27,17 +27,21 @@ public class GradientWordView extends TextView {
     private static final double GLOW_FREQ = 1.25;
     private static final double GLOW_DAMP = 0.5;
 
-    // Motion parameters for the default SPRING variant. Other variants swap these
-    // via LyricAnimStyle when setAnimStyle() is called.
-    private Spline scaleSpline = LyricAnimStyle.scaleSpline(LyricAnimStyle.SPRING);
-    private Spline yOffsetSpline = LyricAnimStyle.yOffsetSpline(LyricAnimStyle.SPRING);
-    private Spline glowSplineTable = LyricAnimStyle.glowSpline(LyricAnimStyle.SPRING);
-    private Spline letterScaleSpline = LyricAnimStyle.letterScaleSpline(LyricAnimStyle.SPRING);
-    private Spline letterYOffsetSpline = LyricAnimStyle.letterYOffsetSpline(LyricAnimStyle.SPRING);
-    private boolean springsEnabled = true;
-    private boolean glowEnabled = true;
-    private float glowBoost = 1.0f;
-    private int animStyle = LyricAnimStyle.SPRING;
+    // Motion parameters for the default SPRING variant. setAnimConfig() swaps these
+    // from the resolved motion×effect combination.
+    private AnimConfig animConfig = LyricAnimStyle.configOf(LyricAnimStyle.SPRING);
+    private Spline scaleSpline = animConfig.scaleSpline;
+    private Spline yOffsetSpline = animConfig.yOffsetSpline;
+    private Spline glowSplineTable = animConfig.glowSpline;
+    private Spline letterScaleSpline = animConfig.letterScaleSpline;
+    private Spline letterYOffsetSpline = animConfig.letterYOffsetSpline;
+    private boolean springsEnabled = animConfig.springsEnabled;
+    private boolean glowEnabled = animConfig.glowEnabled;
+    private float glowBoost = animConfig.glowBoost;
+    private boolean letterEmphasisEnabled = animConfig.letterEmphasis;
+    private long letterMinDuration = animConfig.letterMinDuration;
+    private double scaleFreq = animConfig.scaleFreq;
+    private double scaleDamp = animConfig.scaleDamp;
 
     // Letter-level emphasis (SpicyLyrics IsLetterCapable + Emphasize)
     // Min word duration is per-variant (LyricAnimStyle.letterMinDuration): SPRING/
@@ -79,6 +83,9 @@ public class GradientWordView extends TextView {
     private boolean swingStyle;
     private boolean classicStyle;
     private boolean scatterStyle;
+    // Neon-flicker intensity for the current frame, computed once in onDraw so the
+    // word path and the letter path flicker in sync within the same 70ms bucket.
+    private float frameFlicker = 1f;
     private float[] letterScatter;
     private final Paint echoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shimmerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -103,42 +110,45 @@ public class GradientWordView extends TextView {
         glowPaint.setColor(brightColor);
         bloomPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         bloomPaint.setColor(0xFFFFFFFF);
-        scaleSpring = new Spring(0.95,
-                LyricAnimStyle.scaleDamp(animStyle), LyricAnimStyle.scaleFreq(animStyle));
+        scaleSpring = new Spring(0.95, animConfig.scaleDamp, animConfig.scaleFreq);
         yOffsetSpring = new Spring(0, YOFFSET_DAMP, YOFFSET_FREQ);
         glowSpring = new Spring(0, GLOW_DAMP, GLOW_FREQ);
         waveAmpSpring = new Spring(0, 0.60, 1.20);
     }
 
-    /** Switch the animation variant. Safe to call before the view is shown. */
-    public void setAnimStyle(int style) {
-        animStyle = style;
-        scaleSpline = LyricAnimStyle.scaleSpline(style);
-        yOffsetSpline = LyricAnimStyle.yOffsetSpline(style);
-        glowSplineTable = LyricAnimStyle.glowSpline(style);
-        letterScaleSpline = LyricAnimStyle.letterScaleSpline(style);
-        letterYOffsetSpline = LyricAnimStyle.letterYOffsetSpline(style);
-        springsEnabled = LyricAnimStyle.springsEnabled(style);
-        glowEnabled = LyricAnimStyle.glowEnabled(style);
-        glowBoost = LyricAnimStyle.glowBoost(style);
-        waveStyle = LyricAnimStyle.waveEnabled(style);
-        binaryLetters = LyricAnimStyle.binaryLetterReveal(style);
-        echoStyle = LyricAnimStyle.echoEnabled(style);
-        shimmerStyle = LyricAnimStyle.shimmerEnabled(style);
-        flickerStyle = LyricAnimStyle.flickerEnabled(style);
-        swingStyle = LyricAnimStyle.swingEnabled(style);
-        classicStyle = LyricAnimStyle.classicStyle(style);
-        scatterStyle = LyricAnimStyle.scatterEnabled(style);
-        // Re-tune the scale spring for the variant's bounce character.
-        scaleSpring.dampingRatio = LyricAnimStyle.scaleDamp(style);
-        scaleSpring.frequency = LyricAnimStyle.scaleFreq(style);
+    /** Switch the resolved motion×effect combination. Safe to call before show. */
+    public void setAnimConfig(AnimConfig config) {
+        animConfig = config;
+        scaleSpline = config.scaleSpline;
+        yOffsetSpline = config.yOffsetSpline;
+        glowSplineTable = config.glowSpline;
+        letterScaleSpline = config.letterScaleSpline;
+        letterYOffsetSpline = config.letterYOffsetSpline;
+        springsEnabled = config.springsEnabled;
+        glowEnabled = config.glowEnabled;
+        glowBoost = config.glowBoost;
+        letterEmphasisEnabled = config.letterEmphasis;
+        letterMinDuration = config.letterMinDuration;
+        scaleFreq = config.scaleFreq;
+        scaleDamp = config.scaleDamp;
+        waveStyle = config.wave;
+        binaryLetters = config.binaryLetters;
+        echoStyle = config.echo;
+        shimmerStyle = config.shimmer;
+        flickerStyle = config.flicker;
+        swingStyle = config.swing;
+        classicStyle = config.classic;
+        scatterStyle = config.scatter;
+        // Re-tune the scale spring for the combination's bounce character.
+        scaleSpring.dampingRatio = config.scaleDamp;
+        scaleSpring.frequency = config.scaleFreq;
         if (!springsEnabled) {
             // Pin every spring to rest so nothing drifts when updates skip them.
             scaleSpring.set(1.0);
             yOffsetSpring.set(0);
             glowSpring.set(0);
         }
-        if (!LyricAnimStyle.letterEmphasisEnabled(style)) {
+        if (!letterEmphasisEnabled) {
             letterCapable = false;
             letters = null;
             letterScaleSprings = null;
@@ -146,6 +156,12 @@ public class GradientWordView extends TextView {
         }
         cachedTextWidth = -1f;
         invalidate();
+    }
+
+    /** @deprecated Legacy flat-style entry point kept for callers not yet migrated. */
+    @Deprecated
+    public void setAnimStyle(int style) {
+        setAnimConfig(LyricAnimStyle.configOf(style));
     }
 
     public void setTiming(long startTime, long endTime) {
@@ -201,8 +217,8 @@ public class GradientWordView extends TextView {
 
     public void initLetterEmphasis(String wordText, long wordStart, long wordEnd) {
         long duration = wordEnd - wordStart - LETTER_SUBSTRACT_START - LETTER_SUBSTRACT_END;
-        if (!LyricAnimStyle.letterEmphasisEnabled(animStyle)
-                || !isLetterCapable(wordText.length(), duration, animStyle)) {
+        if (!letterEmphasisEnabled
+                || !isLetterCapable(wordText.length(), duration)) {
             letterCapable = false;
             return;
         }
@@ -223,8 +239,7 @@ public class GradientWordView extends TextView {
             letterStartTimes[i] = adjStart + i * letterDur;
             letterEndTimes[i] = letterStartTimes[i] + letterDur;
             letterProgress[i] = 0f;
-            letterScaleSprings[i] = new Spring(LETTER_IDLE_SCALE,
-                    LyricAnimStyle.scaleDamp(animStyle), LyricAnimStyle.scaleFreq(animStyle));
+            letterScaleSprings[i] = new Spring(LETTER_IDLE_SCALE, scaleDamp, scaleFreq);
             letterGlowSprings[i] = new Spring(0, GLOW_DAMP, GLOW_FREQ);
         }
 
@@ -242,11 +257,11 @@ public class GradientWordView extends TextView {
         }
     }
 
-    private static boolean isLetterCapable(int letterCount, long duration, int style) {
+    private boolean isLetterCapable(int letterCount, long duration) {
         // SpicyLyrics non-SLM IsLetterCapable: no letter count limit; the duration
         // threshold is per-variant (TYPEWRITER: none — it must strike every word).
         if (letterCount <= 0) return false;
-        return duration >= LyricAnimStyle.letterMinDuration(style);
+        return duration >= letterMinDuration;
     }
 
     private static String[] splitLetters(String text) {
@@ -286,6 +301,18 @@ public class GradientWordView extends TextView {
         }
         float glowAlpha = (float) Math.max(0, Math.min(glowSpring.position, 1));
 
+        // FLICKER: neon-sign sputter. Deterministic per 70ms bucket so every frame in
+        // the same bucket agrees; occasional deep dips sell the failing-tube feel.
+        frameFlicker = 1f;
+        if (flickerStyle && progress > 0f && progress < 1f) {
+            double bucket = Math.floor(lastPositionMs / 70.0) + wordIndex * 31.0;
+            double h = Math.sin(bucket * 12.9898 + 4.1414) * 43758.5453;
+            double frac = h - Math.floor(h);
+            frameFlicker = (frac < 0.14) ? 0.35f + 0.5f * (float) (frac / 0.14)
+                    : 0.85f + 0.15f * (float) frac;
+        }
+        glowAlpha *= frameFlicker;
+
         canvas.save();
         canvas.translate(0, yOffset);
         if (scale != 1f) {
@@ -322,23 +349,15 @@ public class GradientWordView extends TextView {
         float shaderW = Math.max(1f, cachedTextWidth);
         float baseline = getBaseline();
 
-        // CLASSIC: old-school karaoke. No sweep, no glow — the whole word flips
-        // dim -> bright the instant it starts being sung.
+        // CLASSIC: old-school karaoke. No sweep — the whole word flips dim -> bright
+        // the instant it starts being sung. Falls through to drawEffects below so
+        // Classic × Echo/Shimmer combos still get their overlay.
         if (classicStyle) {
             getPaint().setShader(null);
             getPaint().setColor(progress > 0f ? brightColor : dimColor);
             canvas.drawText(text, drawX, baseline, getPaint());
+            drawEffects(canvas, text, drawX, baseline, shaderW, p);
             return;
-        }
-
-        // FLICKER: neon-sign sputter. Deterministic per 70ms bucket so every frame in
-        // the same bucket agrees; occasional deep dips sell the failing-tube feel.
-        if (flickerStyle && progress > 0f && progress < 1f) {
-            double bucket = Math.floor(lastPositionMs / 70.0) + wordIndex * 31.0;
-            double h = Math.sin(bucket * 12.9898 + 4.1414) * 43758.5453;
-            double frac = h - Math.floor(h);
-            glowAlpha *= (frac < 0.14) ? 0.35f + 0.5f * (float) (frac / 0.14)
-                    : 0.85f + 0.15f * (float) frac;
         }
 
         // Soft bloom halo around the sung text — a genuine light-glow, drawn via a text
@@ -375,6 +394,14 @@ public class GradientWordView extends TextView {
         getPaint().setShader(shader);
         canvas.drawText(text, drawX, baseline, getPaint());
 
+        drawEffects(canvas, text, drawX, baseline, shaderW, p);
+    }
+
+    /** Effect overlays (Echo ghosts, Shimmer band) drawn over the just-filled word.
+     *  Called from both the word-gradient and the letter-emphasis paths so combos
+     *  work identically whichever motion path renders the fill. */
+    private void drawEffects(Canvas canvas, String text, float drawX, float baseline,
+                             float shaderW, float p) {
         // ECHO: two fading ghost copies trailing above the active word, like reverb.
         // Drawn after the main text so they read as afterimages of the sung edge.
         if (echoStyle && progress > 0f && progress < 1f && !backgroundMode) {
@@ -464,7 +491,8 @@ public class GradientWordView extends TextView {
             }
 
             float lScale = (float) letterScaleSprings[i].position;
-            float lGlow = (float) Math.max(0, Math.min(letterGlowSprings[i].position, 1));
+            float lGlow = (float) Math.max(0, Math.min(letterGlowSprings[i].position, 1))
+                    * frameFlicker;
             // Per-letter vertical wave: the active letter lifts, neighbours follow with falloff.
             float lYOffset = 0f;
 
@@ -520,6 +548,9 @@ public class GradientWordView extends TextView {
             canvas.restore();
             cursor += letterW;
         }
+
+        // Effect overlays ride over the letter fill too (combo feature).
+        drawEffects(canvas, getText().toString(), startX, baseline, totalTextW, p);
     }
 
     public void updateState(long position, double deltaTime) {
