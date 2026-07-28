@@ -506,12 +506,16 @@ public class GradientWordView extends TextView {
         // SPARKLE: up to six tiny four-point stars popping along the sung word.
         // Positions are deterministic from the word seed; the line buffer is
         // reused, so this costs at most 6 small line-draws with zero allocation.
+        // Clipped to the already-sung region (same as Shimmer) so the bright
+        // stars never twinkle over the dimmed upcoming lyric.
         if (sparkleStyle && progress > 0f && progress < 0.85f && !backgroundMode) {
             float ts = sparklePaint.getTextSize();
             sparklePaint.setStyle(Paint.Style.STROKE);
             sparklePaint.setStrokeWidth(Math.max(1f, ts * 0.02f));
             sparklePaint.setStrokeCap(Paint.Cap.ROUND);
             int seed = wordIndex * 31 + text.length() * 7;
+            canvas.save();
+            canvas.clipRect(drawX, 0, drawX + Math.max(0f, p) * shaderW + 2f, getHeight());
             for (int i = 0; i < 6; i++) {
                 float lp = (progress - i * 0.09f) / 0.30f;
                 if (lp <= 0f || lp >= 1f) continue;
@@ -519,7 +523,7 @@ public class GradientWordView extends TextView {
                 float hy = baseline - ts * (0.15f + 0.45f * hash01(seed + i + 100))
                         - lp * 0.25f * ts;
                 float r = ts * 0.06f * (1f - 0.5f * lp);
-                int alpha = Math.round((1f - lp) * 0.90f * 255f);
+                int alpha = Math.round((1f - lp) * 0.70f * 255f);
                 sparklePaint.setColor((alpha << 24) | 0x00FFFFFF);
                 sparkleLines[0] = hx - r; sparkleLines[1] = hy;
                 sparkleLines[2] = hx + r; sparkleLines[3] = hy;
@@ -527,6 +531,7 @@ public class GradientWordView extends TextView {
                 sparkleLines[6] = hx;     sparkleLines[7] = hy + r;
                 canvas.drawLines(sparkleLines, sparklePaint);
             }
+            canvas.restore();
             sparklePaint.setStyle(Paint.Style.FILL);
         }
     }
