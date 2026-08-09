@@ -1,8 +1,10 @@
+
+
 # LyricSync
 
 Floating synced lyrics on top of whatever you're playing.
 
-It reads what's playing from the media notification (Spotify, YT Music, etc.), pulls the lyrics, and shows them in a draggable overlay that highlights word-by-word as the song goes. Word-level timing comes from SpicyLyrics when the track has it, otherwise it falls back to line-synced lyrics from Netease or LRCLIB.
+It detects what's playing via MediaSessionManager (using Notification Access for system compatibility), pulls the lyrics, and shows them in a draggable overlay that highlights word-by-word as the song goes. Word-level timing comes from SpicyLyrics when the track has it, otherwise it falls back to line-synced lyrics from Netease or LRCLIB.
 
 ## Preview
 
