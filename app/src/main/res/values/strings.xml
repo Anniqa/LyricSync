@@ -80,6 +80,8 @@
     <string name="cd_play_pause">Play or pause</string>
     <string name="cd_next">Next track</string>
     <string name="cd_expand_section">Expand section</string>
+    <string name="cd_resize">Ubah ukuran</string>
+    <string name="overlay_resize_title">Handle Resize</string>
 
     <!-- Notification -->
     <string name="notif_active">Lyrics overlay active</string>

@@ -130,6 +130,10 @@ public class FloatingOverlayService extends Service {
     private int overlayWidthPercent = 88;
     private int lyricsHeightPx = 0;
     private boolean lyricsVisible = true;
+    private View overlayResizeContainer;
+    private ImageView overlayResizeHandle;
+    private androidx.appcompat.widget.SwitchCompat overlayResizeSwitch;
+    private boolean showResizeHandle = false;
     private com.lyricsync.app.lyrics.translation.GoogleTranslateService translateService;
     private androidx.appcompat.widget.SwitchCompat overlayTranslateSwitch;
     private boolean translationEnabled = false;
@@ -195,6 +199,15 @@ public class FloatingOverlayService extends Service {
         } else if (com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG.equals(key)) {
             if (translationEnabled && currentLyrics != null) {
                 fetchTranslationForCurrentLyrics();
+            }
+        } else if ("overlay_show_resize_handle".equals(key)) {
+            boolean show = prefs.getBoolean(key, false);
+            if (this.showResizeHandle != show) {
+                this.showResizeHandle = show;
+                if (overlayResizeSwitch != null) {
+                    overlayResizeSwitch.setChecked(show);
+                }
+                updateResizeHandleVisibility();
             }
         }
     };
@@ -318,6 +331,21 @@ public class FloatingOverlayService extends Service {
                 }
             });
         }
+        overlayResizeContainer = overlayView.findViewById(R.id.overlay_resize_container);
+        overlayResizeHandle = overlayView.findViewById(R.id.overlay_resize_handle);
+        overlayResizeSwitch = overlayView.findViewById(R.id.overlay_resize_switch);
+        showResizeHandle = sharedPrefs.getBoolean("overlay_show_resize_handle", false);
+        if (overlayResizeSwitch != null) {
+            overlayResizeSwitch.setShowText(false);
+            overlayResizeSwitch.setTextOn("");
+            overlayResizeSwitch.setTextOff("");
+            overlayResizeSwitch.setChecked(showResizeHandle);
+            overlayResizeSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
+                showResizeHandle = isChecked;
+                sharedPrefs.edit().putBoolean("overlay_show_resize_handle", isChecked).apply();
+                updateResizeHandleVisibility();
+            });
+        }
         lyricsContainer = overlayView.findViewById(R.id.overlay_lyrics_container);
         // Word/letter springs and the glow bloom overshoot view bounds; clipping at
         // the container would slice glyphs mid-animation ("cut letters").
@@ -392,6 +420,8 @@ public class FloatingOverlayService extends Service {
         overlayParams = params;
 
         setupDragging(params);
+        setupResizeHandling();
+        updateResizeHandleVisibility();
 
         try {
             windowManager.addView(overlayView, params);
@@ -673,6 +703,7 @@ public class FloatingOverlayService extends Service {
         }
         Anim.rotateTo(overlayToggle, visible ? 0f : 180f);
         overlayToggle.setAlpha(visible ? 1.0f : 0.65f);
+        updateResizeHandleVisibility();
 
         if (animate) {
             animateBody(visible);
@@ -759,6 +790,7 @@ public class FloatingOverlayService extends Service {
                 updatePlayPauseIcon();
             }
             Anim.rotateTo(overlaySettings, visible ? 0f : 90f);
+            updateResizeHandleVisibility(!visible);
         });
 
         SeekBars.bind(overlaySyncOffsetSlider, saved + SYNC_LIMIT_MS, (progress, fromUser) -> {
@@ -887,6 +919,110 @@ public class FloatingOverlayService extends Service {
                 .putInt("overlay_x", params.x)
                 .putInt("overlay_y", params.y)
                 .apply();
+    }
+
+    // ── Resizing ───────────────────────────────────────────────────────────
+
+    private void updateResizeHandleVisibility() {
+        boolean settingsOpen = overlaySettingsPanel != null && overlaySettingsPanel.getVisibility() == View.VISIBLE;
+        updateResizeHandleVisibility(settingsOpen);
+    }
+
+    private void updateResizeHandleVisibility(boolean settingsOpen) {
+        if (overlayResizeContainer == null) return;
+        boolean shouldShow = (showResizeHandle || settingsOpen) && lyricsVisible;
+        overlayResizeContainer.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
+    }
+
+    private void setupResizeHandling() {
+        if (overlayResizeHandle == null) return;
+
+        final DisplayMetrics metrics = getResources().getDisplayMetrics();
+        final float[] initialRawX = new float[1];
+        final float[] initialRawY = new float[1];
+        final int[] initialWidth = new int[1];
+        final int[] initialHeight = new int[1];
+        final int[] initialParamX = new int[1];
+        final boolean[] isResizing = new boolean[1];
+        final int touchSlop = dpToPx(6);
+
+        overlayResizeHandle.setOnTouchListener((v, event) -> {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    initialRawX[0] = event.getRawX();
+                    initialRawY[0] = event.getRawY();
+                    initialWidth[0] = overlayParams != null ? overlayParams.width : overlayView.getWidth();
+                    initialHeight[0] = overlayBody != null && overlayBody.getHeight() > 0
+                            ? overlayBody.getHeight() : lyricsHeightPx;
+                    initialParamX[0] = overlayParams != null ? overlayParams.x : 0;
+                    isResizing[0] = false;
+                    Haptics.tick(v);
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getRawX() - initialRawX[0];
+                    float dy = event.getRawY() - initialRawY[0];
+                    if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
+                        isResizing[0] = true;
+                    }
+                    if (isResizing[0] && overlayParams != null && windowManager != null) {
+                        int minWidth = dpToPx(220);
+                        int maxWidth = Math.max(minWidth, (int) (metrics.widthPixels * 0.96f));
+                        int targetWidth = (int) (initialWidth[0] + dx);
+                        int clampedWidth = Math.max(minWidth, Math.min(maxWidth, targetWidth));
+
+                        int widthDelta = clampedWidth - initialWidth[0];
+                        overlayParams.width = clampedWidth;
+                        overlayParams.x = initialParamX[0] + (widthDelta / 2);
+                        clampOverlayPosition(overlayParams);
+
+                        if (overlayBody != null && lyricsVisible) {
+                            int minHeight = dpToPx(140);
+                            int maxHeight = Math.max(minHeight, (int) (metrics.heightPixels * 0.70f));
+                            int targetHeight = (int) (initialHeight[0] + dy);
+                            int clampedHeight = Math.max(minHeight, Math.min(maxHeight, targetHeight));
+
+                            ViewGroup.LayoutParams bodyParams = overlayBody.getLayoutParams();
+                            bodyParams.height = clampedHeight;
+                            overlayBody.setLayoutParams(bodyParams);
+                            lyricsHeightPx = clampedHeight;
+                        }
+
+                        try {
+                            windowManager.updateViewLayout(overlayView, overlayParams);
+                        } catch (Exception e) {
+                            AppLog.w(TAG, "Resize updateViewLayout failed: " + e.getMessage());
+                        }
+                        return true;
+                    }
+                    return false;
+
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (isResizing[0] && overlayParams != null) {
+                        int widthPct = Math.round((float) overlayParams.width * 100f / metrics.widthPixels);
+                        int heightPct = Math.round((float) lyricsHeightPx * 100f / metrics.heightPixels);
+                        widthPct = clamp(widthPct, 45, 96);
+                        heightPct = clamp(heightPct, 20, 70);
+
+                        overlayWidthPercent = widthPct;
+                        sharedPrefs.edit()
+                                .putInt("overlay_width_percent", widthPct)
+                                .putInt("overlay_height_percent", heightPct)
+                                .apply();
+
+                        persistOverlayPosition(overlayParams);
+                        applyResponsiveHeaderSizing();
+                        applyResponsiveLyricsSpacing();
+                        if (springScroller != null) {
+                            springScroller.setScrollPositionRatio(calculateScrollPositionRatio());
+                        }
+                        Haptics.snap(v);
+                    }
+                    return isResizing[0];
+            }
+            return false;
+        });
     }
 
     // ── Tracking ───────────────────────────────────────────────────────────

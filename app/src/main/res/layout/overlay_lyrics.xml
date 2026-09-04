@@ -258,6 +258,41 @@
                 app:showText="false" />
         </LinearLayout>
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_resize_grip"
+                app:tint="@color/accent"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="@string/overlay_resize_title"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/overlay_resize_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textOn=""
+                android:textOff=""
+                android:showText="false"
+                app:showText="false" />
+        </LinearLayout>
+
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
@@ -426,5 +461,26 @@
                 android:gravity="center"
                 android:layout_marginTop="3dp" />
         </LinearLayout>
+    </FrameLayout>
+
+    <!-- ── Resize handle at bottom-right ───────────────────────────── -->
+    <FrameLayout
+        android:id="@+id/overlay_resize_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/overlay_resize_handle"
+            android:layout_width="38dp"
+            android:layout_height="28dp"
+            android:layout_gravity="bottom|end"
+            android:paddingStart="12dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="2dp"
+            android:paddingBottom="2dp"
+            android:src="@drawable/ic_resize_grip"
+            app:tint="@color/accent"
+            android:contentDescription="@string/cd_resize" />
     </FrameLayout>
 </LinearLayout>
