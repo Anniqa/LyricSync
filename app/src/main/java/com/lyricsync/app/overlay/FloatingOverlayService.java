@@ -132,6 +132,7 @@ public class FloatingOverlayService extends Service {
     private com.lyricsync.app.lyrics.translation.GoogleTranslateService translateService;
     private androidx.appcompat.widget.SwitchCompat overlayTranslateSwitch;
     private boolean translationEnabled = false;
+    private SyllableHighlighter highlighter;
 
     // Album-derived colouring
     private final ArgbEvaluator argb = new ArgbEvaluator();
@@ -197,7 +198,6 @@ public class FloatingOverlayService extends Service {
         }
     };
 
-    private SyllableHighlighter highlighter;
     private final List<SyllableHighlighter.LineView> lineViews = new ArrayList<>();
     private SpringScroller springScroller;
 
