@@ -7,6 +7,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.ui.Anim;
@@ -52,6 +53,7 @@ public class SyllableHighlighter {
         public float lastProgress = -1f;
         /** Line-level scale spring: the active line grows a touch, others rest at 1. */
         public Spring lineScale;
+        public TextView translationView;
     }
 
     public SyllableHighlighter(Context context, Typeface fontBold, Typeface fontMedium, float fontSizeSp) {
@@ -67,6 +69,44 @@ public class SyllableHighlighter {
 
     public void setAnimConfig(AnimConfig config) {
         this.animConfig = config;
+    }
+
+    private boolean translationEnabled = false;
+
+    public void setTranslationEnabled(boolean enabled) {
+        this.translationEnabled = enabled;
+        for (LineView lv : lineViews) {
+            if (lv.translationView != null) {
+                boolean hasText = lv.line != null && lv.line.translation != null && !lv.line.translation.trim().isEmpty();
+                lv.translationView.setVisibility(enabled && hasText ? View.VISIBLE : View.GONE);
+            }
+        }
+    }
+
+    public void updateLineTranslation(int index, String translation) {
+        if (index < 0 || index >= lineViews.size()) return;
+        LineView lv = lineViews.get(index);
+        if (lv.translationView != null) {
+            lv.translationView.setText(translation != null ? translation : "");
+            boolean hasText = translation != null && !translation.trim().isEmpty();
+            lv.translationView.setVisibility(translationEnabled && hasText ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private TextView createTranslationTextView(LyricsData.LyricsLine line) {
+        if (line.isInterlude) return null;
+        TextView tv = new TextView(context);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp * 0.72f);
+        tv.setTypeface(fontMedium);
+        tv.setTextColor(INACTIVE_COLOR);
+        tv.setLineSpacing(0, 1.15f);
+        tv.setPadding(0, dpToPx(2), 0, dpToPx(2));
+        boolean hasText = line.translation != null && !line.translation.trim().isEmpty();
+        if (hasText) {
+            tv.setText(line.translation);
+        }
+        tv.setVisibility(translationEnabled && hasText ? View.VISIBLE : View.GONE);
+        return tv;
     }
 
     public LineView createLineView(LyricsData.LyricsLine line, LinearLayout.LayoutParams params) {
@@ -187,6 +227,12 @@ public class SyllableHighlighter {
             }
         }
 
+        TextView tv = createTranslationTextView(line);
+        if (tv != null) {
+            container.addView(tv);
+            lv.translationView = tv;
+        }
+
         return container;
     }
 
@@ -230,6 +276,12 @@ public class SyllableHighlighter {
                 lv.backgroundWordViews.add(bgWords);
                 lv.bgWordLastActive.add(bgActive);
             }
+        }
+
+        TextView tv = createTranslationTextView(line);
+        if (tv != null) {
+            container.addView(tv);
+            lv.translationView = tv;
         }
 
         return container;
@@ -409,6 +461,9 @@ public class SyllableHighlighter {
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, ACTIVE_COLOR, fontBold);
                 }
+                if (lv.translationView != null) {
+                    lv.translationView.setTextColor(ACTIVE_COLOR);
+                }
                 playWordCascade(lv, position);
             } else if (isPast) {
                 // Hardware layers buffer at view bounds and would slice the
@@ -421,10 +476,16 @@ public class SyllableHighlighter {
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, PAST_COLOR, fontBold);
                 }
+                if (lv.translationView != null) {
+                    lv.translationView.setTextColor(PAST_COLOR);
+                }
             } else {
                 animateLineAlpha(lv, 0.42f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
+                }
+                if (lv.translationView != null) {
+                    lv.translationView.setTextColor(INACTIVE_COLOR);
                 }
             }
         }
@@ -441,6 +502,9 @@ public class SyllableHighlighter {
                 gv.setTypeface(fontBold);
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(ACTIVE_COLOR);
+                if (lv.translationView != null) {
+                    lv.translationView.setTextColor(ACTIVE_COLOR);
+                }
                 // Whole-line rise, the per-line counterpart of the word cascade.
                 lv.rootView.animate().cancel();
                 lv.rootView.setTranslationY(dpToPx(8));
@@ -461,12 +525,18 @@ public class SyllableHighlighter {
                 gv.setTypeface(fontBold);
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(PAST_COLOR);
+                if (lv.translationView != null) {
+                    lv.translationView.setTextColor(PAST_COLOR);
+                }
                 gv.setProgress(100f);
                 animateLineAlpha(lv, 0.82f);
             } else {
                 gv.setTypeface(fontBold);
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(INACTIVE_COLOR);
+                if (lv.translationView != null) {
+                    lv.translationView.setTextColor(INACTIVE_COLOR);
+                }
                 gv.setProgress(0f);
                 animateLineAlpha(lv, 0.42f);
             }
