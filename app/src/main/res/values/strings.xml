@@ -27,15 +27,17 @@
     <string name="nothing_playing_desc">Start a song in any music app</string>
 
     <!-- Appearance -->
-    <string name="appearance_title">Appearance</string>
+    <string name="appearance_title">Typography &amp; Effects</string>
     <string name="font_size">Font size</string>
     <string name="font_family_label">Lyrics font</string>
     <string name="anim_style_label">Lyrics animation</string>
-    <string name="anim_motion_label">Gerakan</string>
-    <string name="anim_effect_label">Efek</string>
+    <string name="anim_motion_label">Motion</string>
+    <string name="anim_effect_label">Visual Effect</string>
+    <string name="overlay_dimensions_title">Overlay Dimensions</string>
     <string name="overlay_size">Overlay size</string>
     <string name="overlay_width">Width</string>
     <string name="overlay_height">Height</string>
+    <string name="overlay_resize_tip">Drag the handle at the bottom-right corner of the overlay to resize freely.</string>
 
     <!-- Overlay settings sections -->
     <string name="section_playback">PLAYBACK</string>
@@ -52,9 +54,9 @@
     <string name="in_sync">in sync</string>
 
     <!-- Translation -->
-    <string name="lyrics_translation_title">Terjemahan Lirik</string>
-    <string name="lyrics_translation_desc">Tampilkan subtitle terjemahan di bawah lirik</string>
-    <string name="lyrics_translation_target">Bahasa Target</string>
+    <string name="lyrics_translation_title">Lyrics Translation</string>
+    <string name="lyrics_translation_desc">Display translated subtitles under synced lyrics</string>
+    <string name="lyrics_translation_target">Target Language</string>
 
     <!-- Developer -->
     <string name="developer_title">Developer</string>
@@ -80,8 +82,8 @@
     <string name="cd_play_pause">Play or pause</string>
     <string name="cd_next">Next track</string>
     <string name="cd_expand_section">Expand section</string>
-    <string name="cd_resize">Ubah ukuran</string>
-    <string name="overlay_resize_title">Handle Resize</string>
+    <string name="cd_resize">Resize overlay</string>
+    <string name="overlay_resize_title">Resize Handle</string>
 
     <!-- Notification -->
     <string name="notif_active">Lyrics overlay active</string>

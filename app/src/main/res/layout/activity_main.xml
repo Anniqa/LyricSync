@@ -9,7 +9,7 @@
     <View
         android:id="@+id/hero_glow"
         android:layout_width="match_parent"
-        android:layout_height="320dp"
+        android:layout_height="340dp"
         android:layout_gravity="top"
         android:background="@drawable/bg_hero_glow" />
 
@@ -29,7 +29,7 @@
             android:orientation="vertical"
             android:paddingStart="@dimen/screen_padding"
             android:paddingEnd="@dimen/screen_padding"
-            android:paddingBottom="32dp">
+            android:paddingBottom="36dp">
 
             <!-- ── Header ────────────────────────────────────────────── -->
             <LinearLayout
@@ -38,7 +38,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:layout_marginTop="28dp"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="20dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -65,7 +65,8 @@
                 android:id="@+id/card_now_playing"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -75,9 +76,9 @@
                     android:padding="16dp">
 
                     <com.google.android.material.card.MaterialCardView
-                        android:layout_width="58dp"
-                        android:layout_height="58dp"
-                        app:cardCornerRadius="14dp"
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        app:cardCornerRadius="16dp"
                         app:cardElevation="0dp"
                         app:cardBackgroundColor="#1FFFFFFF"
                         app:strokeWidth="0dp">
@@ -95,7 +96,7 @@
                             android:layout_height="26dp"
                             android:layout_gravity="center"
                             android:src="@drawable/ic_music_note"
-                            android:tint="@color/text_faint"
+                            app:tint="@color/text_faint"
                             android:contentDescription="@null" />
                     </com.google.android.material.card.MaterialCardView>
 
@@ -183,7 +184,8 @@
                 android:id="@+id/card_permissions"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -191,29 +193,12 @@
                     android:orientation="vertical"
                     android:padding="@dimen/card_padding">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/permissions_title"
-                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
-
-                    <TextView
-                        android:id="@+id/permissions_summary"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/permissions_needed"
-                        android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="10dp" />
-
                     <LinearLayout
-                        android:id="@+id/btn_notification_access"
+                        android:id="@+id/permissions_header"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:padding="@dimen/row_padding"
-                        android:background="@drawable/ripple_row"
                         android:clickable="true"
                         android:focusable="true">
 
@@ -221,133 +206,200 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:paddingEnd="10dp"
-                            android:paddingStart="0dp">
+                            android:orientation="vertical">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="@string/notification_access"
-                                android:textColor="@color/text_primary"
-                                android:textSize="15sp" />
+                                android:text="@string/permissions_title"
+                                android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
 
                             <TextView
+                                android:id="@+id/permissions_summary"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="@string/notification_access_desc"
+                                android:text="@string/permissions_needed"
                                 android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                                android:layout_marginTop="1dp" />
+                                android:layout_marginTop="2dp" />
                         </LinearLayout>
 
-                        <LinearLayout
-                            android:id="@+id/notification_pill"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:background="@drawable/bg_pill_warn"
-                            android:paddingStart="9dp"
-                            android:paddingEnd="11dp"
-                            android:paddingTop="5dp"
-                            android:paddingBottom="5dp">
-
-                            <ImageView
-                                android:id="@+id/notification_pill_icon"
-                                android:layout_width="13dp"
-                                android:layout_height="13dp"
-                                android:src="@drawable/ic_alert"
-                                android:tint="@color/state_warn"
-                                android:contentDescription="@null" />
-
-                            <TextView
-                                android:id="@+id/notification_status"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/disabled"
-                                android:textColor="@color/state_warn"
-                                android:textSize="12sp"
-                                android:textStyle="bold"
-                                android:layout_marginStart="5dp" />
-                        </LinearLayout>
+                        <ImageView
+                            android:id="@+id/permissions_chevron"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:src="@drawable/ic_chevron_down"
+                            app:tint="@color/text_dim"
+                            android:contentDescription="@string/cd_expand_section" />
                     </LinearLayout>
 
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="@dimen/row_padding"
-                        android:layout_marginEnd="@dimen/row_padding"
-                        android:background="@color/divider" />
-
                     <LinearLayout
-                        android:id="@+id/btn_overlay_permission"
+                        android:id="@+id/permissions_content"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:padding="@dimen/row_padding"
-                        android:background="@drawable/ripple_row"
-                        android:clickable="true"
-                        android:focusable="true">
+                        android:orientation="vertical"
+                        android:layout_marginTop="10dp">
 
                         <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:paddingEnd="10dp"
-                            android:paddingStart="0dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/overlay_permission"
-                                android:textColor="@color/text_primary"
-                                android:textSize="15sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/overlay_permission_desc"
-                                android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                                android:layout_marginTop="1dp" />
-                        </LinearLayout>
-
-                        <LinearLayout
-                            android:id="@+id/overlay_pill"
-                            android:layout_width="wrap_content"
+                            android:id="@+id/btn_notification_access"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:gravity="center_vertical"
-                            android:background="@drawable/bg_pill_warn"
-                            android:paddingStart="9dp"
-                            android:paddingEnd="11dp"
-                            android:paddingTop="5dp"
-                            android:paddingBottom="5dp">
+                            android:padding="@dimen/row_padding"
+                            android:background="@drawable/ripple_row"
+                            android:clickable="true"
+                            android:focusable="true">
 
-                            <ImageView
-                                android:id="@+id/overlay_pill_icon"
-                                android:layout_width="13dp"
-                                android:layout_height="13dp"
-                                android:src="@drawable/ic_alert"
-                                android:tint="@color/state_warn"
-                                android:contentDescription="@null" />
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:paddingEnd="10dp"
+                                android:paddingStart="0dp">
 
-                            <TextView
-                                android:id="@+id/overlay_status"
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/notification_access"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="14sp" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/notification_access_desc"
+                                    android:textAppearance="@style/TextAppearance.LyricSync.Hint"
+                                    android:layout_marginTop="1dp" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:id="@+id/notification_pill"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="@string/disabled"
-                                android:textColor="@color/state_warn"
-                                android:textSize="12sp"
-                                android:textStyle="bold"
-                                android:layout_marginStart="5dp" />
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:background="@drawable/bg_pill_warn"
+                                android:paddingStart="9dp"
+                                android:paddingEnd="11dp"
+                                android:paddingTop="5dp"
+                                android:paddingBottom="5dp">
+
+                                <ImageView
+                                    android:id="@+id/notification_pill_icon"
+                                    android:layout_width="13dp"
+                                    android:layout_height="13dp"
+                                    android:src="@drawable/ic_alert"
+                                    app:tint="@color/state_warn"
+                                    android:contentDescription="@null" />
+
+                                <TextView
+                                    android:id="@+id/notification_status"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/disabled"
+                                    android:textColor="@color/state_warn"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold"
+                                    android:layout_marginStart="5dp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginStart="@dimen/row_padding"
+                            android:layout_marginEnd="@dimen/row_padding"
+                            android:background="@color/divider" />
+
+                        <LinearLayout
+                            android:id="@+id/btn_overlay_permission"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:padding="@dimen/row_padding"
+                            android:background="@drawable/ripple_row"
+                            android:clickable="true"
+                            android:focusable="true">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:paddingEnd="10dp"
+                                android:paddingStart="0dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/overlay_permission"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="14sp" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/overlay_permission_desc"
+                                    android:textAppearance="@style/TextAppearance.LyricSync.Hint"
+                                    android:layout_marginTop="1dp" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:id="@+id/overlay_pill"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:background="@drawable/bg_pill_warn"
+                                android:paddingStart="9dp"
+                                android:paddingEnd="11dp"
+                                android:paddingTop="5dp"
+                                android:paddingBottom="5dp">
+
+                                <ImageView
+                                    android:id="@+id/overlay_pill_icon"
+                                    android:layout_width="13dp"
+                                    android:layout_height="13dp"
+                                    android:src="@drawable/ic_alert"
+                                    app:tint="@color/state_warn"
+                                    android:contentDescription="@null" />
+
+                                <TextView
+                                    android:id="@+id/overlay_status"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/disabled"
+                                    android:textColor="@color/state_warn"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold"
+                                    android:layout_marginStart="5dp" />
+                            </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- ── Appearance ────────────────────────────────────────── -->
+            <!-- ── Primary Action (Prominent Hero Button) ─────────────── -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_start"
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:text="@string/start"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.02"
+                android:backgroundTint="@color/accent"
+                android:textColor="@color/black"
+                android:layout_marginBottom="16dp"
+                app:cornerRadius="20dp"
+                app:icon="@drawable/ic_play"
+                app:iconGravity="textStart"
+                app:iconPadding="10dp"
+                app:iconTint="@color/black" />
+
+            <!-- ── Typography & Animation Card ────────────────────────── -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/card_appearance"
                 style="@style/Widget.LyricSync.Card"
@@ -372,7 +424,8 @@
                         android:layout_height="wrap_content"
                         android:text="@string/font_family_label"
                         android:textColor="@color/text_secondary"
-                        android:textSize="14sp"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
 
                     <HorizontalScrollView
@@ -394,7 +447,8 @@
                         android:layout_height="wrap_content"
                         android:text="@string/anim_style_label"
                         android:textColor="@color/text_secondary"
-                        android:textSize="14sp"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
                         android:layout_marginBottom="4dp" />
 
                     <TextView
@@ -409,7 +463,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/anim_motion_label"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="@color/text_dim"
                         android:textSize="12sp"
                         android:layout_marginBottom="6dp" />
 
@@ -431,7 +485,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/anim_effect_label"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="@color/text_dim"
                         android:textSize="12sp"
                         android:layout_marginBottom="6dp" />
 
@@ -461,7 +515,8 @@
                             android:layout_weight="1"
                             android:text="@string/font_size"
                             android:textColor="@color/text_secondary"
-                            android:textSize="14sp" />
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/font_size_label"
@@ -479,13 +534,34 @@
                         android:max="200"
                         android:min="50"
                         android:progress="100" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Overlay Dimensions Card ────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_dimensions"
+                style="@style/Widget.LyricSync.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/card_padding">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/overlay_dimensions_title"
+                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle"
+                        android:layout_marginBottom="14dp" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
-                        android:baselineAligned="false"
-                        android:layout_marginTop="12dp">
+                        android:baselineAligned="false">
 
                         <TextView
                             android:layout_width="0dp"
@@ -493,7 +569,8 @@
                             android:layout_weight="1"
                             android:text="@string/overlay_width"
                             android:textColor="@color/text_secondary"
-                            android:textSize="14sp" />
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/overlay_width_label"
@@ -525,7 +602,8 @@
                             android:layout_weight="1"
                             android:text="@string/overlay_height"
                             android:textColor="@color/text_secondary"
-                            android:textSize="14sp" />
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/overlay_height_label"
@@ -543,6 +621,34 @@
                         android:max="70"
                         android:min="20"
                         android:progress="36" />
+
+                    <!-- Tip callout for handle resize -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:background="@drawable/bg_tip_box"
+                        android:padding="12dp"
+                        android:layout_marginTop="14dp">
+
+                        <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:src="@drawable/ic_resize_grip"
+                            app:tint="@color/accent"
+                            android:contentDescription="@null" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="10dp"
+                            android:text="@string/overlay_resize_tip"
+                            android:textAppearance="@style/TextAppearance.LyricSync.Hint"
+                            android:textSize="12sp"
+                            android:lineSpacingExtra="1dp" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -596,9 +702,9 @@
                         android:layout_height="wrap_content"
                         android:text="0 ms"
                         android:textAppearance="@style/TextAppearance.LyricSync.Value"
-                        android:textSize="20sp"
-                        android:layout_marginTop="6dp"
-                        android:layout_marginBottom="2dp" />
+                        android:textSize="18sp"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="4dp" />
 
                     <SeekBar
                         android:id="@+id/sync_offset_slider"
@@ -617,38 +723,19 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- ── Primary action ────────────────────────────────────── -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_start"
-                android:layout_width="match_parent"
-                android:layout_height="60dp"
-                android:text="@string/start"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.02"
-                android:backgroundTint="@color/accent"
-                android:textColor="@color/black"
-                android:layout_marginTop="4dp"
-                app:cornerRadius="20dp"
-                app:icon="@drawable/ic_play"
-                app:iconGravity="textStart"
-                app:iconPadding="10dp"
-                app:iconTint="@color/black" />
-
             <!-- ── Translation Card ───────────────────────────────────── -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/card_translation"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/card_gap"
-                app:cardBackgroundColor="@color/surface">
+                app:cardBackgroundColor="@color/card_bg">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="@dimen/card_padding">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -660,22 +747,21 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="vertical">
+                            android:orientation="vertical"
+                            android:paddingEnd="12dp"
+                            android:paddingStart="0dp">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/lyrics_translation_title"
-                                android:textColor="@color/text_primary"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
+                                android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/lyrics_translation_desc"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="12sp"
+                                android:textAppearance="@style/TextAppearance.LyricSync.Hint"
                                 android:layout_marginTop="2dp" />
                         </LinearLayout>
 
@@ -695,7 +781,7 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:layout_marginTop="12dp">
+                        android:layout_marginTop="16dp">
 
                         <TextView
                             android:layout_width="0dp"
@@ -703,12 +789,16 @@
                             android:layout_weight="1"
                             android:text="@string/lyrics_translation_target"
                             android:textColor="@color/text_secondary"
-                            android:textSize="14sp" />
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
 
                         <Spinner
                             android:id="@+id/spinner_target_lang"
                             android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
+                            android:layout_height="40dp"
+                            android:background="@drawable/bg_spinner_modern"
+                            android:popupBackground="@drawable/bg_spinner_popup"
+                            android:spinnerMode="dropdown" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -719,8 +809,7 @@
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/card_gap"
-                app:cardBackgroundColor="@color/surface">
+                app:cardBackgroundColor="@color/card_bg">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -742,7 +831,7 @@
                             android:layout_width="18dp"
                             android:layout_height="18dp"
                             android:src="@drawable/ic_code"
-                            android:tint="@color/text_dim"
+                            app:tint="@color/text_dim"
                             android:contentDescription="@null" />
 
                         <TextView
@@ -760,7 +849,7 @@
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_chevron_down"
-                            android:tint="@color/text_dim"
+                            app:tint="@color/text_dim"
                             android:contentDescription="@string/cd_expand_section" />
                     </LinearLayout>
 
@@ -798,7 +887,7 @@
                                 android:padding="6dp"
                                 android:background="@drawable/bg_icon_button"
                                 android:src="@drawable/ic_trash"
-                                android:tint="@color/text_secondary"
+                                app:tint="@color/text_secondary"
                                 android:contentDescription="@string/clear_logs" />
 
                             <ImageView
@@ -809,7 +898,7 @@
                                 android:layout_marginStart="8dp"
                                 android:background="@drawable/bg_icon_button"
                                 android:src="@drawable/ic_share"
-                                android:tint="@color/text_secondary"
+                                app:tint="@color/text_secondary"
                                 android:contentDescription="@string/share_logs" />
                         </LinearLayout>
 

@@ -81,6 +81,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private ImageView overlayPillIcon;
     private TextView overlayStatus;
     private TextView permissionsSummary;
+    private View permissionsContent;
+    private ImageView permissionsChevron;
 
     private MaterialButton startButton;
     private View devContent;
@@ -176,6 +178,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         overlayPillIcon = findViewById(R.id.overlay_pill_icon);
         overlayStatus = findViewById(R.id.overlay_status);
         permissionsSummary = findViewById(R.id.permissions_summary);
+        permissionsContent = findViewById(R.id.permissions_content);
+        permissionsChevron = findViewById(R.id.permissions_chevron);
 
         startButton = findViewById(R.id.btn_start);
         devContent = findViewById(R.id.dev_content);
@@ -208,10 +212,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 findViewById(R.id.header),
                 findViewById(R.id.card_now_playing),
                 findViewById(R.id.card_permissions),
+                startButton,
                 findViewById(R.id.card_appearance),
+                findViewById(R.id.card_dimensions),
                 findViewById(R.id.card_sync),
                 findViewById(R.id.card_translation),
-                startButton,
                 findViewById(R.id.card_dev));
 
         heroGlow.setAlpha(0f);
@@ -219,6 +224,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     }
 
     private void setupListeners() {
+        View permissionsHeader = findViewById(R.id.permissions_header);
+        if (permissionsHeader != null) {
+            permissionsHeader.setOnClickListener(v -> {
+                Haptics.tick(v);
+                togglePermissionsSection();
+            });
+        }
+
         findViewById(R.id.btn_notification_access).setOnClickListener(v -> {
             Haptics.tick(v);
             startSettings(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
@@ -383,7 +396,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (switchTrans == null || spinnerLang == null) return;
 
         String[] langNames = {
-                "Otomatis (Sistem HP)",
+                "Auto (System Language)",
                 "Bahasa Indonesia (id)",
                 "English (en)",
                 "日本語 (ja)",
@@ -396,8 +409,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         String[] langCodes = {"auto", "id", "en", "ja", "ko", "es", "zh-CN", "fr", "de"};
 
         android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
-                this, android.R.layout.simple_spinner_item, langNames);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                this, R.layout.item_spinner_lang, langNames);
+        adapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
         spinnerLang.setAdapter(adapter);
 
         String currentLang = prefs.getString(
@@ -497,9 +510,23 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
     // ── Permission + service state ─────────────────────────────────────────
 
+    private void togglePermissionsSection() {
+        if (permissionsContent == null) return;
+        boolean nowExpanded = permissionsContent.getVisibility() != View.VISIBLE;
+        if (nowExpanded) {
+            Anim.expand(permissionsContent);
+        } else {
+            Anim.collapse(permissionsContent);
+        }
+        if (permissionsChevron != null) {
+            Anim.rotateTo(permissionsChevron, nowExpanded ? 180f : 0f);
+        }
+    }
+
     private void updatePermissionStatus() {
         boolean notifGranted = Permissions.isNotificationListenerEnabled(this);
         boolean overlayGranted = Settings.canDrawOverlays(this);
+        boolean allGranted = notifGranted && overlayGranted;
 
         boolean notifChanged = permissionStateKnown && notifGranted != lastNotificationGranted;
         boolean overlayChanged = permissionStateKnown && overlayGranted != lastOverlayGranted;
@@ -507,10 +534,27 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         applyPill(notificationPill, notificationPillIcon, notificationStatus, notifGranted, notifChanged);
         applyPill(overlayPill, overlayPillIcon, overlayStatus, overlayGranted, overlayChanged);
 
-        permissionsSummary.setText(notifGranted && overlayGranted
+        permissionsSummary.setText(allGranted
                 ? R.string.permissions_all_set : R.string.permissions_needed);
         permissionsSummary.setTextColor(ContextCompat.getColor(this,
-                notifGranted && overlayGranted ? R.color.state_ok : R.color.text_dim));
+                allGranted ? R.color.state_ok : R.color.text_dim));
+
+        if (!permissionStateKnown) {
+            if (permissionsContent != null) {
+                permissionsContent.setVisibility(allGranted ? View.GONE : View.VISIBLE);
+            }
+            if (permissionsChevron != null) {
+                permissionsChevron.setRotation(allGranted ? 0f : 180f);
+            }
+        } else if ((notifChanged || overlayChanged) && allGranted) {
+            if (permissionsContent != null && permissionsContent.getVisibility() == View.VISIBLE) {
+                Anim.collapse(permissionsContent);
+                if (permissionsChevron != null) Anim.rotateTo(permissionsChevron, 0f);
+            }
+        } else if (!allGranted && permissionsContent != null && permissionsContent.getVisibility() != View.VISIBLE) {
+            Anim.expand(permissionsContent);
+            if (permissionsChevron != null) Anim.rotateTo(permissionsChevron, 180f);
+        }
 
         lastNotificationGranted = notifGranted;
         lastOverlayGranted = overlayGranted;
@@ -560,6 +604,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     /** Small shake to point at whatever is blocking the user. */
     private void nudge(View v) {
         if (v == null) return;
+        if (v.getId() == R.id.card_permissions && permissionsContent != null
+                && permissionsContent.getVisibility() != View.VISIBLE) {
+            Anim.expand(permissionsContent);
+            if (permissionsChevron != null) Anim.rotateTo(permissionsChevron, 180f);
+        }
         v.animate().cancel();
         ObjectAnimator shake = ObjectAnimator.ofFloat(v, View.TRANSLATION_X,
                 0f, -12f, 12f, -7f, 7f, 0f);
