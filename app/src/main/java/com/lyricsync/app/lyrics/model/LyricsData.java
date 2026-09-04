@@ -9,11 +9,13 @@ public class LyricsData {
     public Type type;
     public List<LyricsLine> lines = new ArrayList<>();
     public String provider;
+    public String translationLang;
 
     public static class LyricsLine {
         public long startTime;
         public long endTime;
         public String text;
+        public String translation;
         public List<Word> words = new ArrayList<>();
         public boolean isInterlude;
         public List<LyricsLine> backgroundVocals;

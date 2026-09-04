@@ -79,6 +79,11 @@ public class LyricsProviderManager {
         });
     }
 
+    public void updateCachedLyrics(TrackInfo track, LyricsData lyrics) {
+        if (track == null || lyrics == null) return;
+        executor.execute(() -> cacheManager.cache(track, lyrics));
+    }
+
     private static int typeRank(LyricsData.Type type) {
         switch (type) {
             case SYLLABLE: return 3;
