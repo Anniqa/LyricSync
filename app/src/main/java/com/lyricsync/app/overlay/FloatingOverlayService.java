@@ -129,6 +129,9 @@ public class FloatingOverlayService extends Service {
     private int overlayWidthPercent = 88;
     private int lyricsHeightPx = 0;
     private boolean lyricsVisible = true;
+    private com.lyricsync.app.lyrics.translation.GoogleTranslateService translateService;
+    private androidx.appcompat.widget.SwitchCompat overlayTranslateSwitch;
+    private boolean translationEnabled = false;
 
     // Album-derived colouring
     private final ArgbEvaluator argb = new ArgbEvaluator();
@@ -191,6 +194,9 @@ public class FloatingOverlayService extends Service {
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
+        translateService = new com.lyricsync.app.lyrics.translation.GoogleTranslateService();
+        translationEnabled = sharedPrefs.getBoolean(
+                com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
         loadTypefaces();
         lyricAnimConfig = AnimSelection.current(new AndroidPrefs(sharedPrefs));
 
@@ -274,6 +280,21 @@ public class FloatingOverlayService extends Service {
         overlayFontChips = overlayView.findViewById(R.id.overlay_font_chips);
         overlayAnimChips = overlayView.findViewById(R.id.overlay_anim_chips);
         overlayAnimEffectChips = overlayView.findViewById(R.id.overlay_anim_effect_chips);
+        overlayTranslateSwitch = overlayView.findViewById(R.id.overlay_translate_switch);
+        if (overlayTranslateSwitch != null) {
+            overlayTranslateSwitch.setChecked(translationEnabled);
+            overlayTranslateSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
+                translationEnabled = isChecked;
+                sharedPrefs.edit().putBoolean(
+                        com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, isChecked).apply();
+                if (highlighter != null) {
+                    highlighter.setTranslationEnabled(isChecked);
+                }
+                if (isChecked && currentLyrics != null && currentLyrics.translationLang == null) {
+                    fetchTranslationForCurrentLyrics();
+                }
+            });
+        }
         lyricsContainer = overlayView.findViewById(R.id.overlay_lyrics_container);
         // Word/letter springs and the glow bloom overshoot view bounds; clipping at
         // the container would slice glyphs mid-animation ("cut letters").
@@ -1096,6 +1117,9 @@ public class FloatingOverlayService extends Service {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
         final String fetchKey = track.title + "|||" + track.artist;
         pendingFetchKey = fetchKey;
+        if (translateService != null) {
+            translateService.cancel();
+        }
         lyricsManager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
             @Override
             public void onLyricsLoaded(LyricsData lyrics) {
@@ -1158,6 +1182,7 @@ public class FloatingOverlayService extends Service {
         lastActiveLineIndex = -1;
 
         highlighter.setSyllableMode(lyrics.type == LyricsData.Type.SYLLABLE);
+        highlighter.setTranslationEnabled(translationEnabled);
 
         for (int i = 0; i < lyrics.lines.size(); i++) {
             LyricsData.LyricsLine line = lyrics.lines.get(i);
@@ -1183,6 +1208,52 @@ public class FloatingOverlayService extends Service {
             jumpToCurrentLineAfterLayout();
         }
         AppLog.i(TAG, "Rendered " + lyrics.lines.size() + " lyric lines, Choreographer loop started");
+        if (translationEnabled) {
+            String targetLang = sharedPrefs.getString(
+                    com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG,
+                    com.lyricsync.app.lyrics.translation.GoogleTranslateService.DEFAULT_TARGET_LANG);
+            String resolvedTarget = com.lyricsync.app.lyrics.translation.GoogleTranslateService.resolveTargetLang(
+                    targetLang, java.util.Locale.getDefault());
+            if (lyrics.translationLang == null || !resolvedTarget.equalsIgnoreCase(lyrics.translationLang)) {
+                fetchTranslationForCurrentLyrics();
+            }
+        }
+    }
+
+    private void fetchTranslationForCurrentLyrics() {
+        if (currentLyrics == null || currentLyrics.isEmpty() || translateService == null) return;
+        final String targetLang = sharedPrefs.getString(
+                com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG,
+                com.lyricsync.app.lyrics.translation.GoogleTranslateService.DEFAULT_TARGET_LANG);
+        final String fetchKey = pendingFetchKey;
+        final LyricsData targetLyrics = currentLyrics;
+        final TrackInfo targetTrack = currentTrack;
+
+        translateService.translateLines(targetLyrics.lines, targetLang, new com.lyricsync.app.lyrics.translation.GoogleTranslateService.TranslationCallback() {
+            @Override
+            public void onSuccess(com.lyricsync.app.lyrics.translation.GoogleTranslateParser.ParseResult result, String resolvedLang) {
+                if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
+                if (result.isSameLanguage) {
+                    AppLog.i(TAG, "Lyrics already in target language (" + result.detectedSourceLang + ")");
+                    return;
+                }
+                targetLyrics.translationLang = resolvedLang;
+                if (highlighter != null) {
+                    for (int i = 0; i < targetLyrics.lines.size(); i++) {
+                        highlighter.updateLineTranslation(i, targetLyrics.lines.get(i).translation);
+                    }
+                    highlighter.setTranslationEnabled(translationEnabled);
+                }
+                if (lyricsManager != null && targetTrack != null) {
+                    lyricsManager.updateCachedLyrics(targetTrack, targetLyrics);
+                }
+            }
+
+            @Override
+            public void onError(Exception error) {
+                AppLog.w(TAG, "Translation error: " + error.getMessage());
+            }
+        });
     }
 
     /** Tap a line to jump the player there. No-op on players that don't support seeking. */
@@ -1324,6 +1395,9 @@ public class FloatingOverlayService extends Service {
         isDestroyed = true;
         running = false;
         super.onDestroy();
+        if (translateService != null) {
+            translateService.cancel();
+        }
         stopRenderLoop();
         stopSkeletonShimmer();
         if (colorAnimator != null) colorAnimator.cancel();

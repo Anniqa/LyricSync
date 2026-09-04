@@ -51,6 +51,11 @@
     <string name="lyrics_earlier">lyrics earlier</string>
     <string name="in_sync">in sync</string>
 
+    <!-- Translation -->
+    <string name="lyrics_translation_title">Terjemahan Lirik</string>
+    <string name="lyrics_translation_desc">Tampilkan subtitle terjemahan di bawah lirik</string>
+    <string name="lyrics_translation_target">Bahasa Target</string>
+
     <!-- Developer -->
     <string name="developer_title">Developer</string>
     <string name="logs">Logs</string>
