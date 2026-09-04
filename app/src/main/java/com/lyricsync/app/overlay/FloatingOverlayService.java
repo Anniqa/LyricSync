@@ -176,6 +176,24 @@ public class FloatingOverlayService extends Service {
             long offset = prefs.getLong("sync_offset_ms", 0);
             sessionTracker.setSyncOffsetMs(offset);
             syncOffsetSliderFromPrefs(offset);
+        } else if (com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED.equals(key)) {
+            boolean enabled = prefs.getBoolean(key, false);
+            if (this.translationEnabled != enabled) {
+                this.translationEnabled = enabled;
+                if (overlayTranslateSwitch != null) {
+                    overlayTranslateSwitch.setChecked(enabled);
+                }
+                if (highlighter != null) {
+                    highlighter.setTranslationEnabled(enabled);
+                }
+                if (enabled && currentLyrics != null && currentLyrics.translationLang == null) {
+                    fetchTranslationForCurrentLyrics();
+                }
+            }
+        } else if (com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG.equals(key)) {
+            if (translationEnabled && currentLyrics != null) {
+                fetchTranslationForCurrentLyrics();
+            }
         }
     };
 

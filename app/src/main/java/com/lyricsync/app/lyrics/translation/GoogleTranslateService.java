@@ -70,13 +70,20 @@ public class GoogleTranslateService {
     }
 
     public static String resolveTargetLang(String prefLang, Locale systemLocale) {
+        String code = null;
         if (prefLang != null && !prefLang.isEmpty() && !DEFAULT_TARGET_LANG.equalsIgnoreCase(prefLang)) {
-            return prefLang.trim().toLowerCase(Locale.ROOT);
+            code = prefLang.trim().toLowerCase(Locale.ROOT);
+        } else if (systemLocale != null && systemLocale.getLanguage() != null && !systemLocale.getLanguage().isEmpty()) {
+            code = systemLocale.getLanguage().toLowerCase(Locale.ROOT);
+        } else {
+            code = "en";
         }
-        if (systemLocale != null && systemLocale.getLanguage() != null && !systemLocale.getLanguage().isEmpty()) {
-            return systemLocale.getLanguage().toLowerCase(Locale.ROOT);
-        }
-        return "en";
+
+        // Normalize legacy Java / Android locale codes to modern ISO standards
+        if ("in".equals(code)) return "id";
+        if ("iw".equals(code)) return "he";
+        if ("ji".equals(code)) return "yi";
+        return code;
     }
 
     public synchronized void cancel() {

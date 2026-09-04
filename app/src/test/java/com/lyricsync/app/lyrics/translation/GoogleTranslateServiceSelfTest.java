@@ -29,6 +29,10 @@ public class GoogleTranslateServiceSelfTest {
         check("en".equals(GoogleTranslateService.resolveTargetLang("en", Locale.FRENCH)), "explicit en");
         check("fr".equals(GoogleTranslateService.resolveTargetLang("auto", Locale.FRENCH)), "auto resolved to system");
         check("id".equals(GoogleTranslateService.resolveTargetLang(null, new Locale("id"))), "null resolved to system");
+        check("id".equals(GoogleTranslateService.resolveTargetLang("in", Locale.ENGLISH)), "legacy in normalized to id");
+        check("id".equals(GoogleTranslateService.resolveTargetLang("auto", new Locale("in"))), "legacy system locale in normalized to id");
+        check("he".equals(GoogleTranslateService.resolveTargetLang("iw", Locale.ENGLISH)), "legacy iw normalized to he");
+        check("yi".equals(GoogleTranslateService.resolveTargetLang("ji", Locale.ENGLISH)), "legacy ji normalized to yi");
 
         System.out.println("GoogleTranslateServiceSelfTest OK");
     }
