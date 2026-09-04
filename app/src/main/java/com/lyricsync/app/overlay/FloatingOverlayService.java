@@ -36,6 +36,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.app.NotificationCompat;
 
 import com.bumptech.glide.Glide;
@@ -280,7 +281,8 @@ public class FloatingOverlayService extends Service {
     // ── Overlay construction ───────────────────────────────────────────────
 
     private boolean createOverlay() {
-        overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_lyrics, null);
+        android.content.Context themedContext = new ContextThemeWrapper(this, R.style.Theme_LyricSync);
+        overlayView = LayoutInflater.from(themedContext).inflate(R.layout.overlay_lyrics, null);
 
         overlayTitle = overlayView.findViewById(R.id.overlay_title);
         overlayArtist = overlayView.findViewById(R.id.overlay_artist);
@@ -300,6 +302,9 @@ public class FloatingOverlayService extends Service {
         overlayAnimEffectChips = overlayView.findViewById(R.id.overlay_anim_effect_chips);
         overlayTranslateSwitch = overlayView.findViewById(R.id.overlay_translate_switch);
         if (overlayTranslateSwitch != null) {
+            overlayTranslateSwitch.setShowText(false);
+            overlayTranslateSwitch.setTextOn("");
+            overlayTranslateSwitch.setTextOff("");
             overlayTranslateSwitch.setChecked(translationEnabled);
             overlayTranslateSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
                 translationEnabled = isChecked;

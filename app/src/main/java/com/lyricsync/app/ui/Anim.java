@@ -11,6 +11,8 @@ import android.view.animation.OvershootInterpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.TextView;
 
+import com.lyricsync.app.util.AppLog;
+
 /**
  * Shared motion vocabulary. Everything the app animates goes through here so timing and
  * easing stay consistent between the activity and the floating overlay.
@@ -175,7 +177,13 @@ public final class Anim {
         int widthSpec = parentWidth > 0
                 ? View.MeasureSpec.makeMeasureSpec(parentWidth, View.MeasureSpec.AT_MOST)
                 : View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
-        v.measure(widthSpec, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        try {
+            v.measure(widthSpec, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        } catch (Exception e) {
+            AppLog.e("Anim", "Failed to measure view in expand animation", e);
+            v.setVisibility(View.VISIBLE);
+            return;
+        }
         final int target = Math.max(1, v.getMeasuredHeight());
 
         lp.height = 0;

@@ -682,7 +682,11 @@
                         <androidx.appcompat.widget.SwitchCompat
                             android:id="@+id/switch_main_translation"
                             android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
+                            android:layout_height="wrap_content"
+                            android:textOn=""
+                            android:textOff=""
+                            android:showText="false"
+                            app:showText="false" />
                     </LinearLayout>
 
                     <LinearLayout

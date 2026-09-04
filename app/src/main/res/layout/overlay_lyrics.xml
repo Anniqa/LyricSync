@@ -251,7 +251,11 @@
             <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/overlay_translate_switch"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:textOn=""
+                android:textOff=""
+                android:showText="false"
+                app:showText="false" />
         </LinearLayout>
 
         <View
