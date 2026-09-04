@@ -31,7 +31,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
     private static final String TAG = "SpicyLyrics";
     private static final String API_URL = "https://api.spicylyrics.org/query";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-    private static final String SPICY_VERSION = "5.22.3";
+    private static final String SPICY_VERSION = "6.3.12";
     private static final String SPICY_ORIGIN = "https://xpui.app.spotify.com";
     private static final String SPICY_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Spotify/1.2.63 Chrome/132.0.6834.210 Electron/34.3.1 Safari/537.36";
     private static final String EMBED_URL = "https://open.spotify.com/embed/track/";
@@ -200,7 +200,19 @@ public class SpicyLyricsProvider implements LyricsProvider {
             if (obj.has("result")) {
                 JsonObject res = obj.getAsJsonObject("result");
                 if (res.has("data")) {
-                    result = res.getAsJsonObject("data");
+                    JsonElement dataElem = res.get("data");
+                    if (dataElem.isJsonObject()) {
+                        result = dataElem.getAsJsonObject();
+                    } else if (dataElem.isJsonArray()) {
+                        try {
+                            JsonElement unpacked = SpicyLyricsObjPack.unpack(dataElem.getAsJsonArray());
+                            if (unpacked != null && unpacked.isJsonObject()) {
+                                result = unpacked.getAsJsonObject();
+                            }
+                        } catch (Exception e) {
+                            AppLog.e(TAG, "Failed to unpack SpicyLyrics SLObjPack data", e);
+                        }
+                    }
                 }
                 break;
             }
