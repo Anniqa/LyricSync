@@ -1,6 +1,6 @@
 # Lyrics Translation (Spotify-Style) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [X]`) syntax for tracking.
 
 **Goal:** Add on-demand, real-time Google Translate lyrics translation (Spotify-style) to LyricSync with zero API key configuration, smooth 120Hz scroll rendering, and language-aware caching.
 
@@ -31,7 +31,7 @@
 - Consumes: `LyricsData`, `LyricsLine`, `TrackInfo`, `LyricsCacheManager`
 - Produces: `LyricsData.translationLang`, `LyricsLine.translation`, `LyricsProviderManager.updateCachedLyrics(TrackInfo, LyricsData)`
 
-- [ ] **Step 1: Write the failing JVM self-test**
+- [X] **Step 1: Write the failing JVM self-test**
 
 Create `app/src/test/java/com/lyricsync/app/lyrics/LyricsDataTranslationSelfTest.java`:
 ```java
@@ -78,7 +78,7 @@ public class LyricsDataTranslationSelfTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [X] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -87,7 +87,7 @@ javac -cp "app/src/main/java:$(find ~/.gradle/caches/modules-2/files-2.1/com.goo
 ```
 Expected: FAIL compilation with "cannot find symbol: variable translationLang" and "cannot find symbol: variable translation".
 
-- [ ] **Step 3: Implement model changes and cache delegation**
+- [X] **Step 3: Implement model changes and cache delegation**
 
 Modify `app/src/main/java/com/lyricsync/app/lyrics/model/LyricsData.java`:
 Add `public String translationLang;` to `LyricsData`.
@@ -102,7 +102,7 @@ public void updateCachedLyrics(TrackInfo track, LyricsData lyrics) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [X] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -113,7 +113,7 @@ java -cp "app/src/main/java:app/src/test/java:$(find ~/.gradle/caches/modules-2/
 ```
 Expected: PASS with output `LyricsDataTranslationSelfTest OK`.
 
-- [ ] **Step 5: Commit**
+- [X] **Step 5: Commit**
 
 ```bash
 git add app/src/main/java/com/lyricsync/app/lyrics/model/LyricsData.java \
@@ -134,7 +134,7 @@ git commit -m "feat(lyrics): add translation fields and cache update delegation"
 - Consumes: JSON string from Google Translate response, `List<LyricsData.LyricsLine>`
 - Produces: `GoogleTranslateParser.ParseResult`, updates `line.translation` safely
 
-- [ ] **Step 1: Write the failing JVM self-test**
+- [X] **Step 1: Write the failing JVM self-test**
 
 Create `app/src/test/java/com/lyricsync/app/lyrics/translation/GoogleTranslateParserSelfTest.java`:
 ```java
@@ -231,7 +231,7 @@ public class GoogleTranslateParserSelfTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [X] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -240,7 +240,7 @@ javac -cp "app/src/main/java:$(find ~/.gradle/caches/modules-2/files-2.1/com.goo
 ```
 Expected: FAIL compilation with "cannot find symbol: class GoogleTranslateParser".
 
-- [ ] **Step 3: Implement `GoogleTranslateParser.java`**
+- [X] **Step 3: Implement `GoogleTranslateParser.java`**
 
 Create `app/src/main/java/com/lyricsync/app/lyrics/translation/GoogleTranslateParser.java`:
 ```java
@@ -316,7 +316,7 @@ public final class GoogleTranslateParser {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [X] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -328,7 +328,7 @@ java -cp "app/src/main/java:app/src/test/java:$(find ~/.gradle/caches/modules-2/
 ```
 Expected: PASS with output `GoogleTranslateParserSelfTest OK`.
 
-- [ ] **Step 5: Commit**
+- [X] **Step 5: Commit**
 
 ```bash
 git add app/src/main/java/com/lyricsync/app/lyrics/translation/GoogleTranslateParser.java \
@@ -348,7 +348,7 @@ git commit -m "feat(lyrics): add robust Google Translate response parser"
 - Consumes: OkHttp `OkHttpClient`, `GoogleTranslateParser`, `LyricsData.LyricsLine`
 - Produces: `GoogleTranslateService.translateLines()`, `cancel()`, preference keys
 
-- [ ] **Step 1: Write the failing JVM self-test**
+- [X] **Step 1: Write the failing JVM self-test**
 
 Create `app/src/test/java/com/lyricsync/app/lyrics/translation/GoogleTranslateServiceSelfTest.java`:
 ```java
@@ -393,7 +393,7 @@ public class GoogleTranslateServiceSelfTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [X] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -402,7 +402,7 @@ javac -cp "app/src/main/java" \
 ```
 Expected: FAIL compilation with "cannot find symbol: class GoogleTranslateService".
 
-- [ ] **Step 3: Implement `GoogleTranslateService.java`**
+- [X] **Step 3: Implement `GoogleTranslateService.java`**
 
 Create `app/src/main/java/com/lyricsync/app/lyrics/translation/GoogleTranslateService.java`:
 ```java
@@ -570,7 +570,7 @@ public class GoogleTranslateService {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [X] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -582,7 +582,7 @@ java -cp "app/src/main/java:app/src/test/java" \
 ```
 Expected: PASS with output `GoogleTranslateServiceSelfTest OK`.
 
-- [ ] **Step 5: Commit**
+- [X] **Step 5: Commit**
 
 ```bash
 git add app/src/main/java/com/lyricsync/app/lyrics/translation/GoogleTranslateService.java \
@@ -601,7 +601,7 @@ git commit -m "feat(lyrics): add GoogleTranslateService with OkHttp POST and can
 - Consumes: `LineView`, `LyricsLine.translation`
 - Produces: `LineView.translationView`, `SyllableHighlighter.setTranslationEnabled(boolean)`, `updateTranslationText(int, String)`
 
-- [ ] **Step 1: Inspect `LineView` fields and add `translationView`**
+- [X] **Step 1: Inspect `LineView` fields and add `translationView`**
 
 In `app/src/main/java/com/lyricsync/app/renderer/SyllableHighlighter.java`:
 Inside `public static class LineView`:
@@ -610,7 +610,7 @@ Add:
 public TextView translationView;
 ```
 
-- [ ] **Step 2: Add translation view creation in `createPerWordView` and `createPerLineView`**
+- [X] **Step 2: Add translation view creation in `createPerWordView` and `createPerLineView`**
 
 In `createPerWordView`:
 Right before returning `container`:
@@ -670,7 +670,7 @@ private TextView createTranslationTextView(LyricsData.LyricsLine line) {
 }
 ```
 
-- [ ] **Step 3: Update subtitle styling on line state transitions**
+- [X] **Step 3: Update subtitle styling on line state transitions**
 
 In `updatePerWordHighlight` and `updatePerLineHighlight`:
 When `stateChanged`:
@@ -693,7 +693,7 @@ When `stateChanged`:
   }
   ```
 
-- [ ] **Step 4: Verify compilation and tests**
+- [X] **Step 4: Verify compilation and tests**
 
 Run:
 ```bash
@@ -701,7 +701,7 @@ Run:
 ```
 Expected: BUILD SUCCESSFUL with 0 errors.
 
-- [ ] **Step 5: Commit**
+- [X] **Step 5: Commit**
 
 ```bash
 git add app/src/main/java/com/lyricsync/app/renderer/SyllableHighlighter.java
@@ -721,7 +721,7 @@ git commit -m "feat(renderer): add subtitle translation rendering with matching 
 - Consumes: `GoogleTranslateService`, `SyllableHighlighter`, `LyricsProviderManager.updateCachedLyrics`
 - Produces: Toggleable translation switch in overlay settings panel and background translation lifecycle
 
-- [ ] **Step 1: Add translation strings**
+- [X] **Step 1: Add translation strings**
 
 In `app/src/main/res/values/strings.xml`:
 Add:
@@ -732,7 +732,7 @@ Add:
     <string name="lyrics_translation_target">Bahasa Target</string>
 ```
 
-- [ ] **Step 2: Add translation switch row in `overlay_lyrics.xml`**
+- [X] **Step 2: Add translation switch row in `overlay_lyrics.xml`**
 
 In `app/src/main/res/layout/overlay_lyrics.xml`:
 Inside `overlay_settings_panel`, right above `<View android:layout_height="1dp" android:background="@color/divider" ...>`:
@@ -770,7 +770,7 @@ Add:
         </LinearLayout>
 ```
 
-- [ ] **Step 3: Wire translation in `FloatingOverlayService.java`**
+- [X] **Step 3: Wire translation in `FloatingOverlayService.java`**
 
 In `FloatingOverlayService.java`:
 1. Add field:
@@ -849,7 +849,7 @@ if (translateService != null) {
 }
 ```
 
-- [ ] **Step 4: Verify compilation**
+- [X] **Step 4: Verify compilation**
 
 Run:
 ```bash
@@ -857,7 +857,7 @@ Run:
 ```
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 5: Commit**
+- [X] **Step 5: Commit**
 
 ```bash
 git add app/src/main/res/values/strings.xml \
@@ -878,7 +878,7 @@ git commit -m "feat(overlay): integrate translation switch and background fetch 
 - Consumes: `GoogleTranslateService.PREF_TRANSLATION_ENABLED`, `PREF_TARGET_LANG`
 - Produces: Persistent translation master switch and target language chooser in main app
 
-- [ ] **Step 1: Add Translation Settings Card in `activity_main.xml`**
+- [X] **Step 1: Add Translation Settings Card in `activity_main.xml`**
 
 In `app/src/main/res/layout/activity_main.xml`:
 Under the Appearance or Sync card, add:
@@ -958,7 +958,7 @@ Under the Appearance or Sync card, add:
             </com.google.android.material.card.MaterialCardView>
 ```
 
-- [ ] **Step 2: Wire Translation Card in `MainActivity.java`**
+- [X] **Step 2: Wire Translation Card in `MainActivity.java`**
 
 In `app/src/main/java/com/lyricsync/app/MainActivity.java`:
 Inside `initViews()`:
@@ -996,7 +996,7 @@ spinnerLang.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 });
 ```
 
-- [ ] **Step 3: Verify compilation**
+- [X] **Step 3: Verify compilation**
 
 Run:
 ```bash
@@ -1004,7 +1004,7 @@ Run:
 ```
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 4: Commit**
+- [X] **Step 4: Commit**
 
 ```bash
 git add app/src/main/res/layout/activity_main.xml \
@@ -1019,7 +1019,7 @@ git commit -m "feat(settings): add lyrics translation card and target language p
 **Files:**
 - All tests in `app/src/test/java/com/lyricsync/app/`
 
-- [ ] **Step 1: Execute all JVM self-tests**
+- [X] **Step 1: Execute all JVM self-tests**
 
 Run:
 ```bash
@@ -1040,7 +1040,7 @@ java -cp "app/src/main/java:app/src/test/java" \
 ```
 Expected: All tests print `... OK` and exit with code 0.
 
-- [ ] **Step 2: Run full project build**
+- [X] **Step 2: Run full project build**
 
 Run:
 ```bash
