@@ -122,6 +122,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setupListeners();
         setupSliders();
         setupAppearanceChips();
+        setupTranslationUi();
         setupDeveloperSection();
         setupLogViewer();
 
@@ -209,6 +210,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 findViewById(R.id.card_permissions),
                 findViewById(R.id.card_appearance),
                 findViewById(R.id.card_sync),
+                findViewById(R.id.card_translation),
                 startButton,
                 findViewById(R.id.card_dev));
 
@@ -373,6 +375,59 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         String sign = ms > 0 ? "+" : "";
         String meaning = getString(ms > 0 ? R.string.lyrics_later : R.string.lyrics_earlier);
         return sign + ms + " ms · " + meaning;
+    }
+
+    private void setupTranslationUi() {
+        androidx.appcompat.widget.SwitchCompat switchTrans = findViewById(R.id.switch_main_translation);
+        android.widget.Spinner spinnerLang = findViewById(R.id.spinner_target_lang);
+        if (switchTrans == null || spinnerLang == null) return;
+
+        String[] langNames = {
+                "Otomatis (Sistem HP)",
+                "Bahasa Indonesia (id)",
+                "English (en)",
+                "日本語 (ja)",
+                "한국어 (ko)",
+                "Español (es)",
+                "简体中文 (zh-CN)",
+                "Français (fr)",
+                "Deutsch (de)"
+        };
+        String[] langCodes = {"auto", "id", "en", "ja", "ko", "es", "zh-CN", "fr", "de"};
+
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, langNames);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinnerLang.setAdapter(adapter);
+
+        String currentLang = prefs.getString(
+                com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG,
+                com.lyricsync.app.lyrics.translation.GoogleTranslateService.DEFAULT_TARGET_LANG);
+        for (int i = 0; i < langCodes.length; i++) {
+            if (langCodes[i].equalsIgnoreCase(currentLang)) {
+                spinnerLang.setSelection(i);
+                break;
+            }
+        }
+
+        switchTrans.setChecked(prefs.getBoolean(
+                com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, false));
+        switchTrans.setOnCheckedChangeListener((btn, isChecked) -> {
+            Haptics.tick(btn);
+            prefs.edit().putBoolean(
+                    com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, isChecked).apply();
+        });
+
+        spinnerLang.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                prefs.edit().putString(
+                        com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG, langCodes[position]).apply();
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
     }
 
     // ── Developer section ──────────────────────────────────────────────────
