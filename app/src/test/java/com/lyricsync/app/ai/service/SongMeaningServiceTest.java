@@ -596,6 +596,7 @@ public class SongMeaningServiceTest {
         assertTrue(contextWithoutSearch.contains("Chris Martin BBC Interview"));
     }
 
+
     @Test
     public void testSongChatManagerStoresAndClearsLastWebSources() {
         chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
@@ -609,6 +610,162 @@ public class SongMeaningServiceTest {
 
         chatManager.clearHistory();
         assertTrue(chatManager.getLastWebSources().isEmpty());
+    }
+
+    @Test
+    public void testSongChatManagerToolCallbackForwarding() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
+
+        // Arrange: Mock tool execution
+        final List<String> toolExecuting = new ArrayList<>();
+        final List<String> toolCompleted = new ArrayList<>();
+
+        // Action: sendMessage with true
+        chatManager.sendMessage("Tell me about this song", true, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {}
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {}
+            @Override
+            public void onError(Exception error) {}
+
+            @Override
+            public void onToolExecuting(String toolName, String query) {
+                toolExecuting.add(toolName);
+            }
+            @Override
+            public void onToolCompleted(String toolName, int resultsCount) {
+                toolCompleted.add(toolName);
+            }
+        });
+
+        // Trigger tool simulation via MockApiClient
+        mockApiClient.activeListener.onToolExecuting("web_search", "Fix You background");
+        mockApiClient.activeListener.onToolCompleted("web_search", 2);
+        mockApiClient.activeListener.onComplete("result", Collections.singletonList("Source"), 10, 20);
+
+        // Verify
+        assertTrue(toolExecuting.contains("web_search"));
+        assertTrue(toolCompleted.contains("web_search"));
+    }
+
+    @Test
+    public void testSongChatManagerToolCallbacksSuppressedWhenCancelled() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
+        mockApiClient.autoCompleteStream = false;
+
+        final List<String> toolExecuting = new ArrayList<>();
+        final List<String> toolCompleted = new ArrayList<>();
+
+        AntigravityApiClient.Cancellable handle = chatManager.sendMessage("Tell me about this song", true, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {}
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {}
+            @Override
+            public void onError(Exception error) {}
+
+            @Override
+            public void onToolExecuting(String toolName, String query) {
+                toolExecuting.add(toolName);
+            }
+            @Override
+            public void onToolCompleted(String toolName, int resultsCount) {
+                toolCompleted.add(toolName);
+            }
+        });
+
+        // Cancel the stream call
+        handle.cancel();
+
+        // Late tool events triggered
+        if (mockApiClient.activeListener != null) {
+            mockApiClient.activeListener.onToolExecuting("web_search", "query");
+            mockApiClient.activeListener.onToolCompleted("web_search", 1);
+        }
+
+        assertTrue("Tool execution callbacks must be suppressed after cancellation", toolExecuting.isEmpty());
+        assertTrue("Tool completion callbacks must be suppressed after cancellation", toolCompleted.isEmpty());
+    }
+
+    @Test
+    public void testSongChatManagerToolCallbacksSuppressedOnTrackChange() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
+        mockApiClient.autoCompleteStream = false;
+
+        final List<String> toolExecuting = new ArrayList<>();
+        final List<String> toolCompleted = new ArrayList<>();
+
+        chatManager.sendMessage("Tell me about this song", true, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {}
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {}
+            @Override
+            public void onError(Exception error) {}
+
+            @Override
+            public void onToolExecuting(String toolName, String query) {
+                toolExecuting.add(toolName);
+            }
+            @Override
+            public void onToolCompleted(String toolName, int resultsCount) {
+                toolCompleted.add(toolName);
+            }
+        });
+
+        // Track changes (increments currentSessionId)
+        chatManager.setCurrentSong("Yellow", "Coldplay", "Lyrics...", null);
+
+        // Late tool events from previous song
+        if (mockApiClient.activeListener != null) {
+            mockApiClient.activeListener.onToolExecuting("web_search", "query");
+            mockApiClient.activeListener.onToolCompleted("web_search", 1);
+        }
+
+        assertTrue("Tool execution callbacks must be suppressed after track change", toolExecuting.isEmpty());
+        assertTrue("Tool completion callbacks must be suppressed after track change", toolCompleted.isEmpty());
+    }
+
+    @Test
+    public void testSongChatManagerPropagatesEnableWebSearchFlag() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
+
+        chatManager.sendMessage("Query with tools", true, null);
+        assertEquals(Boolean.TRUE, mockApiClient.lastStreamEnableWebSearch);
+
+        chatManager.sendMessage("Query without tools", false, null);
+        assertEquals(Boolean.FALSE, mockApiClient.lastStreamEnableWebSearch);
+    }
+
+    @Test
+    public void testSongMeaningServiceGroundedSourcesPropagation() {
+        mockApiClient.mockCompletionResponse = "{\"mood\": \"Happy\", \"summary\": \"Analysis\"}";
+        mockApiClient.mockWebSources = Collections.singletonList("https://grounding.com");
+
+        final AtomicReference<List<String>> sourcesRef = new AtomicReference<>();
+        meaningService.getSongMeaning("Title", "Artist", "Lyrics", true, new SongMeaningService.MeaningCallback() {
+            @Override
+            public void onResult(SongMeaningService.SongMeaning meaning, boolean fromCache) {
+                sourcesRef.set(meaning.webSources);
+            }
+            @Override
+            public void onError(Exception e) {}
+        });
+
+        assertNotNull(sourcesRef.get());
+        assertTrue(sourcesRef.get().contains("https://grounding.com"));
+    }
+
+    @Test
+    public void testSongMeaningServicePropagatesEnableWebSearchFlag() {
+        mockApiClient.mockCompletionResponse = "{\"mood\": \"Calm\", \"summary\": \"Peaceful\"}";
+
+        meaningService.getSongMeaning("Song A", "Artist A", "Lyrics", true, null);
+        assertEquals(Boolean.TRUE, mockApiClient.lastContentEnableWebSearch);
+
+        meaningService.getSongMeaning("Song B", "Artist B", "Lyrics", false, null);
+        assertEquals(Boolean.FALSE, mockApiClient.lastContentEnableWebSearch);
     }
 
     // ==========================================
@@ -627,6 +784,9 @@ public class SongMeaningServiceTest {
         boolean autoCompleteStream = true;
 
         List<AiChatMessage> lastStreamMessages;
+        List<AiChatMessage> lastContentMessages;
+        Boolean lastContentEnableWebSearch;
+        Boolean lastStreamEnableWebSearch;
         StreamListener activeListener;
 
         MockApiClient() {
@@ -638,6 +798,8 @@ public class SongMeaningServiceTest {
                                           boolean enableWebSearch, String effortLevel,
                                           CompletionCallback callback) {
             generateContentCallCount++;
+            this.lastContentMessages = messages != null ? new ArrayList<>(messages) : null;
+            this.lastContentEnableWebSearch = enableWebSearch;
             final MockCancellable handle = new MockCancellable();
 
             if (mockError != null) {
@@ -658,6 +820,7 @@ public class SongMeaningServiceTest {
                                                 final StreamListener listener) {
             generateContentStreamCallCount++;
             this.lastStreamMessages = messages != null ? new ArrayList<>(messages) : null;
+            this.lastStreamEnableWebSearch = enableWebSearch;
             this.activeListener = listener;
             final MockCancellable handle = new MockCancellable();
 

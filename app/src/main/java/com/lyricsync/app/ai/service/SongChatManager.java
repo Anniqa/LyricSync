@@ -266,6 +266,30 @@ public class SongChatManager {
             }
 
             @Override
+            public void onToolExecuting(String toolName, String queryOrUrl) {
+                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
+                    return;
+                }
+                if (listener != null) {
+                    try {
+                        listener.onToolExecuting(toolName, queryOrUrl);
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            @Override
+            public void onToolCompleted(String toolName, int resultsCount) {
+                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
+                    return;
+                }
+                if (listener != null) {
+                    try {
+                        listener.onToolCompleted(toolName, resultsCount);
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            @Override
             public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
                 if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
                     rollbackUserTurnIfOrphaned(userTurn);

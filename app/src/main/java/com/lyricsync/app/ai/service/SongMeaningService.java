@@ -22,7 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service for analyzing the emotional mood and deeper artistic meaning of songs
- * using Google Antigravity Cloudcode PA endpoints with persistent caching.
+ * using Google Antigravity Cloudcode PA endpoints with persistent caching and
+ * autonomous agent tool calling (Google Search & Web Fetch).
  */
 public class SongMeaningService {
 
@@ -189,6 +190,7 @@ public class SongMeaningService {
 
     /**
      * Retrieves the meaning of a song, checking local caches first before querying the AI API.
+     * When enableWebSearch is true, leverages the autonomous agent tooling harness for grounded factual analysis.
      * Returns a Cancellable handle to abort the network request if needed.
      */
     public AntigravityApiClient.Cancellable getSongMeaning(final String title, final String artist,
