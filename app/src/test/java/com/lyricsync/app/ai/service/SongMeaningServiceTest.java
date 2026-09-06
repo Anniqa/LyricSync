@@ -122,6 +122,48 @@ public class SongMeaningServiceTest {
         assertTrue(prompt.contains("Coldplay"));
     }
 
+    @Test
+    public void testMeaningPromptContainsFactualGroundingDirective() {
+        String prompt = SongMeaningService.buildMeaningPrompt("Fix You", "Coldplay", "When you try your best...", true);
+        assertTrue("Prompt must instruct Google Search factual retrieval", prompt.contains("Google Search") || prompt.contains("fakta"));
+    }
+
+    @Test
+    public void testMeaningPromptWithoutWebSearchDoesNotContainSearchDirective() {
+        String prompt = SongMeaningService.buildMeaningPrompt("Fix You", "Coldplay", "When you try your best...", false);
+        assertFalse("Prompt without web search should not contain Google Search directive", prompt.contains("Google Search"));
+        assertTrue(prompt.contains("Fix You"));
+        assertTrue(prompt.contains("Coldplay"));
+    }
+
+    @Test
+    public void testSongMeaningServiceParsesJsonEmbeddedSources() {
+        mockApiClient.mockCompletionResponse = "{\n" +
+                "  \"mood\": \"Reflective\",\n" +
+                "  \"summary\": \"Analysis text...\",\n" +
+                "  \"sources\": [\"Genius Coldplay Fix You\", \"BBC Music Review\"]\n" +
+                "}";
+        mockApiClient.mockWebSources = Collections.singletonList("Grounding Source from API");
+
+        final AtomicReference<SongMeaningService.SongMeaning> resultRef = new AtomicReference<>();
+        meaningService.getSongMeaning("Fix You", "Coldplay", "Lyrics...", true,
+                new SongMeaningService.MeaningCallback() {
+                    @Override
+                    public void onResult(SongMeaningService.SongMeaning meaning, boolean fromCache) {
+                        resultRef.set(meaning);
+                    }
+
+                    @Override
+                    public void onError(Exception e) {}
+                });
+
+        assertNotNull(resultRef.get());
+        assertEquals("Reflective", resultRef.get().mood);
+        assertTrue(resultRef.get().webSources.contains("Grounding Source from API"));
+        assertTrue(resultRef.get().webSources.contains("Genius Coldplay Fix You"));
+        assertTrue(resultRef.get().webSources.contains("BBC Music Review"));
+    }
+
     // ==========================================
     // SongMeaningService: getSongMeaning Tests
     // ==========================================
@@ -533,6 +575,40 @@ public class SongMeaningServiceTest {
         chatManager.setCurrentSong("Yellow", "Coldplay", "Look at the stars...", null);
         assertTrue(chatManager.getHistory().isEmpty());
         assertEquals("Yellow", chatManager.getTitle());
+    }
+
+    @Test
+    public void testSongChatManagerContextContainsFactualGroundingWhenWebSearchEnabled() {
+        SongMeaningService.SongMeaning meaning = new SongMeaningService.SongMeaning(
+                "Melancholic", "Fix You summary", Collections.singletonList("Chris Martin BBC Interview")
+        );
+        chatManager.setCurrentSong("Fix You", "Coldplay", "When you try your best...", meaning);
+
+        String contextWithSearch = chatManager.buildSongContext(true);
+        assertTrue("Chat context must instruct Google Search factual retrieval",
+                contextWithSearch.contains("Google Search") || contextWithSearch.contains("fakta"));
+        assertTrue("Chat context should include existing grounding sources",
+                contextWithSearch.contains("Chris Martin BBC Interview"));
+
+        String contextWithoutSearch = chatManager.buildSongContext(false);
+        assertFalse("Chat context should not contain search directive when disabled",
+                contextWithoutSearch.contains("Google Search"));
+        assertTrue(contextWithoutSearch.contains("Chris Martin BBC Interview"));
+    }
+
+    @Test
+    public void testSongChatManagerStoresAndClearsLastWebSources() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
+        mockApiClient.mockStreamFullText = "Jawaban.";
+        mockApiClient.mockWebSources = Arrays.asList("Source A", "Source B");
+
+        chatManager.sendMessage("Pertanyaan", true, null);
+        assertEquals(2, chatManager.getLastWebSources().size());
+        assertTrue(chatManager.getLastWebSources().contains("Source A"));
+        assertTrue(chatManager.getLastWebSources().contains("Source B"));
+
+        chatManager.clearHistory();
+        assertTrue(chatManager.getLastWebSources().isEmpty());
     }
 
     // ==========================================

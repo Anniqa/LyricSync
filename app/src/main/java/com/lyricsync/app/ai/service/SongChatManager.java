@@ -36,6 +36,7 @@ public class SongChatManager {
     private volatile AntigravityApiClient.Cancellable activeCall;
 
     private final List<AiChatMessage> history = new ArrayList<>();
+    private final List<String> lastWebSources = new ArrayList<>();
 
     public SongChatManager(AntigravityApiClient apiClient) {
         this(apiClient, DEFAULT_MODEL);
@@ -73,10 +74,18 @@ public class SongChatManager {
     }
 
     /**
+     * Returns a copy of the grounding web sources from the latest completion.
+     */
+    public synchronized List<String> getLastWebSources() {
+        return new ArrayList<>(lastWebSources);
+    }
+
+    /**
      * Clears conversational history while keeping the active song context intact.
      */
     public synchronized void clearHistory() {
         history.clear();
+        lastWebSources.clear();
     }
 
     public String getTitle() {
@@ -109,6 +118,14 @@ public class SongChatManager {
      * Constructs the contextual system information summarizing the active song.
      */
     public String buildSongContext() {
+        return buildSongContext(false);
+    }
+
+    /**
+     * Constructs the contextual system information summarizing the active song,
+     * adding factual Google Search directives when enableWebSearch is true.
+     */
+    public String buildSongContext(boolean enableWebSearch) {
         StringBuilder sb = new StringBuilder();
         sb.append("You are an insightful and helpful music analyst assistant in the LyricSync app.\n");
         sb.append("You are in an interactive conversation with the user about the currently playing song:\n");
@@ -125,9 +142,20 @@ public class SongChatManager {
             if (meaning.summary != null && !meaning.summary.trim().isEmpty()) {
                 sb.append("Meaning Summary: ").append(meaning.summary.trim()).append("\n");
             }
+            if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
+                sb.append("Grounding Sources: ");
+                for (int i = 0; i < meaning.webSources.size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append(meaning.webSources.get(i));
+                }
+                sb.append("\n");
+            }
         }
         if (fullLyrics != null && !fullLyrics.trim().isEmpty()) {
             sb.append("Lyrics:\n").append(fullLyrics.trim()).append("\n");
+        }
+        if (enableWebSearch) {
+            sb.append("\n[PENTING] Lakukan penelusuran Google Search secara aktif untuk menemukan fakta riil, latar belakang resmi, wawancara pencipta lagu/musisi, dan konteks album. Berikan jawaban yang akurat dan berbasis fakta, bukan spekulasi atau asumsi.\n");
         }
         sb.append("\nAnswer user questions about the song's meaning, backstory, emotional themes, and lyrics warmly and clearly in the language used by the user.");
         return sb.toString();
@@ -138,8 +166,16 @@ public class SongChatManager {
      * guaranteeing strictly alternating roles (user, model, user, model...).
      */
     public List<AiChatMessage> buildMessagesToSend() {
+        return buildMessagesToSend(false);
+    }
+
+    /**
+     * Prepares the full sequence of messages (context with search directives + multi-turn history) to send to the API,
+     * guaranteeing strictly alternating roles (user, model, user, model...).
+     */
+    public List<AiChatMessage> buildMessagesToSend(boolean enableWebSearch) {
         List<AiChatMessage> messages = new ArrayList<>();
-        String context = buildSongContext();
+        String context = buildSongContext(enableWebSearch);
         if (!context.trim().isEmpty()) {
             messages.add(AiChatMessage.user("[System Song Context & Instructions]\n" + context));
             messages.add(AiChatMessage.model("Understood! I have full context on \"" + (title != null ? title : "the song") + "\" and am ready to discuss it with you."));
@@ -207,7 +243,7 @@ public class SongChatManager {
             history.add(userTurn);
         }
 
-        List<AiChatMessage> messagesToSend = buildMessagesToSend();
+        List<AiChatMessage> messagesToSend = buildMessagesToSend(enableWebSearch);
         final SessionCancellable sessionHandle = new SessionCancellable(new Runnable() {
             @Override
             public void run() {
@@ -239,6 +275,10 @@ public class SongChatManager {
                 synchronized (SongChatManager.this) {
                     if (sessionId == currentSessionId) {
                         history.add(AiChatMessage.model(fullText != null ? fullText : ""));
+                        lastWebSources.clear();
+                        if (webSources != null) {
+                            lastWebSources.addAll(webSources);
+                        }
                     } else {
                         rollbackUserTurnIfOrphaned(userTurn);
                         return;

@@ -162,29 +162,29 @@ public class SongMeaningService {
     }
 
     /**
-     * Builds structured prompt instructing Gemini to analyze song meaning and return JSON in Indonesian.
+     * Builds structured prompt instructing Gemini to analyze song meaning, grounding in real Google Search facts
+     * when enabled, and return JSON in Indonesian.
      */
-    public static String buildMeaningPrompt(String title, String artist, String fullLyrics) {
+    public static String buildMeaningPrompt(String title, String artist, String lyrics, boolean enableWebSearch) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are an expert musicologist and lyric analyst. Analyze the emotional mood and deeper artistic meaning of the following song:\n");
-        if (title != null && !title.trim().isEmpty()) {
-            sb.append("Title: ").append(title.trim()).append("\n");
-        }
-        if (artist != null && !artist.trim().isEmpty()) {
-            sb.append("Artist: ").append(artist.trim()).append("\n");
-        }
-        if (fullLyrics != null && !fullLyrics.trim().isEmpty()) {
-            sb.append("\nLyrics:\n").append(fullLyrics.trim()).append("\n");
-        }
-        sb.append("\nProvide an insightful, deep analysis of this song's emotional tone, backstory, and lyrical symbolism.\n");
+        sb.append("Analisis makna lagu, emosi dominan, dan interpretasi artistik berikut:\n");
         sb.append("Tuliskan analisis dalam Bahasa Indonesia.\n");
-        sb.append("Output your response STRICTLY as a JSON object with the following schema:\n");
+        sb.append("Judul: ").append(title != null ? title.trim() : "").append("\n");
+        sb.append("Artis: ").append(artist != null ? artist.trim() : "").append("\n");
+        if (enableWebSearch) {
+            sb.append("\n[PENTING] Lakukan penelusuran Google Search secara aktif untuk menemukan fakta riil, latar belakang resmi, wawancara pencipta lagu/musisi, dan konteks album. Jelaskan dengan akurat dan faktual, bukan sekadar tebakan atau asumsi.\n");
+        }
+        sb.append("\nLirik Lagu:\n").append(lyrics != null ? lyrics.trim() : "").append("\n\n");
+        sb.append("Berikan output HANYA dalam format JSON valid tanpa format markdown codeblock:\n");
         sb.append("{\n");
-        sb.append("  \"mood\": \"1-3 words describing the dominant emotion/atmosphere in Indonesian (e.g. Melankolis & Penuh Harap, Semangat & Ceria)\",\n");
-        sb.append("  \"summary\": \"A rich 2-3 paragraph explanation of the song's story, emotional themes, and artistic meaning written in Indonesian.\"\n");
-        sb.append("}\n");
-        sb.append("Return ONLY valid JSON without any markdown code fences or conversational text outside the JSON object.");
+        sb.append("  \"mood\": \"Sebutkan 1-3 kata emosi dominan (contoh: Melancholic, Nostalgic, Hopeful)\",\n");
+        sb.append("  \"summary\": \"Penjelasan ringkas makna lagu, cerita di baliknya, dan pesan moralnya dalam 2-4 kalimat berbahasa Indonesia yang mendalam\"\n");
+        sb.append("}");
         return sb.toString();
+    }
+
+    public static String buildMeaningPrompt(String title, String artist, String fullLyrics) {
+        return buildMeaningPrompt(title, artist, fullLyrics, false);
     }
 
     /**
@@ -241,7 +241,7 @@ public class SongMeaningService {
             return new NoOpCancellable();
         }
 
-        String prompt = buildMeaningPrompt(title, artist, fullLyrics);
+        String prompt = buildMeaningPrompt(title, artist, fullLyrics, enableWebSearch);
         List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user(prompt));
 
         return apiClient.generateContent(modelId, messages, enableWebSearch, null, new AntigravityApiClient.CompletionCallback() {
@@ -255,7 +255,34 @@ public class SongMeaningService {
                     JsonObject json = JsonParser.parseString(cleaned).getAsJsonObject();
                     String mood = json.has("mood") && !json.get("mood").isJsonNull() ? json.get("mood").getAsString() : "";
                     String summary = json.has("summary") && !json.get("summary").isJsonNull() ? json.get("summary").getAsString() : "";
-                    parsedMeaning = new SongMeaning(mood, summary, webSources != null ? webSources : new ArrayList<String>());
+                    List<String> finalSources = new ArrayList<>();
+                    if (webSources != null) {
+                        for (String src : webSources) {
+                            if (src != null && !src.trim().isEmpty() && !finalSources.contains(src.trim())) {
+                                finalSources.add(src.trim());
+                            }
+                        }
+                    }
+                    if (json.has("sources") && json.get("sources").isJsonArray()) {
+                        for (JsonElement el : json.getAsJsonArray("sources")) {
+                            if (el != null && el.isJsonPrimitive()) {
+                                String src = el.getAsString().trim();
+                                if (!src.isEmpty() && !finalSources.contains(src)) {
+                                    finalSources.add(src);
+                                }
+                            }
+                        }
+                    } else if (json.has("webSources") && json.get("webSources").isJsonArray()) {
+                        for (JsonElement el : json.getAsJsonArray("webSources")) {
+                            if (el != null && el.isJsonPrimitive()) {
+                                String src = el.getAsString().trim();
+                                if (!src.isEmpty() && !finalSources.contains(src)) {
+                                    finalSources.add(src);
+                                }
+                            }
+                        }
+                    }
+                    parsedMeaning = new SongMeaning(mood, summary, finalSources);
 
                     // Populate memory cache
                     memoryCache.put(cacheKey, parsedMeaning);
