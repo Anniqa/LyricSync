@@ -1120,20 +1120,44 @@ public class AntigravityToolExecutor {
                     ToolResult result = parseSearchGroundingResponse(sseText, maxResults);
                     if (result.isError) {
                         result = createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE);
-                    } else if (maxResults > 0 && result.sources.size() > maxResults) {
-                        result.sources = new ArrayList<>(result.sources.subList(0, maxResults));
-                        try {
-                            JsonObject json = JsonParser.parseString(result.content).getAsJsonObject();
-                            JsonArray newSourcesArr = new JsonArray();
+                    } else {
+                        // Resolve Vertex redirect URLs to canonical URLs
+                        if (result.sources != null) {
                             for (SourceItem s : result.sources) {
-                                JsonObject sObj = new JsonObject();
-                                sObj.addProperty("title", s.title);
-                                sObj.addProperty("url", s.url);
-                                newSourcesArr.add(sObj);
+                                if (s.url != null && s.url.contains("vertexaisearch.cloud.google.com")) {
+                                    try {
+                                        Request headReq = new Request.Builder()
+                                                .url(s.url)
+                                                .head()
+                                                .build();
+                                        try (Response headResp = httpClient.newCall(headReq).execute()) {
+                                            if (headResp.code() >= 300 && headResp.code() < 400) {
+                                                String loc = headResp.header("Location");
+                                                if (loc != null && (loc.startsWith("http://") || loc.startsWith("https://"))) {
+                                                    s.url = loc.trim();
+                                                }
+                                            }
+                                        }
+                                    } catch (Exception ignored) {}
+                                }
                             }
-                            json.add("sources", newSourcesArr);
-                            result.content = json.toString();
-                        } catch (Exception ignored) {}
+                        }
+
+                        if (maxResults > 0 && result.sources.size() > maxResults) {
+                            result.sources = new ArrayList<>(result.sources.subList(0, maxResults));
+                            try {
+                                JsonObject json = JsonParser.parseString(result.content).getAsJsonObject();
+                                JsonArray newSourcesArr = new JsonArray();
+                                for (SourceItem s : result.sources) {
+                                    JsonObject sObj = new JsonObject();
+                                    sObj.addProperty("title", s.title);
+                                    sObj.addProperty("url", s.url);
+                                    newSourcesArr.add(sObj);
+                                }
+                                json.add("sources", newSourcesArr);
+                                result.content = json.toString();
+                            } catch (Exception ignored) {}
+                        }
                     }
 
                     if (callback != null) {

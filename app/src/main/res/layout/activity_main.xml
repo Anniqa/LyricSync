@@ -1333,114 +1333,12 @@
                                 android:textSize="12sp" />
                         </LinearLayout>
 
-                        <!-- Model Selection -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:layout_marginBottom="12dp">
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="@string/ai_model_label"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="13sp"
-                                android:textStyle="bold" />
-
-                            <Spinner
-                                android:id="@+id/spinner_ai_model"
-                                android:layout_width="wrap_content"
-                                android:layout_height="40dp"
-                                android:background="@drawable/bg_spinner_modern"
-                                android:popupBackground="@drawable/bg_spinner_popup"
-                                android:spinnerMode="dropdown" />
-                        </LinearLayout>
-
-                        <!-- Reasoning Effort Selection -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:layout_marginBottom="12dp">
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="@string/ai_effort_label"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="13sp"
-                                android:textStyle="bold" />
-
-                            <Spinner
-                                android:id="@+id/spinner_ai_effort"
-                                android:layout_width="wrap_content"
-                                android:layout_height="40dp"
-                                android:background="@drawable/bg_spinner_modern"
-                                android:popupBackground="@drawable/bg_spinner_popup"
-                                android:spinnerMode="dropdown" />
-                        </LinearLayout>
-
-                        <!-- Web Search Grounding toggle -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:layout_marginBottom="14dp">
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="@string/ai_web_search_label"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="13sp" />
-
-                            <androidx.appcompat.widget.SwitchCompat
-                                android:id="@+id/switch_ai_web_search"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:showText="false"
-                                app:showText="false" />
-                        </LinearLayout>
-
-                        <!-- Search Grounding Model Selection -->
-                        <LinearLayout
-                            android:id="@+id/row_ai_search_model"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:layout_marginBottom="14dp">
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="@string/ai_search_model_label"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="13sp"
-                                android:textStyle="bold" />
-
-                            <Spinner
-                                android:id="@+id/spinner_ai_search_model"
-                                android:layout_width="wrap_content"
-                                android:layout_height="40dp"
-                                android:background="@drawable/bg_spinner_modern"
-                                android:popupBackground="@drawable/bg_spinner_popup"
-                                android:spinnerMode="dropdown" />
-                        </LinearLayout>
-
                         <!-- Quota Weekly Progress -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="vertical"
+                            android:layout_marginTop="8dp"
                             android:layout_marginBottom="10dp">
 
                             <LinearLayout

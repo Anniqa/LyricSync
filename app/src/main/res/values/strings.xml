@@ -157,4 +157,6 @@
     <string name="ai_model_gemini_flash_desc">Fast, versatile &amp; Google Search grounding</string>
     <string name="ai_model_gemini_pro_desc">Deep reasoning &amp; complex lyric analysis</string>
     <string name="ai_model_claude_desc">Anthropic model, nuanced poetic prose</string>
+    <string name="ai_source_web">Web Source</string>
+    <string name="action_change">Change</string>
 </resources>

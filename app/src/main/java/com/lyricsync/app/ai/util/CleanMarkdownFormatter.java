@@ -104,4 +104,87 @@ public final class CleanMarkdownFormatter {
             return stripMarkdown(text);
         }
     }
+
+    public static class SourceChipData {
+        public final String displayLabel;
+        public final String targetUrl;
+
+        public SourceChipData(String displayLabel, String targetUrl) {
+            this.displayLabel = displayLabel;
+            this.targetUrl = targetUrl;
+        }
+    }
+
+    /**
+     * Resolves a raw web source entry into a clean, human-readable chip label
+     * and valid target URL. Strictly eliminates "vertex" / internal redirect noise.
+     */
+    public static SourceChipData resolveSourceChip(String rawSource, android.content.Context context) {
+        if (rawSource == null || rawSource.trim().isEmpty()) return null;
+        String raw = rawSource.trim();
+        String label = null;
+        String url = raw;
+
+        if (raw.contains("|")) {
+            String[] parts = raw.split("\\|", 2);
+            label = parts[0].trim();
+            url = parts[1].trim();
+        }
+
+        // Clean up url
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            if (url.contains(".") && !url.contains(" ")) {
+                url = "https://" + url;
+            } else {
+                try {
+                    url = "https://www.google.com/search?q=" + java.net.URLEncoder.encode(url, "UTF-8");
+                } catch (Exception e) {
+                    url = "https://www.google.com/search?q=" + url;
+                }
+            }
+        }
+
+        // If url is a Vertex redirect URL with ?url= parameter, extract target url
+        if (url.contains("vertexaisearch.cloud.google.com/grounding-api-redirect")) {
+            int urlIdx = url.indexOf("?url=");
+            if (urlIdx == -1) urlIdx = url.indexOf("&url=");
+            if (urlIdx != -1) {
+                try {
+                    String encoded = url.substring(urlIdx + 5);
+                    int amp = encoded.indexOf('&');
+                    if (amp != -1) encoded = encoded.substring(0, amp);
+                    String decoded = java.net.URLDecoder.decode(encoded, "UTF-8");
+                    if (decoded.startsWith("http://") || decoded.startsWith("https://")) {
+                        url = decoded;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // Derive clean label
+        if (label == null || label.isEmpty() || label.toLowerCase(java.util.Locale.ROOT).contains("vertexaisearch")) {
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                String host = uri.getHost();
+                if (host != null) {
+                    label = host.startsWith("www.") ? host.substring(4) : host;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (label == null || label.isEmpty() || label.toLowerCase(java.util.Locale.ROOT).contains("vertexaisearch")) {
+            if (context != null) {
+                try {
+                    int resId = context.getResources().getIdentifier("ai_source_web", "string", context.getPackageName());
+                    label = (resId != 0) ? context.getString(resId) : "Web Source";
+                } catch (Throwable t) {
+                    label = "Web Source";
+                }
+            } else {
+                label = "Web Source";
+            }
+        }
+
+        return new SourceChipData(label, url);
+    }
 }

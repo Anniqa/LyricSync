@@ -1615,23 +1615,19 @@ public class FloatingOverlayService extends Service {
     private void addSourceChipsBelowBubble(TextView aiBubble, List<String> webSources) {
         if (aiBubble == null || aiChatMessages == null || webSources == null) return;
         int added = 0;
+        java.util.Set<String> seen = new java.util.HashSet<>();
         for (String source : webSources) {
             if (added >= 5) break;
-            if (source == null) continue;
-            final String url = source.trim();
-            if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
+            CleanMarkdownFormatter.SourceChipData chipData = CleanMarkdownFormatter.resolveSourceChip(source, this);
+            if (chipData == null) continue;
+            String key = chipData.displayLabel.toLowerCase(java.util.Locale.ROOT);
+            if (seen.contains(key)) continue;
+            seen.add(key);
 
-            String domain = url;
-            try {
-                java.net.URI uri = new java.net.URI(url);
-                String host = uri.getHost();
-                if (host != null) {
-                    domain = host.startsWith("www.") ? host.substring(4) : host;
-                }
-            } catch (Exception ignored) {}
+            final String url = chipData.targetUrl;
 
             TextView chip = new TextView(this);
-            chip.setText(domain);
+            chip.setText(chipData.displayLabel);
             chip.setTextColor(getResources().getColor(R.color.accent));
             chip.setTextSize(10f);
             chip.setBackgroundResource(R.drawable.bg_prompt_card);

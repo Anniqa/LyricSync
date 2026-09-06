@@ -554,22 +554,40 @@ public class AntigravityApiClient {
                 JsonObject cObj = cElem.getAsJsonObject();
                 if (cObj.has("web") && cObj.get("web").isJsonObject()) {
                     JsonObject web = cObj.getAsJsonObject("web");
-                    String source = null;
+                    String title = null;
+                    String uri = null;
                     if (web.has("title") && !web.get("title").isJsonNull() && web.get("title").isJsonPrimitive()) {
-                        String title = web.get("title").getAsString();
-                        if (title != null && !title.trim().isEmpty()) {
-                            source = title.trim();
+                        String t = web.get("title").getAsString();
+                        if (t != null && !t.trim().isEmpty()) {
+                            title = t.trim();
                         }
                     }
-                    if (source == null && web.has("uri") && !web.get("uri").isJsonNull() && web.get("uri").isJsonPrimitive()) {
-                        String uri = web.get("uri").getAsString();
-                        if (uri != null && !uri.trim().isEmpty()) {
-                            source = uri.trim();
+                    if (web.has("uri") && !web.get("uri").isJsonNull() && web.get("uri").isJsonPrimitive()) {
+                        String u = web.get("uri").getAsString();
+                        if (u != null && !u.trim().isEmpty()) {
+                            uri = u.trim();
                         }
                     }
-                    if (source != null && !result.webSearchQueries.contains(source)) {
-                        result.webSearchQueries.add(source);
-                        found = true;
+
+                    if (title != null && uri != null && !title.equalsIgnoreCase(uri)) {
+                        String combined = title + "|" + uri;
+                        if (!result.webSearchQueries.contains(combined)) {
+                            result.webSearchQueries.add(combined);
+                            found = true;
+                        }
+                        if (!result.webSearchQueries.contains(title)) {
+                            result.webSearchQueries.add(title);
+                        }
+                    } else if (title != null) {
+                        if (!result.webSearchQueries.contains(title)) {
+                            result.webSearchQueries.add(title);
+                            found = true;
+                        }
+                    } else if (uri != null) {
+                        if (!result.webSearchQueries.contains(uri)) {
+                            result.webSearchQueries.add(uri);
+                            found = true;
+                        }
                     }
                 }
             }
@@ -795,7 +813,9 @@ public class AntigravityApiClient {
 
                         // Normal completion without pending functionCall
                         activeHandles.remove(handle);
-                        dispatchOnComplete(listener, accumulatedText.toString(), accumulatedSources, promptTokens, candidateTokens);
+                        if (!handle.isCancelled() && !call.isCanceled()) {
+                            dispatchOnComplete(listener, accumulatedText.toString(), accumulatedSources, promptTokens, candidateTokens);
+                        }
                     } finally {
                         activeCalls.remove(call);
                     }
@@ -866,11 +886,18 @@ public class AntigravityApiClient {
                 if (result != null && result.sources != null) {
                     for (SourceItem item : result.sources) {
                         if (item != null) {
-                            String src = (item.url != null && !item.url.trim().isEmpty())
-                                    ? item.url.trim()
-                                    : (item.title != null ? item.title.trim() : "");
-                            if (!src.isEmpty() && !accumulatedSources.contains(src)) {
-                                accumulatedSources.add(src);
+                            String url = (item.url != null) ? item.url.trim() : "";
+                            String title = (item.title != null) ? item.title.trim() : "";
+                            if (!url.isEmpty() && !accumulatedSources.contains(url)) {
+                                accumulatedSources.add(url);
+                            }
+                            if (!title.isEmpty() && !url.isEmpty() && !title.equalsIgnoreCase(url)) {
+                                String combined = title + "|" + url;
+                                if (!accumulatedSources.contains(combined)) {
+                                    accumulatedSources.add(combined);
+                                }
+                            } else if (!title.isEmpty() && !accumulatedSources.contains(title)) {
+                                accumulatedSources.add(title);
                             }
                         }
                     }

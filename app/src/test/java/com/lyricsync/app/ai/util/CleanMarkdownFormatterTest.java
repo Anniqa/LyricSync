@@ -59,4 +59,39 @@ public class CleanMarkdownFormatterTest {
         assertEquals("", CleanMarkdownFormatter.formatClean(null).toString());
         assertEquals("", CleanMarkdownFormatter.formatClean("   ").toString());
     }
+
+    @Test
+    public void testResolveSourceChipWithCombinedTitleAndUrl() {
+        CleanMarkdownFormatter.SourceChipData chip = CleanMarkdownFormatter.resolveSourceChip(
+                "Wikipedia|https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFx", null);
+        assertNotNull(chip);
+        assertEquals("Wikipedia", chip.displayLabel);
+        assertEquals("https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFx", chip.targetUrl);
+    }
+
+    @Test
+    public void testResolveSourceChipWithVertexRedirectParam() {
+        CleanMarkdownFormatter.SourceChipData chip = CleanMarkdownFormatter.resolveSourceChip(
+                "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc?url=https%3A%2F%2Fwww.rollingstone.com%2Fmusic", null);
+        assertNotNull(chip);
+        assertEquals("rollingstone.com", chip.displayLabel);
+        assertEquals("https://www.rollingstone.com/music", chip.targetUrl);
+    }
+
+    @Test
+    public void testResolveSourceChipWithRawDomain() {
+        CleanMarkdownFormatter.SourceChipData chip = CleanMarkdownFormatter.resolveSourceChip("wikipedia.org", null);
+        assertNotNull(chip);
+        assertEquals("wikipedia.org", chip.displayLabel);
+        assertEquals("https://wikipedia.org", chip.targetUrl);
+    }
+
+    @Test
+    public void testResolveSourceChipEliminatesVertexHost() {
+        CleanMarkdownFormatter.SourceChipData chip = CleanMarkdownFormatter.resolveSourceChip(
+                "https://vertexaisearch.cloud.google.com/grounding-api-redirect/xyz123", null);
+        assertNotNull(chip);
+        assertFalse("Display label must never contain vertex", chip.displayLabel.toLowerCase().contains("vertex"));
+        assertEquals("Web Source", chip.displayLabel);
+    }
 }

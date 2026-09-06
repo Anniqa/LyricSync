@@ -146,6 +146,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private androidx.appcompat.widget.SwitchCompat switchAiWebSearch;
 
     public static final List<String> BASE_ANTIGRAVITY_MODELS = Collections.unmodifiableList(Arrays.asList(
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-medium",
             "gemini-3.8-flash-low",
             "gemini-3.7-flash-high",
             "gemini-3.7-flash-medium",
@@ -153,9 +155,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             "gemini-3.6-flash-high",
             "gemini-3.6-flash-medium",
             "gemini-3.6-flash-low",
-            "gemini-3-flash-agent",
             "gemini-3.5-flash-low",
             "gemini-3.5-flash-extra-low",
+            "gemini-3-pro-high",
+            "gemini-3-pro-low",
+            "gemini-3-flash-agent",
             "gemini-pro-agent",
             "gemini-3.1-pro-low",
             "gemini-3.1-flash-lite",
@@ -1358,8 +1362,19 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         String desc = "Google Antigravity";
 
         if (mLower.startsWith("gemini-3.8-flash")) {
-            name = mLower.contains("low") ? "Gemini 3.8 Flash (Low)" : "Gemini 3.8 Flash";
-            desc = mLower.contains("low") ? "Ultra Low Latency · Fast Reasoning" : "Thinking · High Effort";
+            if (mLower.contains("high")) {
+                name = "Gemini 3.8 Flash (High)";
+                desc = "Extended Thinking · High Effort";
+            } else if (mLower.contains("medium")) {
+                name = "Gemini 3.8 Flash (Med)";
+                desc = "Thinking · Balanced Reasoning";
+            } else if (mLower.contains("low")) {
+                name = "Gemini 3.8 Flash (Low)";
+                desc = "Ultra Low Latency · Fast Reasoning";
+            } else {
+                name = "Gemini 3.8 Flash";
+                desc = "Thinking · Adaptable Reasoning";
+            }
         } else if (mLower.startsWith("gemini-3.7-flash")) {
             if (mLower.contains("high")) {
                 name = "Gemini 3.7 Flash (High)";
@@ -1391,6 +1406,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         } else if (mLower.startsWith("gemini-3.5-flash") || mLower.equals("gemini-3-flash-agent")) {
             name = mLower.contains("agent") ? "Gemini 3.5 Flash (High)" : (mLower.contains("extra-low") ? "Gemini 3.5 Flash (Low)" : "Gemini 3.5 Flash (Med)");
             desc = mLower.contains("agent") ? "Agentic Reasoning · High Effort" : (mLower.contains("extra-low") ? "Low Latency · Low Cost" : "Balanced Reasoning");
+        } else if (mLower.startsWith("gemini-3-pro")) {
+            if (mLower.contains("high")) {
+                name = "Gemini 3 Pro (High)";
+                desc = "Deep Reasoning · High Effort";
+            } else {
+                name = "Gemini 3 Pro (Low)";
+                desc = "Pro Reasoning · Low Latency";
+            }
         } else if (mLower.startsWith("gemini-3-flash")) {
             name = "Gemini 3 Flash";
             desc = "Fast & Balanced Reasoning";
@@ -1531,7 +1554,61 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
         }
 
+        View btnSearchModel = dialogView.findViewById(R.id.btn_select_search_model);
+        TextView tvSearchModelSub = dialogView.findViewById(R.id.tv_dialog_search_model_sub);
+        if (tvSearchModelSub != null) {
+            tvSearchModelSub.setText(prefs.getString("pref_ai_search_model", "gemini-2.5-flash"));
+        }
+        if (btnSearchModel != null) {
+            btnSearchModel.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showSearchModelSelectorDialog(tvSearchModelSub);
+            });
+        }
+
         dialog.show();
+    }
+
+    private void showSearchModelSelectorDialog(TextView tvSearchModelSub) {
+        final String[] searchModelIds = {
+                "gemini-2.5-flash",
+                "gemini-3.8-flash-low",
+                "gemini-3.7-flash-low",
+                "gemini-3.1-flash-lite",
+                "gemini-2.5-pro"
+        };
+        final String[] searchModelLabels = {
+                "Gemini 2.5 Flash (Default Grounding)",
+                "Gemini 3.8 Flash (Low Latency Grounding)",
+                "Gemini 3.7 Flash (Fast Grounding)",
+                "Gemini 3.1 Flash Lite (Ultra Fast Grounding)",
+                "Gemini 2.5 Pro (Deep Grounding)"
+        };
+
+        String currentSearchModel = prefs.getString("pref_ai_search_model", "gemini-2.5-flash");
+        int checkedItem = 0;
+        for (int i = 0; i < searchModelIds.length; i++) {
+            if (searchModelIds[i].equalsIgnoreCase(currentSearchModel)) {
+                checkedItem = i;
+                break;
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.ai_search_model_label)
+                .setSingleChoiceItems(searchModelLabels, checkedItem, (d, which) -> {
+                    if (which >= 0 && which < searchModelIds.length) {
+                        String chosen = searchModelIds[which];
+                        prefs.edit().putString("pref_ai_search_model", chosen).apply();
+                        AntigravityToolExecutor.setSearchModel(chosen);
+                        if (tvSearchModelSub != null) {
+                            tvSearchModelSub.setText(chosen);
+                        }
+                        d.dismiss();
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     private void showCustomModelInputDialog() {
@@ -1753,24 +1830,19 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         label.setPadding(0, 0, dpToPx(4), 0);
         aiStudioWebSourcesContainer.addView(label);
 
+        Set<String> seen = new HashSet<>();
+        int added = 0;
         for (String source : sources) {
-            if (source == null || source.trim().isEmpty()) continue;
-            String cleanUrl = source.trim();
-            if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
-                cleanUrl = "https://" + cleanUrl;
-            }
-            final String url = cleanUrl;
-            String domain = url;
-            try {
-                java.net.URI uri = new java.net.URI(url);
-                String host = uri.getHost();
-                if (host != null) {
-                    domain = host.startsWith("www.") ? host.substring(4) : host;
-                }
-            } catch (Exception ignored) {}
+            if (added >= 5) break;
+            CleanMarkdownFormatter.SourceChipData chipData = CleanMarkdownFormatter.resolveSourceChip(source, this);
+            if (chipData == null) continue;
+            String key = chipData.displayLabel.toLowerCase(Locale.ROOT);
+            if (seen.contains(key)) continue;
+            seen.add(key);
 
+            final String url = chipData.targetUrl;
             TextView chip = new TextView(this);
-            chip.setText(domain);
+            chip.setText(chipData.displayLabel);
             chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
             chip.setTextSize(10f);
             chip.setBackgroundResource(R.drawable.bg_tip_box);
@@ -1789,6 +1861,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 }
             });
             aiStudioWebSourcesContainer.addView(chip);
+            added++;
         }
     }
 
@@ -1953,11 +2026,16 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private void addSourceChipsBelowBubble(TextView aiBubble, List<String> webSources) {
         if (aiBubble == null || aiStudioChatContainer == null || webSources == null) return;
         int added = 0;
+        Set<String> seen = new HashSet<>();
         for (String source : webSources) {
             if (added >= 5) break;
-            if (source == null) continue;
-            final String url = source.trim();
-            if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
+            CleanMarkdownFormatter.SourceChipData chipData = CleanMarkdownFormatter.resolveSourceChip(source, this);
+            if (chipData == null) continue;
+            String key = chipData.displayLabel.toLowerCase(Locale.ROOT);
+            if (seen.contains(key)) continue;
+            seen.add(key);
+
+            final String url = chipData.targetUrl;
 
             LinearLayout chip = new LinearLayout(this);
             chip.setOrientation(LinearLayout.HORIZONTAL);
@@ -1973,7 +2051,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             chip.addView(linkIcon, iconLp);
 
             TextView text = new TextView(this);
-            text.setText(url);
+            text.setText(chipData.displayLabel);
             text.setTextColor(ContextCompat.getColor(this, R.color.accent));
             text.setTextSize(10f);
             text.setMaxLines(1);
