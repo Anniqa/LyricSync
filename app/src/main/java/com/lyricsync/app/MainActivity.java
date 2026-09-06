@@ -29,11 +29,21 @@ import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.view.Gravity;
+import android.view.inputmethod.EditorInfo;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
 
+import com.google.android.material.card.MaterialCardView;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
+import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.client.AntigravityQuotaClient;
 import com.lyricsync.app.ai.model.AntigravityModel;
 import com.lyricsync.app.ai.model.QuotaSummary;
+import com.lyricsync.app.ai.service.SongChatManager;
+import com.lyricsync.app.ai.service.SongMeaningService;
+import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
+import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -123,8 +133,34 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private TextView tvQuota5h;
     private TextView tvAiTokens;
 
+    // ── AI Song Studio Views & Subsystems ──────────────────────────────────
+    private MaterialCardView cardAiStudio;
+    private View aiStudioHeader;
+    private View aiStudioContent;
+    private ImageView aiStudioChevron;
+    private TextView aiStudioMoodBadge;
+    private TextView aiStudioQuotaBadge;
+    private TextView aiStudioSummary;
+    private HorizontalScrollView aiStudioWebSourcesScroll;
+    private LinearLayout aiStudioWebSourcesContainer;
+    private HorizontalScrollView aiStudioQuickChips;
+    private LinearLayout aiStudioQuickChipsContainer;
+    private ScrollView aiStudioChatScroll;
+    private LinearLayout aiStudioChatContainer;
+    private ImageView aiStudioWebSearchChip;
+    private EditText aiStudioChatInput;
+    private ImageView aiStudioChatSend;
+
     private AntigravityAuthManager authManager;
+    private AntigravityApiClient apiClient;
     private AntigravityQuotaClient quotaClient;
+    private SongMeaningService songMeaningService;
+    private SongChatManager songChatManager;
+    private AntigravityApiClient.Cancellable activeMeaningCall;
+    private AntigravityApiClient.Cancellable activeChatCall;
+    private boolean aiWebSearchEnabled = false;
+    private String currentTrackTitle;
+    private String currentTrackArtist;
     private List<AntigravityModel> availableAiModels = new ArrayList<>();
 
     private ObjectAnimator[] eqAnimators;
@@ -156,6 +192,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setupAppearanceChips();
         setupTranslationUi();
         setupAiAccountUi();
+        setupAiStudioUi();
         setupDeveloperSection();
         setupLogViewer();
 
@@ -190,6 +227,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         stopEqualizer();
         if (heroTintAnimator != null) heroTintAnimator.cancel();
         if (startTintAnimator != null) startTintAnimator.cancel();
+        if (activeMeaningCall != null) {
+            activeMeaningCall.cancel();
+            activeMeaningCall = null;
+        }
+        if (activeChatCall != null) {
+            activeChatCall.cancel();
+            activeChatCall = null;
+        }
     }
 
     // ── Setup ──────────────────────────────────────────────────────────────
@@ -243,6 +288,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         Anim.enterStagger(60, 70,
                 findViewById(R.id.header),
                 findViewById(R.id.card_now_playing),
+                findViewById(R.id.card_ai_studio),
                 findViewById(R.id.card_permissions),
                 startButton,
                 findViewById(R.id.card_appearance),
@@ -579,6 +625,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             switchAiWebSearch.setChecked(prefs.getBoolean("pref_ai_web_search", false));
             switchAiWebSearch.setOnCheckedChangeListener((btn, isChecked) -> {
                 Haptics.tick(btn);
+                aiWebSearchEnabled = isChecked;
+                if (aiStudioWebSearchChip != null) {
+                    aiStudioWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
+                }
                 prefs.edit().putBoolean("pref_ai_web_search", isChecked).apply();
             });
         }
@@ -617,6 +667,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             int h5Pct = Math.round(summary.gemini5hFraction * 100f);
                             if (quota5hProgress != null) quota5hProgress.setProgress(h5Pct);
                             if (tvQuota5h != null) tvQuota5h.setText(h5Pct + "%");
+
+                            if (aiStudioQuotaBadge != null) {
+                                aiStudioQuotaBadge.setText("AI Quota: " + h5Pct + "%");
+                                aiStudioQuotaBadge.setVisibility(View.VISIBLE);
+                            }
                         });
                     }
 
@@ -685,6 +740,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 } else {
                     tvAiTokens.setVisibility(View.GONE);
                 }
+            }
+
+            if (currentTrackTitle != null && (songChatManager == null || songChatManager.getMeaning() == null) && activeMeaningCall == null) {
+                fetchSongMeaning(currentTrackTitle, currentTrackArtist);
+            }
+        } else {
+            if (aiStudioQuotaBadge != null) {
+                aiStudioQuotaBadge.setVisibility(View.GONE);
             }
         }
     }
@@ -915,6 +978,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             stopEqualizer();
             npEqualizer.setVisibility(View.INVISIBLE);
             tintHero(AlbumPalette.DEFAULT_ACCENT);
+            onNowPlayingChanged(snapshot);
             return;
         }
 
@@ -953,6 +1017,452 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             stopEqualizer();
             npEqualizer.setVisibility(View.INVISIBLE);
         }
+
+        onNowPlayingChanged(snapshot);
+    }
+
+    // ── AI Song Studio ─────────────────────────────────────────────────────
+
+    private void setupAiStudioUi() {
+        if (authManager == null) {
+            authManager = AntigravityAuthManager.getInstance(this);
+        }
+        if (apiClient == null) {
+            apiClient = new AntigravityApiClient(authManager);
+        }
+        if (songMeaningService == null) {
+            songMeaningService = new SongMeaningService(prefs, apiClient);
+        }
+        if (songChatManager == null) {
+            songChatManager = new SongChatManager(apiClient);
+        }
+
+        cardAiStudio = findViewById(R.id.card_ai_studio);
+        aiStudioHeader = findViewById(R.id.ai_studio_header);
+        aiStudioContent = findViewById(R.id.ai_studio_content);
+        aiStudioChevron = findViewById(R.id.ai_studio_chevron);
+        aiStudioMoodBadge = findViewById(R.id.ai_studio_mood_badge);
+        aiStudioQuotaBadge = findViewById(R.id.ai_studio_quota_badge);
+        aiStudioSummary = findViewById(R.id.ai_studio_summary);
+        aiStudioWebSourcesScroll = findViewById(R.id.ai_studio_web_sources_scroll);
+        aiStudioWebSourcesContainer = findViewById(R.id.ai_studio_web_sources_container);
+        aiStudioQuickChips = findViewById(R.id.ai_studio_quick_chips);
+        aiStudioQuickChipsContainer = findViewById(R.id.ai_studio_quick_chips_container);
+        aiStudioChatScroll = findViewById(R.id.ai_studio_chat_scroll);
+        aiStudioChatContainer = findViewById(R.id.ai_studio_chat_container);
+        aiStudioWebSearchChip = findViewById(R.id.ai_studio_web_search_chip);
+        aiStudioChatInput = findViewById(R.id.ai_studio_chat_input);
+        aiStudioChatSend = findViewById(R.id.ai_studio_chat_send);
+
+        boolean studioExpanded = prefs.getBoolean("ai_studio_expanded", true);
+        if (aiStudioContent != null) {
+            aiStudioContent.setVisibility(studioExpanded ? View.VISIBLE : View.GONE);
+        }
+        if (aiStudioChevron != null) {
+            aiStudioChevron.setRotation(studioExpanded ? 180f : 0f);
+        }
+        if (aiStudioHeader != null) {
+            aiStudioHeader.setOnClickListener(v -> {
+                Haptics.tick(v);
+                if (aiStudioContent == null) return;
+                boolean nowExpanded = aiStudioContent.getVisibility() != View.VISIBLE;
+                if (nowExpanded) {
+                    Anim.expand(aiStudioContent);
+                } else {
+                    Anim.collapse(aiStudioContent);
+                }
+                if (aiStudioChevron != null) {
+                    Anim.rotateTo(aiStudioChevron, nowExpanded ? 180f : 0f);
+                }
+                prefs.edit().putBoolean("ai_studio_expanded", nowExpanded).apply();
+            });
+        }
+
+        aiWebSearchEnabled = prefs.getBoolean("pref_ai_web_search", false);
+        if (aiStudioWebSearchChip != null) {
+            aiStudioWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
+            aiStudioWebSearchChip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                aiWebSearchEnabled = !aiWebSearchEnabled;
+                aiStudioWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
+                prefs.edit().putBoolean("pref_ai_web_search", aiWebSearchEnabled).apply();
+                if (switchAiWebSearch != null) {
+                    switchAiWebSearch.setChecked(aiWebSearchEnabled);
+                }
+                Toast.makeText(MainActivity.this,
+                        aiWebSearchEnabled ? "AI Web Search aktif" : "AI Web Search nonaktif",
+                        Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        setupAiQuickChips();
+
+        if (aiStudioChatSend != null) {
+            aiStudioChatSend.setOnClickListener(v -> {
+                Haptics.tick(v);
+                submitAiChatInput();
+            });
+        }
+
+        if (aiStudioChatInput != null) {
+            aiStudioChatInput.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_SEND) {
+                    submitAiChatInput();
+                    return true;
+                }
+                return false;
+            });
+        }
+    }
+
+    private void setupAiQuickChips() {
+        if (aiStudioQuickChipsContainer == null) return;
+        aiStudioQuickChipsContainer.removeAllViews();
+        for (final String prompt : SongChatManager.QUICK_PROMPTS) {
+            TextView chip = new TextView(this);
+            chip.setText(prompt);
+            chip.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+            chip.setTextSize(11f);
+            chip.setBackgroundResource(R.drawable.bg_tip_box);
+            int padH = dpToPx(10);
+            int padV = dpToPx(5);
+            chip.setPadding(padH, padV, padH, padV);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.setMarginEnd(dpToPx(6));
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                sendAiChatMessage(prompt);
+            });
+            aiStudioQuickChipsContainer.addView(chip);
+        }
+    }
+
+    public void onNowPlayingChanged(NowPlaying.Snapshot track) {
+        if (track == null || !track.hasTrack || track.title == null || track.title.trim().isEmpty()) {
+            if (currentTrackTitle != null) {
+                currentTrackTitle = null;
+                currentTrackArtist = null;
+                if (activeMeaningCall != null) {
+                    activeMeaningCall.cancel();
+                    activeMeaningCall = null;
+                }
+                if (activeChatCall != null) {
+                    activeChatCall.cancel();
+                    activeChatCall = null;
+                }
+                if (songChatManager != null) {
+                    songChatManager.setCurrentSong(null, null, null, null);
+                }
+                if (aiStudioSummary != null) {
+                    aiStudioSummary.setText("Putar lagu untuk menganalisis makna dan berdiskusi dengan AI.");
+                }
+                if (aiStudioMoodBadge != null) {
+                    aiStudioMoodBadge.setVisibility(View.GONE);
+                }
+                if (aiStudioWebSourcesScroll != null) {
+                    aiStudioWebSourcesScroll.setVisibility(View.GONE);
+                }
+                if (aiStudioWebSourcesContainer != null) {
+                    aiStudioWebSourcesContainer.removeAllViews();
+                }
+                if (aiStudioChatContainer != null) {
+                    aiStudioChatContainer.removeAllViews();
+                }
+                if (aiStudioChatScroll != null) {
+                    aiStudioChatScroll.setVisibility(View.GONE);
+                }
+            }
+            return;
+        }
+
+        boolean sameTrack = currentTrackTitle != null
+                && currentTrackTitle.equals(track.title)
+                && ((currentTrackArtist == null && track.artist == null)
+                    || (currentTrackArtist != null && currentTrackArtist.equals(track.artist)));
+        if (sameTrack) {
+            return;
+        }
+
+        currentTrackTitle = track.title;
+        currentTrackArtist = track.artist != null ? track.artist : "";
+
+        if (activeMeaningCall != null) {
+            activeMeaningCall.cancel();
+            activeMeaningCall = null;
+        }
+        if (activeChatCall != null) {
+            activeChatCall.cancel();
+            activeChatCall = null;
+        }
+
+        if (songChatManager != null) {
+            songChatManager.setCurrentSong(currentTrackTitle, currentTrackArtist, "", null);
+        }
+
+        if (aiStudioChatContainer != null) {
+            aiStudioChatContainer.removeAllViews();
+        }
+        if (aiStudioChatScroll != null) {
+            aiStudioChatScroll.setVisibility(View.GONE);
+        }
+        if (aiStudioWebSourcesContainer != null) {
+            aiStudioWebSourcesContainer.removeAllViews();
+        }
+        if (aiStudioWebSourcesScroll != null) {
+            aiStudioWebSourcesScroll.setVisibility(View.GONE);
+        }
+
+        fetchSongMeaning(currentTrackTitle, currentTrackArtist);
+    }
+
+    public void onNowPlayingChanged(NowPlaying track) {
+        onNowPlayingChanged(NowPlaying.current());
+    }
+
+    private void fetchSongMeaning(final String title, final String artist) {
+        if (authManager == null) {
+            authManager = AntigravityAuthManager.getInstance(this);
+        }
+        if (!authManager.isAuthenticated()) {
+            if (aiStudioSummary != null) {
+                aiStudioSummary.setText("Hubungkan akun Google di bagian AI untuk melihat analisis makna lagu.");
+            }
+            if (aiStudioMoodBadge != null) {
+                aiStudioMoodBadge.setVisibility(View.GONE);
+            }
+            return;
+        }
+
+        if (songMeaningService == null) return;
+
+        if (aiStudioSummary != null) {
+            aiStudioSummary.setText(CleanMarkdownFormatter.formatClean("Menganalisis makna lagu " + title + "…"));
+        }
+        if (aiStudioMoodBadge != null) {
+            aiStudioMoodBadge.setVisibility(View.GONE);
+        }
+
+        activeMeaningCall = songMeaningService.getSongMeaning(
+                title,
+                artist,
+                "",
+                aiWebSearchEnabled,
+                new SongMeaningService.MeaningCallback() {
+                    @Override
+                    public void onResult(SongMeaning meaning, boolean fromCache) {
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            if (meaning == null) return;
+
+                            if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
+                                if (aiStudioMoodBadge != null) {
+                                    aiStudioMoodBadge.setText("✨ " + meaning.mood.trim());
+                                    aiStudioMoodBadge.setVisibility(View.VISIBLE);
+                                }
+                            }
+                            if (aiStudioSummary != null && meaning.summary != null) {
+                                aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(meaning.summary));
+                            }
+                            if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
+                                displayWebSources(meaning.webSources);
+                            }
+                            if (songChatManager != null && title != null && title.equals(currentTrackTitle)) {
+                                songChatManager.setCurrentSong(title, artist, "", meaning);
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            if (aiStudioSummary != null) {
+                                aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(
+                                        "Gagal menganalisis makna lagu: " + (e != null ? e.getMessage() : "Error")));
+                            }
+                        });
+                    }
+                });
+    }
+
+    private void displayWebSources(List<String> sources) {
+        if (aiStudioWebSourcesContainer == null || aiStudioWebSourcesScroll == null) return;
+        aiStudioWebSourcesContainer.removeAllViews();
+        if (sources == null || sources.isEmpty()) {
+            aiStudioWebSourcesScroll.setVisibility(View.GONE);
+            return;
+        }
+        aiStudioWebSourcesScroll.setVisibility(View.VISIBLE);
+
+        TextView label = new TextView(this);
+        label.setText("🔍 Sumber Web: ");
+        label.setTextColor(ContextCompat.getColor(this, R.color.text_dim));
+        label.setTextSize(10f);
+        label.setPadding(0, 0, dpToPx(4), 0);
+        aiStudioWebSourcesContainer.addView(label);
+
+        for (String source : sources) {
+            if (source == null || source.trim().isEmpty()) continue;
+            String cleanUrl = source.trim();
+            if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+                cleanUrl = "https://" + cleanUrl;
+            }
+            final String url = cleanUrl;
+            String domain = url;
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                String host = uri.getHost();
+                if (host != null) {
+                    domain = host.startsWith("www.") ? host.substring(4) : host;
+                }
+            } catch (Exception ignored) {}
+
+            TextView chip = new TextView(this);
+            chip.setText(domain);
+            chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
+            chip.setTextSize(10f);
+            chip.setBackgroundResource(R.drawable.bg_tip_box);
+            chip.setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.setMarginEnd(dpToPx(6));
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Tidak dapat membuka link: " + url, Toast.LENGTH_SHORT).show();
+                }
+            });
+            aiStudioWebSourcesContainer.addView(chip);
+        }
+    }
+
+    private void submitAiChatInput() {
+        if (aiStudioChatInput == null) return;
+        String text = aiStudioChatInput.getText().toString().trim();
+        if (text.isEmpty()) return;
+        aiStudioChatInput.setText("");
+        sendAiChatMessage(text);
+    }
+
+    private void sendAiChatMessage(String userQuery) {
+        if (songChatManager == null || userQuery == null || userQuery.trim().isEmpty()) return;
+
+        if (authManager == null || !authManager.isAuthenticated()) {
+            Toast.makeText(this, "Silakan hubungkan akun Google di bagian AI", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (aiStudioChatScroll != null) {
+            aiStudioChatScroll.setVisibility(View.VISIBLE);
+        }
+
+        addUserChatBubble(userQuery);
+
+        final TextView aiBubble = addAiChatBubble("Berpikir…");
+
+        if (activeChatCall != null) {
+            activeChatCall.cancel();
+            activeChatCall = null;
+        }
+
+        String currentModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
+        songChatManager.setModelId(currentModel);
+
+        final StringBuilder responseAcc = new StringBuilder();
+        activeChatCall = songChatManager.sendMessage(userQuery, aiWebSearchEnabled,
+                new AntigravityApiClient.StreamListener() {
+                    @Override
+                    public void onDelta(String textDelta) {
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            responseAcc.append(textDelta);
+                            if (aiBubble != null) {
+                                aiBubble.setText(CleanMarkdownFormatter.formatClean(responseAcc.toString()));
+                            }
+                            if (aiStudioChatScroll != null) {
+                                aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            if (aiBubble != null) {
+                                String finalContent = (fullText != null && !fullText.trim().isEmpty())
+                                        ? fullText : responseAcc.toString();
+                                aiBubble.setText(CleanMarkdownFormatter.formatClean(finalContent));
+                            }
+                            if (webSources != null && !webSources.isEmpty()) {
+                                displayWebSources(webSources);
+                            }
+                            if (aiStudioChatScroll != null) {
+                                aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(Exception error) {
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            if (aiBubble != null) {
+                                aiBubble.setText(CleanMarkdownFormatter.formatClean(
+                                        "Error: " + (error != null ? error.getMessage() : "Unknown error")));
+                            }
+                        });
+                    }
+                });
+    }
+
+    private void addUserChatBubble(String text) {
+        if (aiStudioChatContainer == null) return;
+        TextView bubble = new TextView(this);
+        bubble.setText(CleanMarkdownFormatter.formatClean(text));
+        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        bubble.setTextSize(12f);
+        bubble.setBackgroundResource(R.drawable.bg_tip_box);
+        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.END;
+        lp.setMargins(dpToPx(32), dpToPx(4), 0, dpToPx(4));
+        bubble.setLayoutParams(lp);
+
+        aiStudioChatContainer.addView(bubble);
+        if (aiStudioChatScroll != null) {
+            aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private TextView addAiChatBubble(String initialText) {
+        if (aiStudioChatContainer == null) return null;
+        TextView bubble = new TextView(this);
+        bubble.setText(CleanMarkdownFormatter.formatClean(initialText));
+        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        bubble.setTextSize(12f);
+        bubble.setBackgroundResource(R.drawable.bg_tip_box);
+        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.START;
+        lp.setMargins(0, dpToPx(4), dpToPx(32), dpToPx(4));
+        bubble.setLayoutParams(lp);
+
+        aiStudioChatContainer.addView(bubble);
+        if (aiStudioChatScroll != null) {
+            aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+        return bubble;
     }
 
     /** Re-colour the ambient header wash. SRC_IN tinting keeps the gradient's alpha ramp. */

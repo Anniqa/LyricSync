@@ -179,6 +179,222 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ── AI Song Studio ────────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_ai_studio"
+                style="@style/Widget.LyricSync.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/card_padding">
+
+                    <!-- Header row -->
+                    <LinearLayout
+                        android:id="@+id/ai_studio_header"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <ImageView
+                            android:layout_width="26dp"
+                            android:layout_height="26dp"
+                            android:padding="2dp"
+                            android:src="@drawable/ic_sparkles"
+                            app:tint="@color/accent"
+                            android:contentDescription="AI Song Studio" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="8dp">
+
+                            <TextView
+                                android:id="@+id/ai_studio_title"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="AI Song Studio"
+                                android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:layout_marginTop="2dp">
+
+                                <TextView
+                                    android:id="@+id/ai_studio_mood_badge"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:paddingStart="6dp"
+                                    android:paddingEnd="6dp"
+                                    android:paddingTop="1dp"
+                                    android:paddingBottom="1dp"
+                                    android:textColor="#E0E0E0"
+                                    android:textSize="10sp"
+                                    android:textStyle="bold"
+                                    android:background="@drawable/bg_pill_ok"
+                                    android:visibility="gone" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/ai_studio_quota_badge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_dim"
+                            android:textSize="10sp"
+                            android:layout_marginEnd="8dp"
+                            android:visibility="gone" />
+
+                        <ImageView
+                            android:id="@+id/ai_studio_chevron"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:src="@drawable/ic_chevron_down"
+                            app:tint="@color/text_secondary"
+                            android:contentDescription="@null" />
+                    </LinearLayout>
+
+                    <!-- Studio body content -->
+                    <LinearLayout
+                        android:id="@+id/ai_studio_content"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="10dp">
+
+                        <!-- Song meaning summary -->
+                        <TextView
+                            android:id="@+id/ai_studio_summary"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp"
+                            android:lineSpacingExtra="3dp"
+                            android:text="Putar lagu untuk menganalisis makna dan berdiskusi dengan AI." />
+
+                        <!-- Web sources container -->
+                        <HorizontalScrollView
+                            android:id="@+id/ai_studio_web_sources_scroll"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:scrollbars="none"
+                            android:overScrollMode="never"
+                            android:layout_marginTop="8dp"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:id="@+id/ai_studio_web_sources_container"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal" />
+                        </HorizontalScrollView>
+
+                        <!-- Quick prompt suggestion chips -->
+                        <HorizontalScrollView
+                            android:id="@+id/ai_studio_quick_chips"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:scrollbars="none"
+                            android:overScrollMode="never"
+                            android:layout_marginTop="10dp">
+
+                            <LinearLayout
+                                android:id="@+id/ai_studio_quick_chips_container"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal" />
+                        </HorizontalScrollView>
+
+                        <!-- Divider -->
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:background="@color/divider"
+                            android:layout_marginTop="10dp"
+                            android:layout_marginBottom="8dp" />
+
+                        <!-- Chat messages container inside ScrollView -->
+                        <ScrollView
+                            android:id="@+id/ai_studio_chat_scroll"
+                            android:layout_width="match_parent"
+                            android:layout_height="220dp"
+                            android:scrollbars="vertical"
+                            android:fadeScrollbars="true"
+                            android:fillViewport="true"
+                            android:nestedScrollingEnabled="true"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:id="@+id/ai_studio_chat_container"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical" />
+                        </ScrollView>
+
+                        <!-- Chat input row -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:layout_marginTop="8dp">
+
+                            <ImageView
+                                android:id="@+id/ai_studio_web_search_chip"
+                                android:layout_width="38dp"
+                                android:layout_height="38dp"
+                                android:padding="8dp"
+                                android:background="@drawable/bg_icon_button"
+                                android:src="@drawable/ic_search"
+                                android:contentDescription="Toggle Web Search"
+                                android:alpha="0.5" />
+
+                            <EditText
+                                android:id="@+id/ai_studio_chat_input"
+                                android:layout_width="0dp"
+                                android:layout_height="40dp"
+                                android:layout_weight="1"
+                                android:layout_marginStart="8dp"
+                                android:hint="Tanya AI tentang lagu ini…"
+                                android:textColorHint="@color/text_dim"
+                                android:textColor="@color/text_primary"
+                                android:textSize="13sp"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:background="@drawable/bg_tip_box"
+                                android:inputType="text"
+                                android:imeOptions="actionSend"
+                                android:maxLines="1"
+                                android:singleLine="true" />
+
+                            <ImageView
+                                android:id="@+id/ai_studio_chat_send"
+                                android:layout_width="38dp"
+                                android:layout_height="38dp"
+                                android:padding="8dp"
+                                android:layout_marginStart="8dp"
+                                android:background="@drawable/bg_icon_button"
+                                android:src="@drawable/ic_chevron_right"
+                                android:contentDescription="Send" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ── Permissions ───────────────────────────────────────── -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/card_permissions"
