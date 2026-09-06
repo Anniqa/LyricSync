@@ -36,13 +36,69 @@ public class CleanMarkdownFormatterTest {
     public void testMarkdownToHtml() {
         String input = "### Title\nThis has **bold** and *italic* and `code`.\n* item 1\n* item 2";
         String html = CleanMarkdownFormatter.markdownToHtml(input);
-        assertTrue("Should contain <b>Title</b>", html.contains("<b>Title</b>"));
+        assertTrue("Should contain Title header", html.contains("<h3>Title</h3>") || html.contains("<b>Title</b>"));
         assertTrue("Should contain <b>bold</b>", html.contains("<b>bold</b>"));
         assertTrue("Should contain <i>italic</i>", html.contains("<i>italic</i>"));
-        assertTrue("Should contain <tt>code</tt>", html.contains("<tt>code</tt>"));
+        assertTrue("Should contain code", html.contains("<tt>code</tt>") || html.contains("<code>code</code>"));
         assertTrue("Should contain &bull; item 1", html.contains("&bull; item 1"));
         assertFalse("Should not contain raw **", html.contains("**"));
         assertFalse("Should not contain raw ###", html.contains("###"));
+    }
+
+    @Test
+    public void testMarkdownHeadersHierarchyHtml() {
+        String input = "# Main Title\n## Section Subtitle\n### Details";
+        String html = CleanMarkdownFormatter.markdownToHtml(input);
+        assertTrue("Should contain h1 or large title", html.contains("<h1>Main Title</h1>") || html.contains("<b><font size=\"+2\">Main Title</font></b>"));
+        assertTrue("Should contain h2 or section", html.contains("<h2>Section Subtitle</h2>") || html.contains("<b><font size=\"+1\">Section Subtitle</font></b>"));
+        assertTrue("Should contain h3", html.contains("<h3>Details</h3>") || html.contains("<b>Details</b>"));
+    }
+
+    @Test
+    public void testMarkdownBlockquotesHtml() {
+        String input = "> This is a song quote\n> Second line of quote";
+        String html = CleanMarkdownFormatter.markdownToHtml(input);
+        assertTrue("Should contain blockquote tag", html.contains("<blockquote>") && html.contains("</blockquote>"));
+        assertFalse("Should not contain raw > marker", html.contains("&gt; This is"));
+    }
+
+    @Test
+    public void testMarkdownLinksHtml() {
+        String input = "Check out [Queen Official](https://queenonline.com) for tour dates.";
+        String html = CleanMarkdownFormatter.markdownToHtml(input);
+        assertTrue("Should contain anchor tag", html.contains("<a href=\"https://queenonline.com\">Queen Official</a>"));
+        assertFalse("Should not contain raw markdown link syntax", html.contains("[Queen Official]"));
+    }
+
+    @Test
+    public void testMarkdownStrikethroughHtml() {
+        String input = "This was ~~cancelled~~ rescheduled.";
+        String html = CleanMarkdownFormatter.markdownToHtml(input);
+        assertTrue("Should contain strikethrough s or del tag", html.contains("<s>cancelled</s>") || html.contains("<del>cancelled</del>"));
+        assertFalse("Should not contain raw ~~", html.contains("~~"));
+    }
+
+    @Test
+    public void testMarkdownCodeFencePreHtml() {
+        String input = "```java\nint speed = 100;\n```";
+        String html = CleanMarkdownFormatter.markdownToHtml(input);
+        assertTrue("Should contain pre or code container", html.contains("<pre><code>") || html.contains("<tt>"));
+        assertFalse("Should not contain raw ```", html.contains("```"));
+    }
+
+    @Test
+    public void testCleanStreamingTail() {
+        // Trailing unclosed bold at the very end
+        String unclosedBold = "Streaming in progress **";
+        String cleaned = CleanMarkdownFormatter.cleanStreamingTail(unclosedBold);
+        assertFalse("Should not leak raw trailing **", cleaned.endsWith("**"));
+
+        // Trailing unclosed code fence is properly closed for rendering
+        String unclosedFence = "Here is the code:\n```java\nint a = 1;";
+        String cleanedFence = CleanMarkdownFormatter.cleanStreamingTail(unclosedFence);
+        assertTrue("Should close unclosed code fence", cleanedFence.endsWith("```"));
+        CharSequence formatted = CleanMarkdownFormatter.formatClean(unclosedFence, true);
+        assertFalse("Formatted output should not leak raw backticks", formatted.toString().contains("```"));
     }
 
     @Test

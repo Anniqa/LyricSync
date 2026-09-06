@@ -49,7 +49,10 @@ import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.service.SongMeaningService;
 import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
+import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
+import com.lyricsync.app.ai.util.AiStreamingAnimator;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
+import android.text.method.LinkMovementMethod;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.view.ContextThemeWrapper;
@@ -196,6 +199,7 @@ public class FloatingOverlayService extends Service {
     private AntigravityQuotaClient quotaClient;
     private AntigravityApiClient.Cancellable activeMeaningCall;
     private AntigravityApiClient.Cancellable activeChatCall;
+    private AiStreamingAnimator activeAiBubbleAnimator;
     private boolean aiWebSearchEnabled = false;
 
     // Album-derived colouring
@@ -300,6 +304,8 @@ public class FloatingOverlayService extends Service {
         songMeaningService = new SongMeaningService(sharedPrefs, apiClient);
         songChatManager = new SongChatManager(apiClient);
         quotaClient = new AntigravityQuotaClient(authManager);
+        AntigravityToolExecutor.setChatModelSupplier(() ->
+                sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
         translationEnabled = sharedPrefs.getBoolean(
                 com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
         loadTypefaces();
@@ -1482,7 +1488,12 @@ public class FloatingOverlayService extends Service {
 
         addUserChatBubble(userQuery);
 
-        final TextView aiBubble = addAiChatBubble(getString(R.string.ai_thinking));
+        final TextView aiBubble = addAiChatBubble("");
+        if (activeAiBubbleAnimator != null) {
+            activeAiBubbleAnimator.stopAll();
+        }
+        activeAiBubbleAnimator = new AiStreamingAnimator(aiBubble, getResources().getColor(R.color.accent));
+        activeAiBubbleAnimator.startThinking(getString(R.string.ai_thinking));
 
         if (activeChatCall != null) {
             activeChatCall.cancel();
@@ -1522,7 +1533,9 @@ public class FloatingOverlayService extends Service {
                                     aiToolStatusText.setText(getString(R.string.ai_tool_searching) + " \"" + query + "\"");
                                 }
                             }
+                            aiToolStatusContainer.setAlpha(0f);
                             aiToolStatusContainer.setVisibility(View.VISIBLE);
+                            aiToolStatusContainer.animate().alpha(1f).setDuration(220).start();
                         });
                     }
 
@@ -1548,8 +1561,8 @@ public class FloatingOverlayService extends Service {
                     public void onDelta(String textDelta) {
                         handler.post(() -> {
                             responseAcc.append(textDelta);
-                            if (aiBubble != null) {
-                                aiBubble.setText(CleanMarkdownFormatter.formatClean(responseAcc.toString()));
+                            if (activeAiBubbleAnimator != null) {
+                                activeAiBubbleAnimator.updateStream(responseAcc.toString());
                             }
                             if (aiChatScroll != null) {
                                 aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
@@ -1560,11 +1573,13 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
                         handler.post(() -> {
+                            activeChatCall = null;
                             hideToolStatusNow();
-                            if (aiBubble != null) {
-                                String finalContent = (fullText != null && !fullText.trim().isEmpty())
-                                        ? fullText : responseAcc.toString();
-                                aiBubble.setText(CleanMarkdownFormatter.formatClean(finalContent));
+                            String finalContent = (fullText != null && !fullText.trim().isEmpty())
+                                    ? fullText : responseAcc.toString();
+                            if (activeAiBubbleAnimator != null) {
+                                activeAiBubbleAnimator.complete(finalContent);
+                                activeAiBubbleAnimator = null;
                             }
                             if (webSources != null && !webSources.isEmpty()) {
                                 displayWebSources(webSources);
@@ -1579,9 +1594,11 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onError(Exception error) {
                         handler.post(() -> {
+                            activeChatCall = null;
                             hideToolStatusNow();
-                            if (aiBubble != null) {
-                                aiBubble.setText(CleanMarkdownFormatter.formatClean("Error: " + (error != null ? error.getMessage() : "Unknown error")));
+                            if (activeAiBubbleAnimator != null) {
+                                activeAiBubbleAnimator.error(error != null ? error.getMessage() : "Unknown error");
+                                activeAiBubbleAnimator = null;
                             }
                         });
                     }
@@ -1683,6 +1700,7 @@ public class FloatingOverlayService extends Service {
         bubble.setTextSize(12f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
         bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+        bubble.setMovementMethod(LinkMovementMethod.getInstance());
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -2526,6 +2544,10 @@ public class FloatingOverlayService extends Service {
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
+        }
+        if (activeAiBubbleAnimator != null) {
+            activeAiBubbleAnimator.stopAll();
+            activeAiBubbleAnimator = null;
         }
         stopRenderLoop();
         stopSkeletonShimmer();

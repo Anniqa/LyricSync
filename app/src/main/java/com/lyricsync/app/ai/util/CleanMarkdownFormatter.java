@@ -8,33 +8,54 @@ import java.util.regex.Pattern;
 public final class CleanMarkdownFormatter {
     private CleanMarkdownFormatter() {}
 
-    private static final Pattern CODE_FENCE_PATTERN = Pattern.compile("```[a-zA-Z]*\n?([\\s\\S]*?)```");
-    private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`([^`]+)`");
-    private static final Pattern HEADER_PATTERN = Pattern.compile("(?m)^#{1,6}\\s*(.*?)$");
+    private static final Pattern CODE_FENCE_PATTERN = Pattern.compile("```[a-zA-Z0-9_-]*\n?([\\s\\S]*?)```");
+    private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`([^`\n]+)`");
+    private static final Pattern H1_PATTERN = Pattern.compile("(?m)^#\\s+(.*?)$");
+    private static final Pattern H2_PATTERN = Pattern.compile("(?m)^##\\s+(.*?)$");
+    private static final Pattern H3_PATTERN = Pattern.compile("(?m)^#{3,6}\\s+(.*?)$");
+    private static final Pattern BLOCKQUOTE_PATTERN = Pattern.compile("(?m)^&gt;\\s*(.*?)$");
+    private static final Pattern LINK_PATTERN = Pattern.compile("\\[([^\\]]+)\\]\\((https?://[^)]+)\\)");
+    private static final Pattern STRIKETHROUGH_PATTERN = Pattern.compile("~~(.*?)~~");
     private static final Pattern BOLD_PATTERN = Pattern.compile("\\*\\*(.*?)\\*\\*");
     private static final Pattern BOLD_UNDERSCORE_PATTERN = Pattern.compile("__(.*?)__");
     private static final Pattern ITALIC_PATTERN = Pattern.compile("(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)");
     private static final Pattern BULLET_PATTERN = Pattern.compile("(?m)^[\\*\\-\\+]\\s+(.*?)$");
 
     /**
-     * Converts markdown to basic HTML suitable for Android's Html.fromHtml renderer.
+     * Converts markdown to semantic HTML suitable for Android's Html.fromHtml renderer.
+     * Produces rich headers, blockquotes, code blocks, links, and text formatting.
      */
     public static String markdownToHtml(String text) {
         if (text == null || text.trim().isEmpty()) return "";
 
+        // Pre-clean any broken/dangling streaming tail if needed
+        String processed = text;
+
         // Escape HTML special chars first
-        String html = text.replace("&", "&amp;")
+        String html = processed.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
 
-        // Code fences: ```code``` -> <tt>code</tt>
-        html = CODE_FENCE_PATTERN.matcher(html).replaceAll("<tt>$1</tt>");
+        // Code fences: ```lang\ncode``` -> <pre><code>code</code></pre>
+        html = CODE_FENCE_PATTERN.matcher(html).replaceAll("<pre><code>$1</code></pre>");
 
         // Inline code: `code` -> <tt>code</tt>
         html = INLINE_CODE_PATTERN.matcher(html).replaceAll("<tt>$1</tt>");
 
-        // Headers: ### Header -> <b>Header</b>
-        html = HEADER_PATTERN.matcher(html).replaceAll("<b>$1</b>");
+        // Blockquotes: > quote -> <blockquote>quote</blockquote>
+        html = BLOCKQUOTE_PATTERN.matcher(html).replaceAll("<blockquote>$1</blockquote>");
+        html = html.replaceAll("</blockquote>\\s*<blockquote>", "<br/>");
+
+        // Markdown Links: [title](url) -> <a href="url">title</a>
+        html = LINK_PATTERN.matcher(html).replaceAll("<a href=\"$2\">$1</a>");
+
+        // Strikethrough: ~~text~~ -> <s>text</s>
+        html = STRIKETHROUGH_PATTERN.matcher(html).replaceAll("<s>$1</s>");
+
+        // Headers: # H1 -> <h1>H1</h1>, ## H2 -> <h2>H2</h2>, ### H3 -> <h3>H3</h3>
+        html = H3_PATTERN.matcher(html).replaceAll("<h3>$1</h3>");
+        html = H2_PATTERN.matcher(html).replaceAll("<h2>$1</h2>");
+        html = H1_PATTERN.matcher(html).replaceAll("<h1>$1</h1>");
 
         // Bold: **text** -> <b>text</b>
         html = BOLD_PATTERN.matcher(html).replaceAll("<b>$1</b>");
@@ -47,12 +68,54 @@ public final class CleanMarkdownFormatter {
         html = BULLET_PATTERN.matcher(html).replaceAll("&bull; $1");
 
         // Clean orphan markdown markers
-        html = html.replace("###", "").replace("##", "").replace("**", "").replace("__", "");
+        html = html.replace("###", "").replace("##", "").replace("**", "").replace("__", "").replace("~~", "");
 
         // Convert newlines to HTML breaks
         html = html.replace("\r\n", "\n").replace("\n", "<br/>");
 
         return html;
+    }
+
+    /**
+     * Cleans streaming tail to prevent broken markdown syntax from flickering in UI.
+     */
+    public static String cleanStreamingTail(String text) {
+        if (text == null || text.isEmpty()) return "";
+
+        String result = text;
+
+        // If text ends with raw opening code fence like "```java" or "```", trim it
+        if (result.matches("(?s).*```[a-zA-Z0-9_-]*$")) {
+            result = result.replaceFirst("```[a-zA-Z0-9_-]*$", "");
+        } else {
+            // Check if there is an unclosed code fence
+            int fenceCount = countOccurrences(result, "```");
+            if (fenceCount % 2 != 0) {
+                result = result + "\n```";
+            }
+        }
+
+        // Check if trailing ends with an unclosed bold
+        if (result.endsWith("**")) {
+            result = result.substring(0, result.length() - 2);
+        } else {
+            int boldCount = countOccurrences(result, "**");
+            if (boldCount % 2 != 0) {
+                result = result + "**";
+            }
+        }
+
+        return result;
+    }
+
+    private static int countOccurrences(String str, String sub) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = str.indexOf(sub, idx)) != -1) {
+            count++;
+            idx += sub.length();
+        }
+        return count;
     }
 
     /**
@@ -65,11 +128,20 @@ public final class CleanMarkdownFormatter {
         String result = CODE_FENCE_PATTERN.matcher(text).replaceAll("$1");
         result = INLINE_CODE_PATTERN.matcher(result).replaceAll("$1");
 
+        // Convert blockquotes
+        result = Pattern.compile("(?m)^>\\s*").matcher(result).replaceAll("");
+
+        // Convert links [anchor](url) -> anchor
+        result = LINK_PATTERN.matcher(result).replaceAll("$1");
+
+        // Remove strikethrough
+        result = STRIKETHROUGH_PATTERN.matcher(result).replaceAll("$1");
+
         // Convert bullet points to unicode bullet •
         result = BULLET_PATTERN.matcher(result).replaceAll("• $1");
 
         // Remove header marks #
-        result = HEADER_PATTERN.matcher(result).replaceAll("$1");
+        result = Pattern.compile("(?m)^#{1,6}\\s+").matcher(result).replaceAll("");
 
         // Remove bold **
         result = BOLD_PATTERN.matcher(result).replaceAll("$1");
@@ -79,7 +151,7 @@ public final class CleanMarkdownFormatter {
         result = ITALIC_PATTERN.matcher(result).replaceAll("$1");
 
         // Clean any leftover orphan markers
-        result = result.replace("###", "").replace("##", "").replace("**", "").replace("__", "");
+        result = result.replace("###", "").replace("##", "").replace("**", "").replace("__", "").replace("~~", "");
 
         return result.trim();
     }
@@ -89,9 +161,18 @@ public final class CleanMarkdownFormatter {
      * Gracefully falls back to stripMarkdown in JVM testing environments.
      */
     public static CharSequence formatClean(String text) {
+        return formatClean(text, false);
+    }
+
+    /**
+     * Formats markdown with streaming support.
+     * When isStreaming is true, tail guards prevent partial syntax flicker.
+     */
+    public static CharSequence formatClean(String text, boolean isStreaming) {
         if (text == null || text.trim().isEmpty()) return "";
         try {
-            String html = markdownToHtml(text);
+            String safeText = isStreaming ? cleanStreamingTail(text) : text;
+            String html = markdownToHtml(safeText);
             Spanned spanned = Html.fromHtml(html);
             // Trim trailing newlines produced by Html.fromHtml
             int len = spanned.length();
@@ -101,7 +182,7 @@ public final class CleanMarkdownFormatter {
             return (len == spanned.length()) ? spanned : spanned.subSequence(0, len);
         } catch (Throwable t) {
             // Safe fallback for JVM unit tests without Android runtime
-            return stripMarkdown(text);
+            return stripMarkdown(isStreaming ? cleanStreamingTail(text) : text);
         }
     }
 

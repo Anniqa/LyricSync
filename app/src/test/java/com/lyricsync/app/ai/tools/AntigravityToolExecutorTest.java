@@ -36,6 +36,8 @@ public class AntigravityToolExecutorTest {
                 .addInterceptor(mockInterceptor)
                 .build();
         executor = new AntigravityToolExecutor(mockHttpClient);
+        AntigravityToolExecutor.setSearchModel(AntigravityToolExecutor.SEARCH_MODEL);
+        AntigravityToolExecutor.setChatModelSupplier(null);
     }
 
     // --- SSRF Protection Tests ---
@@ -654,6 +656,32 @@ public class AntigravityToolExecutorTest {
         assertNotNull(sourcesJson);
         assertEquals(1, sourcesJson.size());
         assertEquals("Source 1", sourcesJson.get(0).getAsJsonObject().get("title").getAsString());
+    }
+
+    // --- Search Model & Unified 1-Model Mode Tests ---
+
+    @Test
+    public void testUnifiedSearchModelUsesChatModelSupplier() {
+        AntigravityToolExecutor.setSearchModel(AntigravityToolExecutor.UNIFIED_SEARCH_MODEL);
+        AntigravityToolExecutor.setChatModelSupplier(() -> "gemini-3.8-flash-high");
+        assertEquals("gemini-3.8-flash-high", AntigravityToolExecutor.getSearchModel());
+    }
+
+    @Test
+    public void testExplicitSearchModelOverridesUnified() {
+        AntigravityToolExecutor.setChatModelSupplier(() -> "gemini-3.8-flash-high");
+        AntigravityToolExecutor.setSearchModel("gemini-2.5-flash");
+        assertEquals("gemini-2.5-flash", AntigravityToolExecutor.getSearchModel());
+    }
+
+    @Test
+    public void testUnifiedSearchModelFallbackWhenSupplierNullOrEmpty() {
+        AntigravityToolExecutor.setSearchModel(AntigravityToolExecutor.UNIFIED_SEARCH_MODEL);
+        AntigravityToolExecutor.setChatModelSupplier(null);
+        assertEquals(AntigravityToolExecutor.SEARCH_MODEL, AntigravityToolExecutor.getSearchModel());
+
+        AntigravityToolExecutor.setChatModelSupplier(() -> "");
+        assertEquals(AntigravityToolExecutor.SEARCH_MODEL, AntigravityToolExecutor.getSearchModel());
     }
 
     // --- Mock HTTP Interceptor Helper ---

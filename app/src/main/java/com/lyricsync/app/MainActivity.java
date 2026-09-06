@@ -45,7 +45,9 @@ import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.service.SongMeaningService;
 import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
+import com.lyricsync.app.ai.util.AiStreamingAnimator;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
+import android.text.method.LinkMovementMethod;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -142,7 +144,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private TextView tvAiEmail;
     private Spinner spinnerAiModel;
     private Spinner spinnerAiEffort;
-    private Spinner spinnerAiSearchModel;
     private androidx.appcompat.widget.SwitchCompat switchAiWebSearch;
 
     public static final List<String> BASE_ANTIGRAVITY_MODELS = Collections.unmodifiableList(Arrays.asList(
@@ -211,6 +212,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private SongChatManager songChatManager;
     private AntigravityApiClient.Cancellable activeMeaningCall;
     private AntigravityApiClient.Cancellable activeChatCall;
+    private AiStreamingAnimator activeStudioAnimator;
     private boolean aiWebSearchEnabled = false;
     private String currentTrackTitle;
     private String currentTrackArtist;
@@ -237,8 +239,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
-        String savedSearchModel = prefs.getString("pref_ai_search_model", "gemini-2.5-flash");
+        String savedSearchModel = prefs.getString("pref_ai_search_model", AntigravityToolExecutor.UNIFIED_SEARCH_MODEL);
         AntigravityToolExecutor.setSearchModel(savedSearchModel);
+        AntigravityToolExecutor.setChatModelSupplier(() ->
+                prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
 
         initViews();
         applyWindowInsets();
@@ -290,6 +294,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
+        }
+        if (activeStudioAnimator != null) {
+            activeStudioAnimator.stopAll();
+            activeStudioAnimator = null;
         }
     }
 
@@ -686,51 +694,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     aiStudioWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
                 }
                 prefs.edit().putBoolean("pref_ai_web_search", isChecked).apply();
-            });
-        }
-
-        // Setup Search Grounding Model Selector
-        spinnerAiSearchModel = findViewById(R.id.spinner_ai_search_model);
-        if (spinnerAiSearchModel != null) {
-            final String[] searchModelIds = {
-                    "gemini-3.8-flash-low",
-                    "gemini-3.7-flash-low",
-                    "gemini-3.1-flash-lite",
-                    "gemini-2.5-flash",
-                    "gemini-2.5-pro"
-            };
-            final String[] searchModelLabels = {
-                    "Gemini 3.8 Flash (Low Latency)",
-                    "Gemini 3.7 Flash (Low Latency)",
-                    "Gemini 3.1 Flash Lite (Ultra Fast)",
-                    "Gemini 2.5 Flash",
-                    "Gemini 2.5 Pro"
-            };
-            ArrayAdapter<String> searchAdapter = new ArrayAdapter<>(this, R.layout.item_spinner_lang, searchModelLabels);
-            searchAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
-            spinnerAiSearchModel.setAdapter(searchAdapter);
-
-            String savedSearchModel = prefs.getString("pref_ai_search_model", "gemini-2.5-flash");
-            AntigravityToolExecutor.setSearchModel(savedSearchModel);
-            for (int i = 0; i < searchModelIds.length; i++) {
-                if (searchModelIds[i].equalsIgnoreCase(savedSearchModel)) {
-                    spinnerAiSearchModel.setSelection(i);
-                    break;
-                }
-            }
-
-            spinnerAiSearchModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-                @Override
-                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                    if (position >= 0 && position < searchModelIds.length) {
-                        String chosen = searchModelIds[position];
-                        prefs.edit().putString("pref_ai_search_model", chosen).apply();
-                        AntigravityToolExecutor.setSearchModel(chosen);
-                    }
-                }
-
-                @Override
-                public void onNothingSelected(AdapterView<?> parent) {}
             });
         }
 
@@ -1556,8 +1519,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
         View btnSearchModel = dialogView.findViewById(R.id.btn_select_search_model);
         TextView tvSearchModelSub = dialogView.findViewById(R.id.tv_dialog_search_model_sub);
+        String currentSearchModel = prefs.getString("pref_ai_search_model", AntigravityToolExecutor.UNIFIED_SEARCH_MODEL);
         if (tvSearchModelSub != null) {
-            tvSearchModelSub.setText(prefs.getString("pref_ai_search_model", "gemini-2.5-flash"));
+            if (AntigravityToolExecutor.UNIFIED_SEARCH_MODEL.equalsIgnoreCase(currentSearchModel)) {
+                String activeChat = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
+                tvSearchModelSub.setText(getString(R.string.ai_search_model_unified_sub, activeChat));
+            } else {
+                tvSearchModelSub.setText(currentSearchModel);
+            }
         }
         if (btnSearchModel != null) {
             btnSearchModel.setOnClickListener(v -> {
@@ -1570,7 +1539,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     }
 
     private void showSearchModelSelectorDialog(TextView tvSearchModelSub) {
+        String activeChat = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
         final String[] searchModelIds = {
+                AntigravityToolExecutor.UNIFIED_SEARCH_MODEL,
                 "gemini-2.5-flash",
                 "gemini-3.8-flash-low",
                 "gemini-3.7-flash-low",
@@ -1578,6 +1549,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 "gemini-2.5-pro"
         };
         final String[] searchModelLabels = {
+                getString(R.string.ai_search_model_unified) + " (" + activeChat + ")",
                 "Gemini 2.5 Flash (Default Grounding)",
                 "Gemini 3.8 Flash (Low Latency Grounding)",
                 "Gemini 3.7 Flash (Fast Grounding)",
@@ -1585,7 +1557,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 "Gemini 2.5 Pro (Deep Grounding)"
         };
 
-        String currentSearchModel = prefs.getString("pref_ai_search_model", "gemini-2.5-flash");
+        String currentSearchModel = prefs.getString("pref_ai_search_model", AntigravityToolExecutor.UNIFIED_SEARCH_MODEL);
         int checkedItem = 0;
         for (int i = 0; i < searchModelIds.length; i++) {
             if (searchModelIds[i].equalsIgnoreCase(currentSearchModel)) {
@@ -1602,7 +1574,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         prefs.edit().putString("pref_ai_search_model", chosen).apply();
                         AntigravityToolExecutor.setSearchModel(chosen);
                         if (tvSearchModelSub != null) {
-                            tvSearchModelSub.setText(chosen);
+                            if (AntigravityToolExecutor.UNIFIED_SEARCH_MODEL.equalsIgnoreCase(chosen)) {
+                                tvSearchModelSub.setText(getString(R.string.ai_search_model_unified_sub, activeChat));
+                            } else {
+                                tvSearchModelSub.setText(chosen);
+                            }
                         }
                         d.dismiss();
                     }
@@ -1887,7 +1863,12 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
         addUserChatBubble(userQuery);
 
-        final TextView aiBubble = addAiChatBubble(getString(R.string.ai_thinking));
+        final TextView aiBubble = addAiChatBubble("");
+        if (activeStudioAnimator != null) {
+            activeStudioAnimator.stopAll();
+        }
+        activeStudioAnimator = new AiStreamingAnimator(aiBubble, ContextCompat.getColor(this, R.color.accent));
+        activeStudioAnimator.startThinking(getString(R.string.ai_thinking));
 
         if (activeChatCall != null) {
             activeChatCall.cancel();
@@ -1927,7 +1908,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                                     aiStudioToolStatusText.setText(getString(R.string.ai_tool_searching) + " \"" + query + "\"");
                                 }
                             }
+                            aiStudioToolStatusContainer.setAlpha(0f);
                             aiStudioToolStatusContainer.setVisibility(View.VISIBLE);
+                            aiStudioToolStatusContainer.animate().alpha(1f).setDuration(220).start();
                         });
                     }
 
@@ -1954,8 +1937,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         runOnUiThread(() -> {
                             if (isFinishing() || isDestroyed()) return;
                             responseAcc.append(textDelta);
-                            if (aiBubble != null) {
-                                aiBubble.setText(CleanMarkdownFormatter.formatClean(responseAcc.toString()));
+                            if (activeStudioAnimator != null) {
+                                activeStudioAnimator.updateStream(responseAcc.toString());
                             }
                             if (aiStudioChatScroll != null) {
                                 aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
@@ -1969,10 +1952,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             activeChatCall = null;
                             if (isFinishing() || isDestroyed()) return;
                             hideToolStatusNow();
-                            if (aiBubble != null) {
-                                String finalContent = (fullText != null && !fullText.trim().isEmpty())
-                                        ? fullText : responseAcc.toString();
-                                aiBubble.setText(CleanMarkdownFormatter.formatClean(finalContent));
+                            String finalContent = (fullText != null && !fullText.trim().isEmpty())
+                                    ? fullText : responseAcc.toString();
+                            if (activeStudioAnimator != null) {
+                                activeStudioAnimator.complete(finalContent);
+                                activeStudioAnimator = null;
                             }
                             if (webSources != null && !webSources.isEmpty()) {
                                 displayWebSources(webSources);
@@ -1990,9 +1974,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             activeChatCall = null;
                             if (isFinishing() || isDestroyed()) return;
                             hideToolStatusNow();
-                            if (aiBubble != null) {
-                                aiBubble.setText(CleanMarkdownFormatter.formatClean(
-                                        "Error: " + (error != null ? error.getMessage() : "Unknown error")));
+                            if (activeStudioAnimator != null) {
+                                activeStudioAnimator.error(error != null ? error.getMessage() : "Unknown error");
+                                activeStudioAnimator = null;
                             }
                         });
                     }
@@ -2106,6 +2090,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         bubble.setTextSize(12f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
         bubble.setPadding(dpToPx(12), dpToPx(7), dpToPx(12), dpToPx(7));
+        bubble.setMovementMethod(LinkMovementMethod.getInstance());
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);

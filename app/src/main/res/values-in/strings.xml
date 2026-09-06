@@ -105,6 +105,8 @@
     <string name="ai_quota_5h">Kuota 5-Jam</string>
     <string name="ai_web_search_label">Google Web Search Grounding</string>
     <string name="ai_search_model_label">Model Grounding Pencarian</string>
+    <string name="ai_search_model_unified">Terpadu (Sama dengan model chat)</string>
+    <string name="ai_search_model_unified_sub">Semua ditangani 1 model (%s)</string>
     <string name="ai_custom_model">Model Kustom...</string>
     <string name="ai_custom_model_title">ID Model Kustom</string>
     <string name="ai_custom_model_hint">Masukkan ID model (misal: gemini-3.8-flash-low)</string>

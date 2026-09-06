@@ -51,15 +51,34 @@ public class AntigravityToolExecutor {
             "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
     public static final String DEFAULT_PROJECT = "aicode-consumers";
     public static final String SEARCH_MODEL = "gemini-2.5-flash";
-    private static volatile String activeSearchModel = SEARCH_MODEL;
+    public static final String UNIFIED_SEARCH_MODEL = "same_as_chat";
+    private static volatile String activeSearchModel = UNIFIED_SEARCH_MODEL;
+    private static volatile java.util.function.Supplier<String> chatModelSupplier = null;
+
+    public static void setChatModelSupplier(java.util.function.Supplier<String> supplier) {
+        chatModelSupplier = supplier;
+    }
 
     public static void setSearchModel(String model) {
         if (model != null && !model.trim().isEmpty()) {
             activeSearchModel = model.trim();
+        } else {
+            activeSearchModel = UNIFIED_SEARCH_MODEL;
         }
     }
 
     public static String getSearchModel() {
+        if (UNIFIED_SEARCH_MODEL.equalsIgnoreCase(activeSearchModel) || "auto".equalsIgnoreCase(activeSearchModel)) {
+            if (chatModelSupplier != null) {
+                try {
+                    String supplied = chatModelSupplier.get();
+                    if (supplied != null && !supplied.trim().isEmpty()) {
+                        return supplied.trim();
+                    }
+                } catch (Throwable ignored) {}
+            }
+            return SEARCH_MODEL;
+        }
         return activeSearchModel != null ? activeSearchModel : SEARCH_MODEL;
     }
 
