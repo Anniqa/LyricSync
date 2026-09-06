@@ -12,6 +12,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -29,6 +30,7 @@ public class OAuthLoopbackServer {
 
     public static final int PORT = 51121;
     public static final String PATH = "/oauth-callback";
+    private static final int CLIENT_SOCKET_TIMEOUT_MS = 5000;
 
     private static final String SUCCESS_HTML = "<!DOCTYPE html>\n" +
             "<html lang=\"id\">\n" +
@@ -152,6 +154,7 @@ public class OAuthLoopbackServer {
                         Socket clientSocket;
                         try {
                             clientSocket = serverSocket.accept();
+                            clientSocket.setSoTimeout(CLIENT_SOCKET_TIMEOUT_MS);
                         } catch (SocketException e) {
                             // Server socket closed intentionally
                             break;
@@ -174,21 +177,27 @@ public class OAuthLoopbackServer {
     }
 
     /**
-     * Handles an incoming HTTP client request.
+     * Handles an incoming HTTP client request, draining headers to prevent TCP RST on mobile browsers
+     * and ensuring proper socket cleanup.
      */
     private void handleClient(Socket clientSocket, Callback callback) {
-        try {
+        boolean shouldStop = false;
+        try (Socket socket = clientSocket) {
             BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             String requestLine = reader.readLine();
             if (requestLine == null || requestLine.trim().isEmpty()) {
-                clientSocket.close();
                 return;
+            }
+
+            // Drain remaining HTTP headers to avoid unread bytes causing TCP RST on mobile browsers
+            String headerLine;
+            while ((headerLine = reader.readLine()) != null && !headerLine.trim().isEmpty()) {
+                // Discard header lines
             }
 
             String[] parts = requestLine.split(" ");
             if (parts.length < 2) {
-                clientSocket.close();
                 return;
             }
 
@@ -207,11 +216,8 @@ public class OAuthLoopbackServer {
                 String state = queryParams.get("state");
                 String error = queryParams.get("error");
 
-                sendHtmlResponse(clientSocket, 200, SUCCESS_HTML);
-
-                try {
-                    clientSocket.close();
-                } catch (IOException ignored) {}
+                sendHtmlResponse(socket, 200, SUCCESS_HTML);
+                shouldStop = true;
 
                 if (callback != null) {
                     if (authCode != null) {
@@ -222,23 +228,24 @@ public class OAuthLoopbackServer {
                         callback.onError(new Exception("Missing authorization code in callback request"));
                     }
                 }
-
-                stop();
             } else {
-                sendNotFoundResponse(clientSocket);
-                try {
-                    clientSocket.close();
-                } catch (IOException ignored) {}
+                sendNotFoundResponse(socket);
             }
+        } catch (SocketTimeoutException ignored) {
+            // Timed out client connection ignored to prevent hanging
         } catch (Exception e) {
             if (running && callback != null) {
                 callback.onError(e);
+            }
+        } finally {
+            if (shouldStop) {
+                stop();
             }
         }
     }
 
     /**
-     * Parses a raw URL query string into key-value pairs.
+     * Parses a raw URL query string into key-value pairs safely handling URL encoding.
      */
     private Map<String, String> parseQueryParams(String rawQuery) {
         Map<String, String> params = new HashMap<>();
@@ -257,7 +264,9 @@ public class OAuthLoopbackServer {
                 } else if (idx == -1 && !pair.isEmpty()) {
                     params.put(URLDecoder.decode(pair, "UTF-8"), "");
                 }
-            } catch (UnsupportedEncodingException ignored) {}
+            } catch (UnsupportedEncodingException | IllegalArgumentException ignored) {
+                // Ignore malformed percent encoding gracefully
+            }
         }
         return params;
     }

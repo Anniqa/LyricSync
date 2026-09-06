@@ -176,4 +176,75 @@ public class OAuthLoopbackServerTest {
         assertTrue(latch.await(3, TimeUnit.SECONDS));
         assertEquals("after_404_code", receivedCode.get());
     }
+
+    @Test
+    public void testLoopbackDrainsMultiLineHeaders() throws Exception {
+        server = new OAuthLoopbackServer();
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> receivedCode = new AtomicReference<>();
+
+        server.start(new OAuthLoopbackServer.Callback() {
+            @Override
+            public void onCodeReceived(String authCode, String state) {
+                receivedCode.set(authCode);
+                latch.countDown();
+            }
+            @Override
+            public void onError(Exception e) {
+                latch.countDown();
+            }
+        });
+
+        // Use raw socket to send realistic mobile browser request with multiple header lines
+        try (java.net.Socket socket = new java.net.Socket("127.0.0.1", 51121)) {
+            java.io.OutputStream out = socket.getOutputStream();
+            String rawRequest = "GET /oauth-callback?code=header_drain_code&state=s1 HTTP/1.1\r\n" +
+                    "Host: 127.0.0.1:51121\r\n" +
+                    "User-Agent: Mozilla/5.0 (Linux; Android 14; Mobile)\r\n" +
+                    "Accept: text/html,application/xhtml+xml\r\n" +
+                    "Accept-Language: en-US,en;q=0.9\r\n" +
+                    "Connection: close\r\n" +
+                    "\r\n";
+            out.write(rawRequest.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.flush();
+
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+            String statusLine = reader.readLine();
+            assertNotNull(statusLine);
+            assertTrue(statusLine.contains("200 OK"));
+        }
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertEquals("header_drain_code", receivedCode.get());
+    }
+
+    @Test
+    public void testLoopbackHandlesMalformedUrlEncoding() throws Exception {
+        server = new OAuthLoopbackServer();
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> receivedCode = new AtomicReference<>();
+
+        server.start(new OAuthLoopbackServer.Callback() {
+            @Override
+            public void onCodeReceived(String authCode, String state) {
+                receivedCode.set(authCode);
+                latch.countDown();
+            }
+            @Override
+            public void onError(Exception e) {
+                latch.countDown();
+            }
+        });
+
+        // Pass malformed % encoding in extra param, should not throw IllegalArgumentException
+        URL url = new URL("http://127.0.0.1:51121/oauth-callback?code=safe_code&malformed=%zz%1");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        int responseCode = conn.getResponseCode();
+        assertEquals(200, responseCode);
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertEquals("safe_code", receivedCode.get());
+    }
 }
