@@ -92,12 +92,34 @@ public class SongMeaningServiceTest {
     }
 
     @Test
+    public void testCleanJsonFenceCaseInsensitiveAndPreamblePostamble() {
+        String raw = "Berikut analisis lagu:\n```JSON\n{\n  \"mood\": \"Melankolis\",\n  \"summary\": \"Lagu tentang perpisahan.\"\n}\n```\nSemoga bermanfaat!";
+        String cleaned = SongMeaningService.cleanJsonFence(raw);
+        assertEquals("{\n  \"mood\": \"Melankolis\",\n  \"summary\": \"Lagu tentang perpisahan.\"\n}", cleaned);
+    }
+
+    @Test
+    public void testCleanJsonFenceNoFencesJustObjectWithText() {
+        String raw = "Analisis: {\"mood\": \"Ceria\", \"summary\": \"Lagu ceria.\"} Selesai.";
+        String cleaned = SongMeaningService.cleanJsonFence(raw);
+        assertEquals("{\"mood\": \"Ceria\", \"summary\": \"Lagu ceria.\"}", cleaned);
+    }
+
+    @Test
     public void testCleanJsonFenceRawJsonAndEmpty() {
         String raw = "{\"mood\": \"Calm\", \"summary\": \"Peaceful acoustic ballad.\"}";
         assertEquals(raw, SongMeaningService.cleanJsonFence(raw));
 
         assertEquals("", SongMeaningService.cleanJsonFence(null));
         assertEquals("", SongMeaningService.cleanJsonFence("   "));
+    }
+
+    @Test
+    public void testBuildMeaningPromptContainsIndonesianInstruction() {
+        String prompt = SongMeaningService.buildMeaningPrompt("Fix You", "Coldplay", "When you try your best...");
+        assertTrue(prompt.contains("Tuliskan analisis dalam Bahasa Indonesia."));
+        assertTrue(prompt.contains("Fix You"));
+        assertTrue(prompt.contains("Coldplay"));
     }
 
     // ==========================================
@@ -261,6 +283,28 @@ public class SongMeaningServiceTest {
     }
 
     @Test
+    public void testCallerExceptionInOnResultDoesNotTriggerOnError() {
+        mockApiClient.mockCompletionResponse = "{\"mood\": \"Senang\", \"summary\": \"Lagu ceria\"}";
+
+        final AtomicBoolean onErrorCalled = new AtomicBoolean(false);
+
+        meaningService.getSongMeaning("Adventure of a Lifetime", "Coldplay", "Turn your magic on...", false,
+                new SongMeaningService.MeaningCallback() {
+                    @Override
+                    public void onResult(SongMeaningService.SongMeaning meaning, boolean fromCache) {
+                        throw new RuntimeException("Simulated exception in consumer onResult");
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        onErrorCalled.set(true);
+                    }
+                });
+
+        assertFalse("Caller runtime exception in onResult must NOT cascade into onError", onErrorCalled.get());
+    }
+
+    @Test
     public void testClearCachePurgesBothMemoryAndPrefs() {
         SongMeaningService.SongMeaning preCached = new SongMeaningService.SongMeaning("Mood", "Summary", null);
         meaningService.putMemoryCache("Coldplay", "Fix You", preCached);
@@ -383,6 +427,88 @@ public class SongMeaningServiceTest {
     }
 
     @Test
+    public void testSongChatManagerRollbackUserTurnOnErrorPreservesAlternatingRoleInvariant() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
+        mockApiClient.mockError = new IOException("Streaming interrupted");
+
+        final AtomicReference<Exception> errorRef = new AtomicReference<>();
+        chatManager.sendMessage("Pertanyaan gagal", false, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {}
+
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {}
+
+            @Override
+            public void onError(Exception error) {
+                errorRef.set(error);
+            }
+        });
+
+        assertNotNull(errorRef.get());
+        // History must have rolled back so there is NO orphaned trailing user message
+        assertTrue("History must be rolled back on error to prevent consecutive user turns", chatManager.getHistory().isEmpty());
+
+        // Now subsequent message succeeds
+        mockApiClient.mockError = null;
+        mockApiClient.mockStreamFullText = "Jawaban sukses.";
+        chatManager.sendMessage("Pertanyaan baru", false, null);
+
+        List<AiChatMessage> history = chatManager.getHistory();
+        assertEquals(2, history.size());
+        assertEquals("user", history.get(0).role);
+        assertEquals("Pertanyaan baru", history.get(0).content);
+        assertEquals("model", history.get(1).role);
+        assertEquals("Jawaban sukses.", history.get(1).content);
+    }
+
+    @Test
+    public void testSongChatManagerRollbackUserTurnOnCancellation() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
+        mockApiClient.autoCompleteStream = false; // keep stream open
+
+        AntigravityApiClient.Cancellable handle = chatManager.sendMessage("Pertanyaan yang dicancel", false, null);
+        assertNotNull(handle);
+        assertFalse(handle.isCancelled());
+
+        // Cancel stream in-flight
+        handle.cancel();
+        assertTrue(handle.isCancelled());
+
+        // History must be empty due to rollback
+        assertTrue("History must be empty after cancellation rollback", chatManager.getHistory().isEmpty());
+
+        // Next message proceeds cleanly without consecutive user turns
+        mockApiClient.autoCompleteStream = true;
+        mockApiClient.mockStreamFullText = "Jawaban.";
+        chatManager.sendMessage("Pertanyaan selanjutnya", false, null);
+
+        assertEquals(2, chatManager.getHistory().size());
+        assertEquals("user", chatManager.getHistory().get(0).role);
+        assertEquals("model", chatManager.getHistory().get(1).role);
+    }
+
+    @Test
+    public void testSongChatManagerTrackChangeCancelsStreamAndPreventsContamination() {
+        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics 1...", null);
+        mockApiClient.autoCompleteStream = false; // Hold stream open
+
+        chatManager.sendMessage("Tentang Fix You", false, null);
+        assertEquals(1, chatManager.getHistory().size());
+
+        // Track changes to "Yellow" before Fix You stream completes
+        chatManager.setCurrentSong("Yellow", "Coldplay", "Lyrics 2...", null);
+        assertTrue(chatManager.getHistory().isEmpty());
+
+        // Late completion arrives for Fix You
+        mockApiClient.triggerLateStreamCompletion("Jawaban Fix You yang terlambat");
+
+        // The new song history must remain empty, unaffected by the previous song's late response
+        assertTrue("New song history must not be contaminated by cancelled previous song stream",
+                chatManager.getHistory().isEmpty());
+    }
+
+    @Test
     public void testSongChatManagerClearHistory() {
         chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
         mockApiClient.mockStreamFullText = "Jawaban.";
@@ -409,41 +535,6 @@ public class SongMeaningServiceTest {
         assertEquals("Yellow", chatManager.getTitle());
     }
 
-    @Test
-    public void testSongChatManagerStreamError() {
-        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
-        mockApiClient.mockError = new IOException("Streaming disrupted");
-
-        final AtomicReference<Exception> errorRef = new AtomicReference<>();
-        chatManager.sendMessage("Halo", false, new AntigravityApiClient.StreamListener() {
-            @Override
-            public void onDelta(String textDelta) {}
-
-            @Override
-            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {}
-
-            @Override
-            public void onError(Exception error) {
-                errorRef.set(error);
-            }
-        });
-
-        assertNotNull(errorRef.get());
-        assertTrue(errorRef.get().getMessage().contains("Streaming disrupted"));
-    }
-
-    @Test
-    public void testSongChatManagerCancellation() {
-        chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
-        mockApiClient.mockStreamDeltas = Collections.singletonList("Delta");
-
-        AntigravityApiClient.Cancellable handle = chatManager.sendMessage("Halo", false, null);
-        assertNotNull(handle);
-        assertFalse(handle.isCancelled());
-        handle.cancel();
-        assertTrue(handle.isCancelled());
-    }
-
     // ==========================================
     // Test Doubles & Helpers
     // ==========================================
@@ -457,8 +548,10 @@ public class SongMeaningServiceTest {
         List<String> mockStreamDeltas = new ArrayList<>();
         String mockStreamFullText;
         Exception mockError;
+        boolean autoCompleteStream = true;
 
         List<AiChatMessage> lastStreamMessages;
+        StreamListener activeListener;
 
         MockApiClient() {
             super(null, null);
@@ -486,9 +579,10 @@ public class SongMeaningServiceTest {
         @Override
         public Cancellable generateContentStream(String modelId, List<AiChatMessage> messages,
                                                 boolean enableWebSearch, String effortLevel,
-                                                StreamListener listener) {
+                                                final StreamListener listener) {
             generateContentStreamCallCount++;
             this.lastStreamMessages = messages != null ? new ArrayList<>(messages) : null;
+            this.activeListener = listener;
             final MockCancellable handle = new MockCancellable();
 
             if (mockError != null) {
@@ -496,7 +590,7 @@ public class SongMeaningServiceTest {
                 return handle;
             }
 
-            if (listener != null) {
+            if (autoCompleteStream && listener != null) {
                 if (mockStreamDeltas != null) {
                     for (String delta : mockStreamDeltas) {
                         if (handle.isCancelled()) break;
@@ -514,6 +608,12 @@ public class SongMeaningServiceTest {
             }
 
             return handle;
+        }
+
+        void triggerLateStreamCompletion(String fullText) {
+            if (activeListener != null) {
+                activeListener.onComplete(fullText, mockWebSources, 10, 20);
+            }
         }
     }
 

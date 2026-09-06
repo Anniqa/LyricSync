@@ -12,7 +12,8 @@ import java.util.List;
 /**
  * Manages interactive, multi-turn AI chat sessions discussing the active song.
  * Maintains conversation history, constructs contextual song prompts, and
- * streams responses via AntigravityApiClient.
+ * streams responses via AntigravityApiClient with alternating role guarantees
+ * and race condition protection across track changes.
  */
 public class SongChatManager {
 
@@ -26,11 +27,14 @@ public class SongChatManager {
     ));
 
     private final AntigravityApiClient apiClient;
-    private String modelId;
-    private String title;
-    private String artist;
-    private String fullLyrics;
-    private SongMeaning meaning;
+    private volatile String modelId;
+    private volatile String title;
+    private volatile String artist;
+    private volatile String fullLyrics;
+    private volatile SongMeaning meaning;
+    private volatile long currentSessionId = 0;
+    private volatile AntigravityApiClient.Cancellable activeCall;
+
     private final List<AiChatMessage> history = new ArrayList<>();
 
     public SongChatManager(AntigravityApiClient apiClient) {
@@ -43,13 +47,21 @@ public class SongChatManager {
     }
 
     /**
-     * Initializes or resets the active song context and clears prior conversation history.
+     * Initializes or resets the active song context, cancels any in-flight stream,
+     * increments session ID to prevent cross-song response contamination, and clears history.
      */
     public synchronized void setCurrentSong(String title, String artist, String fullLyrics, SongMeaning meaning) {
+        if (activeCall != null) {
+            try {
+                activeCall.cancel();
+            } catch (Exception ignored) {}
+            activeCall = null;
+        }
         this.title = title;
         this.artist = artist;
         this.fullLyrics = fullLyrics;
         this.meaning = meaning;
+        this.currentSessionId++;
         clearHistory();
     }
 
@@ -122,7 +134,8 @@ public class SongChatManager {
     }
 
     /**
-     * Prepares the full sequence of messages (context + multi-turn history) to send to the API.
+     * Prepares the full sequence of messages (context + multi-turn history) to send to the API,
+     * guaranteeing strictly alternating roles (user, model, user, model...).
      */
     public List<AiChatMessage> buildMessagesToSend() {
         List<AiChatMessage> messages = new ArrayList<>();
@@ -131,15 +144,37 @@ public class SongChatManager {
             messages.add(AiChatMessage.user("[System Song Context & Instructions]\n" + context));
             messages.add(AiChatMessage.model("Understood! I have full context on \"" + (title != null ? title : "the song") + "\" and am ready to discuss it with you."));
         }
+
+        // Sanitize history to ensure strict alternating role structure
+        List<AiChatMessage> sanitizedHistory = new ArrayList<>();
         synchronized (this) {
-            messages.addAll(history);
+            for (AiChatMessage msg : history) {
+                if (msg == null || msg.content == null || msg.content.trim().isEmpty()) continue;
+                String normalizedRole = ("model".equalsIgnoreCase(msg.role) || "assistant".equalsIgnoreCase(msg.role)) ? "model" : "user";
+                if (sanitizedHistory.isEmpty()) {
+                    if ("user".equals(normalizedRole)) {
+                        sanitizedHistory.add(new AiChatMessage("user", msg.content));
+                    }
+                } else {
+                    AiChatMessage prev = sanitizedHistory.get(sanitizedHistory.size() - 1);
+                    if (!normalizedRole.equals(prev.role)) {
+                        sanitizedHistory.add(new AiChatMessage(normalizedRole, msg.content));
+                    } else if ("user".equals(normalizedRole)) {
+                        // Merge consecutive user turns if any occurred
+                        prev.content = prev.content + "\n\n" + msg.content;
+                    }
+                }
+            }
         }
+
+        messages.addAll(sanitizedHistory);
         return messages;
     }
 
     /**
      * Appends user message, initiates streaming response from the AI model, and appends model
-     * response upon completion.
+     * response upon completion. Rolls back the user turn if the stream fails or is cancelled
+     * to preserve the alternating role invariant.
      */
     public AntigravityApiClient.Cancellable sendMessage(final String userMessage, final boolean enableWebSearch,
                                                         final AntigravityApiClient.StreamListener listener) {
@@ -157,16 +192,36 @@ public class SongChatManager {
             return new NoOpCancellable();
         }
 
+        // Abort any prior in-flight generation
+        if (activeCall != null && !activeCall.isCancelled()) {
+            try {
+                activeCall.cancel();
+            } catch (Exception ignored) {}
+        }
+
+        final long sessionId = this.currentSessionId;
         final String trimmedUserMessage = userMessage.trim();
+        final AiChatMessage userTurn = AiChatMessage.user(trimmedUserMessage);
+
         synchronized (this) {
-            history.add(AiChatMessage.user(trimmedUserMessage));
+            history.add(userTurn);
         }
 
         List<AiChatMessage> messagesToSend = buildMessagesToSend();
+        final SessionCancellable sessionHandle = new SessionCancellable(new Runnable() {
+            @Override
+            public void run() {
+                rollbackUserTurnIfOrphaned(userTurn);
+            }
+        });
 
-        return apiClient.generateContentStream(modelId, messagesToSend, enableWebSearch, null, new AntigravityApiClient.StreamListener() {
+        AntigravityApiClient.Cancellable innerCall = apiClient.generateContentStream(
+                modelId, messagesToSend, enableWebSearch, null, new AntigravityApiClient.StreamListener() {
             @Override
             public void onDelta(String textDelta) {
+                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
+                    return;
+                }
                 if (listener != null) {
                     try {
                         listener.onDelta(textDelta);
@@ -176,9 +231,20 @@ public class SongChatManager {
 
             @Override
             public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
-                synchronized (SongChatManager.this) {
-                    history.add(AiChatMessage.model(fullText != null ? fullText : ""));
+                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
+                    rollbackUserTurnIfOrphaned(userTurn);
+                    return;
                 }
+
+                synchronized (SongChatManager.this) {
+                    if (sessionId == currentSessionId) {
+                        history.add(AiChatMessage.model(fullText != null ? fullText : ""));
+                    } else {
+                        rollbackUserTurnIfOrphaned(userTurn);
+                        return;
+                    }
+                }
+
                 if (listener != null) {
                     try {
                         listener.onComplete(fullText, webSources, promptTokens, candidateTokens);
@@ -188,6 +254,9 @@ public class SongChatManager {
 
             @Override
             public void onError(Exception error) {
+                // Roll back orphaned user turn to preserve strict alternating role invariant
+                rollbackUserTurnIfOrphaned(userTurn);
+
                 if (listener != null) {
                     try {
                         listener.onError(error);
@@ -195,6 +264,54 @@ public class SongChatManager {
                 }
             }
         });
+
+        sessionHandle.setInner(innerCall);
+        this.activeCall = sessionHandle;
+        return sessionHandle;
+    }
+
+    private synchronized void rollbackUserTurnIfOrphaned(AiChatMessage userTurn) {
+        if (!history.isEmpty()) {
+            int lastIdx = history.size() - 1;
+            if (history.get(lastIdx) == userTurn) {
+                history.remove(lastIdx);
+            }
+        }
+    }
+
+    private static class SessionCancellable implements AntigravityApiClient.Cancellable {
+        private volatile boolean cancelled = false;
+        private volatile AntigravityApiClient.Cancellable inner;
+        private final Runnable onCancel;
+
+        SessionCancellable(Runnable onCancel) {
+            this.onCancel = onCancel;
+        }
+
+        void setInner(AntigravityApiClient.Cancellable inner) {
+            this.inner = inner;
+            if (cancelled && inner != null) {
+                inner.cancel();
+            }
+        }
+
+        @Override
+        public void cancel() {
+            if (!cancelled) {
+                cancelled = true;
+                if (inner != null) {
+                    inner.cancel();
+                }
+                if (onCancel != null) {
+                    onCancel.run();
+                }
+            }
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled || (inner != null && inner.isCancelled());
+        }
     }
 
     private static class NoOpCancellable implements AntigravityApiClient.Cancellable {

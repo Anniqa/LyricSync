@@ -120,39 +120,49 @@ public class SongMeaningService {
     }
 
     /**
-     * Strips markdown code blocks (e.g. ```json ... ``` or ``` ... ```) from AI responses.
+     * Strips markdown code blocks (e.g. ```json ... ``` or ``` ... ```) case-insensitively,
+     * and extracts the outermost JSON object substring if surrounded by commentary.
      */
     public static String cleanJsonFence(String rawResponse) {
         if (rawResponse == null) {
             return "";
         }
-        String trimmed = rawResponse.trim();
-        if (trimmed.isEmpty()) {
+        String text = rawResponse.trim();
+        if (text.isEmpty()) {
             return "";
         }
 
-        int startFence = trimmed.indexOf("```json");
+        // 1. Strip case-insensitive ```json or ``` code fences
+        String lower = text.toLowerCase();
+        int startFence = lower.indexOf("```json");
         int fenceTagLen = 7;
         if (startFence == -1) {
-            startFence = trimmed.indexOf("```");
+            startFence = lower.indexOf("```");
             fenceTagLen = 3;
         }
 
         if (startFence != -1) {
             int contentStart = startFence + fenceTagLen;
-            int endFence = trimmed.indexOf("```", contentStart);
+            int endFence = text.indexOf("```", contentStart);
             if (endFence != -1) {
-                return trimmed.substring(contentStart, endFence).trim();
+                text = text.substring(contentStart, endFence).trim();
             } else {
-                return trimmed.substring(contentStart).trim();
+                text = text.substring(contentStart).trim();
             }
         }
 
-        return trimmed;
+        // 2. Extract outermost JSON object {...} if preamble/postamble commentary exists
+        int firstBrace = text.indexOf('{');
+        int lastBrace = text.lastIndexOf('}');
+        if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+            text = text.substring(firstBrace, lastBrace + 1).trim();
+        }
+
+        return text;
     }
 
     /**
-     * Builds structured prompt instructing Gemini to analyze song meaning and return JSON.
+     * Builds structured prompt instructing Gemini to analyze song meaning and return JSON in Indonesian.
      */
     public static String buildMeaningPrompt(String title, String artist, String fullLyrics) {
         StringBuilder sb = new StringBuilder();
@@ -167,10 +177,11 @@ public class SongMeaningService {
             sb.append("\nLyrics:\n").append(fullLyrics.trim()).append("\n");
         }
         sb.append("\nProvide an insightful, deep analysis of this song's emotional tone, backstory, and lyrical symbolism.\n");
+        sb.append("Tuliskan analisis dalam Bahasa Indonesia.\n");
         sb.append("Output your response STRICTLY as a JSON object with the following schema:\n");
         sb.append("{\n");
-        sb.append("  \"mood\": \"1-3 words describing the dominant emotion/atmosphere (e.g. Melancholic & Reflective, Uplifting & Triumphant)\",\n");
-        sb.append("  \"summary\": \"A rich 2-3 paragraph explanation of the song's story, emotional themes, and artistic meaning.\"\n");
+        sb.append("  \"mood\": \"1-3 words describing the dominant emotion/atmosphere in Indonesian (e.g. Melankolis & Penuh Harap, Semangat & Ceria)\",\n");
+        sb.append("  \"summary\": \"A rich 2-3 paragraph explanation of the song's story, emotional themes, and artistic meaning written in Indonesian.\"\n");
         sb.append("}\n");
         sb.append("Return ONLY valid JSON without any markdown code fences or conversational text outside the JSON object.");
         return sb.toString();
@@ -236,37 +247,51 @@ public class SongMeaningService {
         return apiClient.generateContent(modelId, messages, enableWebSearch, null, new AntigravityApiClient.CompletionCallback() {
             @Override
             public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                SongMeaning parsedMeaning = null;
+                Exception parseException = null;
+
                 try {
                     String cleaned = cleanJsonFence(fullText);
                     JsonObject json = JsonParser.parseString(cleaned).getAsJsonObject();
                     String mood = json.has("mood") && !json.get("mood").isJsonNull() ? json.get("mood").getAsString() : "";
                     String summary = json.has("summary") && !json.get("summary").isJsonNull() ? json.get("summary").getAsString() : "";
-                    SongMeaning meaning = new SongMeaning(mood, summary, webSources != null ? webSources : new ArrayList<String>());
+                    parsedMeaning = new SongMeaning(mood, summary, webSources != null ? webSources : new ArrayList<String>());
 
                     // Populate memory cache
-                    memoryCache.put(cacheKey, meaning);
+                    memoryCache.put(cacheKey, parsedMeaning);
 
                     // Persist to SharedPreferences
                     if (prefs != null) {
                         JsonObject cacheObj = new JsonObject();
-                        cacheObj.addProperty("mood", meaning.mood);
-                        cacheObj.addProperty("summary", meaning.summary);
-                        if (meaning.webSources != null) {
+                        cacheObj.addProperty("mood", parsedMeaning.mood);
+                        cacheObj.addProperty("summary", parsedMeaning.summary);
+                        if (parsedMeaning.webSources != null) {
                             JsonArray arr = new JsonArray();
-                            for (String src : meaning.webSources) {
+                            for (String src : parsedMeaning.webSources) {
                                 arr.add(src);
                             }
                             cacheObj.add("webSources", arr);
                         }
                         prefs.edit().putString(PREF_CACHE_PREFIX + cacheKey, cacheObj.toString()).apply();
                     }
-
-                    if (callback != null) {
-                        callback.onResult(meaning, false);
-                    }
                 } catch (Exception e) {
+                    parseException = e;
+                }
+
+                // Callback dispatch is OUTSIDE parsing try-catch to avoid double-callback
+                if (parseException != null) {
                     if (callback != null) {
-                        callback.onError(e);
+                        try {
+                            callback.onError(parseException);
+                        } catch (Throwable ignored) {}
+                    }
+                } else if (parsedMeaning != null) {
+                    if (callback != null) {
+                        try {
+                            callback.onResult(parsedMeaning, false);
+                        } catch (Throwable ignored) {
+                            // Caller runtime exceptions in onResult must NOT cascade into onError
+                        }
                     }
                 }
             }
@@ -274,7 +299,9 @@ public class SongMeaningService {
             @Override
             public void onError(Exception error) {
                 if (callback != null) {
-                    callback.onError(error);
+                    try {
+                        callback.onError(error);
+                    } catch (Throwable ignored) {}
                 }
             }
         });
