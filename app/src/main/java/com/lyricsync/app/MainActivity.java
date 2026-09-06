@@ -49,6 +49,13 @@ import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.util.AiStreamingAnimator;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
+import com.lyricsync.app.ai.transliteration.AiSyllableTransliterationService;
+import com.lyricsync.app.ai.transliteration.ScriptDetector;
+import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
+import com.lyricsync.app.lyrics.model.LyricsData;
+import com.lyricsync.app.lyrics.model.TrackInfo;
+import com.lyricsync.app.lyrics.LyricsProviderManager;
+import com.lyricsync.app.renderer.SyllableHighlighter;
 import android.text.method.LinkMovementMethod;
 
 import java.util.Arrays;
@@ -219,6 +226,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private String currentTrackTitle;
     private String currentTrackArtist;
     private List<AntigravityModel> availableAiModels = new ArrayList<>();
+    private AiSyllableTransliterationService aiTransliterationService;
+    private LyricsCacheManager lyricsCacheManager;
+    private LyricsData lyricsData;
+    private TrackInfo currentTrack;
+    private SyllableHighlighter syllableHighlighter;
 
     private ObjectAnimator[] eqAnimators;
     private ValueAnimator heroTintAnimator;
@@ -1065,6 +1077,12 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         songChatManager.setAppLanguage(LocaleHelper.getLanguage(this));
         aiChatHistoryManager = new AiChatHistoryManager(this);
         songChatManager.setHistoryManager(aiChatHistoryManager);
+        if (aiTransliterationService == null) {
+            aiTransliterationService = new AiSyllableTransliterationService(this, apiClient);
+        }
+        if (lyricsCacheManager == null) {
+            lyricsCacheManager = new LyricsCacheManager(this);
+        }
 
         cardAiStudio = findViewById(R.id.card_ai_studio);
         aiStudioHeader = findViewById(R.id.ai_studio_header);
@@ -1179,6 +1197,40 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private void setupAiQuickChips() {
         if (aiStudioQuickChipsContainer == null) return;
         aiStudioQuickChipsContainer.removeAllViews();
+        if (lyricsData != null && lyricsData.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(lyricsData)) {
+            LinearLayout chip = new LinearLayout(this);
+            chip.setOrientation(LinearLayout.HORIZONTAL);
+            chip.setGravity(Gravity.CENTER_VERTICAL);
+            chip.setBackgroundResource(R.drawable.bg_prompt_card);
+            int padH = dpToPx(10);
+            int padV = dpToPx(6);
+            chip.setPadding(padH, padV, padH, padV);
+
+            ImageView iconView = new ImageView(this);
+            iconView.setImageResource(R.drawable.ic_sparkles);
+            iconView.setColorFilter(ContextCompat.getColor(this, R.color.accent));
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
+            iconLp.setMarginEnd(dpToPx(6));
+            chip.addView(iconView, iconLp);
+
+            TextView titleView = new TextView(this);
+            titleView.setText(R.string.ai_chip_transliterate);
+            titleView.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+            titleView.setTextSize(11f);
+            titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+            chip.addView(titleView);
+
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.setMarginEnd(dpToPx(8));
+            chip.setLayoutParams(lp);
+
+            chip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                performTransliteration();
+            });
+            aiStudioQuickChipsContainer.addView(chip);
+        }
         String lang = LocaleHelper.getLanguage(this);
         List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
         for (final SongChatManager.PromptTemplate template : templates) {
@@ -1539,6 +1591,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             if (currentTrackTitle != null) {
                 currentTrackTitle = null;
                 currentTrackArtist = null;
+                currentTrack = null;
+                lyricsData = null;
                 if (activeMeaningCall != null) {
                     activeMeaningCall.cancel();
                     activeMeaningCall = null;
@@ -1591,6 +1645,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
         currentTrackTitle = track.title;
         currentTrackArtist = track.artist != null ? track.artist : "";
+        currentTrack = new TrackInfo();
+        currentTrack.title = currentTrackTitle;
+        currentTrack.artist = currentTrackArtist;
 
         if (activeMeaningCall != null) {
             activeMeaningCall.cancel();
@@ -1622,7 +1679,228 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (aiStudioSummary != null) {
             aiStudioSummary.setText(R.string.ai_empty_hint);
         }
+
+        if (lyricsCacheManager == null) {
+            lyricsCacheManager = new LyricsCacheManager(this);
+        }
+        lyricsData = lyricsCacheManager.getCached(currentTrack);
         setupAiQuickChips();
+
+        if (lyricsData == null) {
+            LyricsProviderManager providerManager = new LyricsProviderManager(this);
+            providerManager.fetchLyrics(currentTrack, new LyricsProviderManager.LyricsCallback() {
+                @Override
+                public void onLyricsLoaded(LyricsData loadedLyrics) {
+                    runOnUiThread(() -> {
+                        if (currentTrackTitle != null && currentTrackTitle.equals(track.title)) {
+                            lyricsData = loadedLyrics;
+                            setupAiQuickChips();
+                        }
+                    });
+                }
+
+                @Override
+                public void onLyricsError(String error) {}
+            });
+        }
+    }
+
+    private boolean isLyricsNonLatin(LyricsData lyrics) {
+        if (lyrics == null || lyrics.lines == null || lyrics.lines.isEmpty()) return false;
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        for (LyricsData.LyricsLine line : lyrics.lines) {
+            if (line != null && !line.isInterlude && line.text != null) {
+                sb.append(line.text).append(" ");
+                count++;
+                if (count >= 5) break;
+            }
+        }
+        return ScriptDetector.isNonLatin(sb.toString());
+    }
+
+    private void performTransliteration() {
+        if (lyricsData == null || aiTransliterationService == null) return;
+        Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
+        String title = currentTrackTitle != null ? currentTrackTitle : "";
+        String artist = currentTrackArtist != null ? currentTrackArtist : "";
+        String targetLang = LocaleHelper.getLanguage(this);
+        aiTransliterationService.transliterateSyllablesAsync(
+                lyricsData, title, artist, targetLang,
+                new AiSyllableTransliterationService.Callback() {
+                    @Override
+                    public void onSuccess(LyricsData enrichedData) {
+                        lyricsData = enrichedData;
+                        if (syllableHighlighter != null) {
+                            syllableHighlighter.setTransliterationEnabled(true);
+                        }
+                        if (lyricsCacheManager != null && currentTrack != null) {
+                            lyricsCacheManager.cache(currentTrack, enrichedData);
+                        }
+                        setupAiQuickChips();
+                        Toast.makeText(MainActivity.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        Toast.makeText(MainActivity.this, message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
+                    }
+                });
+    }
+
+    public void showEditSyllablesDialog(int lineIndex, LyricsData.LyricsLine line) {
+        if (line == null) return;
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_syllables, null);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .create();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        TextView textLineIndex = dialogView.findViewById(R.id.dialog_line_index);
+        TextView textLineOriginal = dialogView.findViewById(R.id.text_line_original);
+        LinearLayout containerSyllables = dialogView.findViewById(R.id.container_syllables);
+        EditText editLineTranslation = dialogView.findViewById(R.id.edit_line_translation);
+        TextView btnAiRegenerate = dialogView.findViewById(R.id.btn_ai_regenerate);
+        TextView btnCancel = dialogView.findViewById(R.id.btn_cancel);
+        TextView btnSave = dialogView.findViewById(R.id.btn_save);
+
+        if (textLineIndex != null) {
+            textLineIndex.setText(String.format(java.util.Locale.getDefault(), "#%d", lineIndex + 1));
+        }
+        if (textLineOriginal != null) {
+            textLineOriginal.setText(line.text != null ? line.text : "");
+        }
+        if (editLineTranslation != null) {
+            editLineTranslation.setText(line.translation != null ? line.translation : "");
+        }
+
+        List<EditText> syllableEditList = new ArrayList<>();
+        Runnable populateChips = () -> {
+            if (containerSyllables == null) return;
+            containerSyllables.removeAllViews();
+            syllableEditList.clear();
+            if (line.words != null && !line.words.isEmpty()) {
+                for (LyricsData.Word word : line.words) {
+                    View chipView = LayoutInflater.from(this).inflate(R.layout.item_edit_syllable_chip, containerSyllables, false);
+                    TextView textSyllable = chipView.findViewById(R.id.text_syllable_original);
+                    EditText editSyllable = chipView.findViewById(R.id.edit_syllable_romanji);
+                    textSyllable.setText(word.text != null ? word.text : "");
+                    editSyllable.setText(word.romanji != null ? word.romanji : "");
+                    syllableEditList.add(editSyllable);
+                    containerSyllables.addView(chipView);
+                }
+            } else {
+                View chipView = LayoutInflater.from(this).inflate(R.layout.item_edit_syllable_chip, containerSyllables, false);
+                TextView textSyllable = chipView.findViewById(R.id.text_syllable_original);
+                EditText editSyllable = chipView.findViewById(R.id.edit_syllable_romanji);
+                textSyllable.setText(line.text != null ? line.text : "");
+                editSyllable.setText(line.romanji != null ? line.romanji : "");
+                syllableEditList.add(editSyllable);
+                containerSyllables.addView(chipView);
+            }
+        };
+        populateChips.run();
+
+        if (btnCancel != null) {
+            btnCancel.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        if (btnAiRegenerate != null) {
+            btnAiRegenerate.setOnClickListener(v -> {
+                if (aiTransliterationService == null) return;
+                Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
+                btnAiRegenerate.setEnabled(false);
+                LyricsData singleData = new LyricsData(LyricsData.Type.SYLLABLE);
+                LyricsData.LyricsLine testLine = new LyricsData.LyricsLine();
+                testLine.text = line.text;
+                testLine.startTime = line.startTime;
+                testLine.endTime = line.endTime;
+                if (line.words != null) {
+                    for (LyricsData.Word w : line.words) {
+                        LyricsData.Word nw = new LyricsData.Word();
+                        nw.text = w.text;
+                        nw.startTime = w.startTime;
+                        nw.endTime = w.endTime;
+                        testLine.words.add(nw);
+                    }
+                }
+                singleData.lines.add(testLine);
+
+                String title = currentTrackTitle != null ? currentTrackTitle : "";
+                String artist = currentTrackArtist != null ? currentTrackArtist : "";
+                String targetLang = LocaleHelper.getLanguage(this);
+                aiTransliterationService.transliterateSyllablesAsync(
+                        singleData, title, artist, targetLang,
+                        new AiSyllableTransliterationService.Callback() {
+                            @Override
+                            public void onSuccess(LyricsData enrichedData) {
+                                btnAiRegenerate.setEnabled(true);
+                                if (enrichedData.lines != null && !enrichedData.lines.isEmpty()) {
+                                    LyricsData.LyricsLine resLine = enrichedData.lines.get(0);
+                                    if (resLine.translation != null && editLineTranslation != null) {
+                                        editLineTranslation.setText(resLine.translation);
+                                    }
+                                    if (resLine.words != null && resLine.words.size() == syllableEditList.size()) {
+                                        for (int i = 0; i < syllableEditList.size(); i++) {
+                                            syllableEditList.get(i).setText(resLine.words.get(i).romanji);
+                                        }
+                                    } else if (!syllableEditList.isEmpty() && resLine.romanji != null) {
+                                        syllableEditList.get(0).setText(resLine.romanji);
+                                    }
+                                }
+                                Toast.makeText(MainActivity.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
+                            }
+
+                            @Override
+                            public void onError(String message) {
+                                btnAiRegenerate.setEnabled(true);
+                                Toast.makeText(MainActivity.this, message != null ? message : "Error", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+            });
+        }
+
+        if (btnSave != null) {
+            btnSave.setOnClickListener(v -> {
+                if (editLineTranslation != null) {
+                    line.translation = editLineTranslation.getText().toString().trim();
+                }
+                List<String> wordsRomanji = new ArrayList<>();
+                StringBuilder sbRomaji = new StringBuilder();
+                if (line.words != null && !line.words.isEmpty()) {
+                    for (int i = 0; i < line.words.size() && i < syllableEditList.size(); i++) {
+                        String r = syllableEditList.get(i).getText().toString().trim();
+                        line.words.get(i).romanji = r;
+                        wordsRomanji.add(r);
+                        if (!r.isEmpty()) {
+                            if (sbRomaji.length() > 0) sbRomaji.append(" ");
+                            sbRomaji.append(r);
+                        }
+                    }
+                    line.romanji = sbRomaji.toString();
+                } else if (!syllableEditList.isEmpty()) {
+                    String r = syllableEditList.get(0).getText().toString().trim();
+                    line.romanji = r;
+                    wordsRomanji.add(r);
+                }
+
+                if (syllableHighlighter != null) {
+                    syllableHighlighter.updateLineTransliteration(lineIndex, wordsRomanji, line.romanji);
+                    syllableHighlighter.updateLineTranslation(lineIndex, line.translation);
+                }
+
+                if (lyricsCacheManager != null && currentTrack != null && lyricsData != null) {
+                    lyricsCacheManager.cache(currentTrack, lyricsData);
+                }
+
+                dialog.dismiss();
+            });
+        }
+
+        dialog.show();
     }
 
     public void onNowPlayingChanged(NowPlaying track) {

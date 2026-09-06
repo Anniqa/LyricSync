@@ -176,4 +176,17 @@
     <string name="ai_history_restore">Buka Obrolan</string>
     <string name="ai_history_session_messages">%1$d pesan</string>
     <string name="ai_history_deleted_one">Percakapan dihapus</string>
+    <string name="ai_chip_transliterate">Transliterasi &amp; Terjemahkan Suku Kata</string>
+    <string name="ai_transliterating">Membuat Romaji dan terjemahan...</string>
+    <string name="ai_transliteration_complete">Transliterasi suku kata siap</string>
+    <string name="edit_syllables_title">Edit Suku Kata &amp; Terjemahan</string>
+    <string name="edit_syllables_original">Aksara Asli</string>
+    <string name="edit_syllables_romaji">Romaji / Transliterasi</string>
+    <string name="edit_syllables_translation">Arti Baris</string>
+    <string name="btn_ai_regenerate">Buat Ulang dengan AI</string>
+    <string name="toggle_romaji">Romaji</string>
+    <string name="save">Simpan</string>
+    <string name="cancel">Batal</string>
+    <string name="romaji_enabled">Romaji diaktifkan</string>
+    <string name="romaji_disabled">Romaji dinonaktifkan</string>
 </resources>

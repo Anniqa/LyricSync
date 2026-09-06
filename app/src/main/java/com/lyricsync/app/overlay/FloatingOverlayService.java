@@ -68,6 +68,10 @@ import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.lyricsync.app.LyricSyncApp;
 import com.lyricsync.app.R;
 import com.lyricsync.app.detection.MediaSessionTracker;
+import com.lyricsync.app.ai.client.AntigravityApiClient;
+import com.lyricsync.app.ai.transliteration.AiSyllableTransliterationService;
+import com.lyricsync.app.ai.transliteration.ScriptDetector;
+import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
@@ -162,6 +166,10 @@ public class FloatingOverlayService extends Service {
     private androidx.appcompat.widget.SwitchCompat overlayTranslateSwitch;
     private boolean translationEnabled = false;
     private SyllableHighlighter highlighter;
+    private AntigravityApiClient apiClient;
+    private AiSyllableTransliterationService aiTransliterationService;
+    private LyricsCacheManager lyricsCacheManager;
+    private androidx.appcompat.widget.SwitchCompat overlayRomajiSwitch;
 
     // AI Insights UI & Subsystems
     private ImageView overlayAiButton;
@@ -302,14 +310,15 @@ public class FloatingOverlayService extends Service {
         translateService = new com.lyricsync.app.lyrics.translation.GoogleTranslateService();
         com.lyricsync.app.ai.auth.AntigravityAuthManager authManager =
                 com.lyricsync.app.ai.auth.AntigravityAuthManager.getInstance(this);
-        com.lyricsync.app.ai.client.AntigravityApiClient apiClient =
-                new com.lyricsync.app.ai.client.AntigravityApiClient(authManager);
+        apiClient = new com.lyricsync.app.ai.client.AntigravityApiClient(authManager);
         aiTranslationService = new com.lyricsync.app.lyrics.translation.AiTranslationService(
                 this, authManager, apiClient, translateService);
         songMeaningService = new SongMeaningService(sharedPrefs, apiClient);
         songChatManager = new SongChatManager(apiClient);
         aiChatHistoryManager = new AiChatHistoryManager(this);
         songChatManager.setHistoryManager(aiChatHistoryManager);
+        aiTransliterationService = new AiSyllableTransliterationService(this, apiClient);
+        lyricsCacheManager = new LyricsCacheManager(this);
         quotaClient = new AntigravityQuotaClient(authManager);
         AntigravityToolExecutor.setChatModelSupplier(() ->
                 sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
@@ -321,6 +330,8 @@ public class FloatingOverlayService extends Service {
         overlayFontSizeSp = calculateFontSizeSp();
         highlighter = new SyllableHighlighter(this, fontBold, fontMedium, overlayFontSizeSp);
         highlighter.setAnimConfig(lyricAnimConfig);
+        boolean romajiPref = sharedPrefs.getBoolean("pref_romaji_enabled", true);
+        highlighter.setTransliterationEnabled(romajiPref);
         choreographer = Choreographer.getInstance();
         sharedPrefs.registerOnSharedPreferenceChangeListener(settingsListener);
 
@@ -416,6 +427,53 @@ public class FloatingOverlayService extends Service {
                     fetchTranslationForCurrentLyrics();
                 }
             });
+        }
+        if (overlaySettingsPanel != null) {
+            LinearLayout romajiRow = new LinearLayout(this);
+            romajiRow.setOrientation(LinearLayout.HORIZONTAL);
+            romajiRow.setGravity(Gravity.CENTER_VERTICAL);
+            romajiRow.setPadding(0, dpToPx(4), 0, dpToPx(8));
+
+            ImageView romajiIcon = new ImageView(this);
+            romajiIcon.setImageResource(R.drawable.ic_sparkles);
+            romajiIcon.setColorFilter(ContextCompat.getColor(this, R.color.accent));
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(18), dpToPx(18));
+            romajiRow.addView(romajiIcon, iconLp);
+
+            TextView romajiLabel = new TextView(this);
+            romajiLabel.setText(R.string.toggle_romaji);
+            romajiLabel.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+            romajiLabel.setTextSize(13f);
+            romajiLabel.setTypeface(null, Typeface.BOLD);
+            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
+            labelLp.setMarginStart(dpToPx(8));
+            romajiRow.addView(romajiLabel, labelLp);
+
+            overlayRomajiSwitch = new androidx.appcompat.widget.SwitchCompat(this);
+            overlayRomajiSwitch.setShowText(false);
+            overlayRomajiSwitch.setTextOn("");
+            overlayRomajiSwitch.setTextOff("");
+            overlayRomajiSwitch.setChecked(highlighter.isTransliterationEnabled());
+            overlayRomajiSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
+                if (highlighter != null) {
+                    highlighter.setTransliterationEnabled(isChecked);
+                }
+                sharedPrefs.edit().putBoolean("pref_romaji_enabled", isChecked).apply();
+                Toast.makeText(this, isChecked ? R.string.romaji_enabled : R.string.romaji_disabled, Toast.LENGTH_SHORT).show();
+            });
+            romajiRow.addView(overlayRomajiSwitch, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+            int insertIndex = -1;
+            if (overlayTranslateSwitch != null && overlayTranslateSwitch.getParent() instanceof View) {
+                View parentRow = (View) overlayTranslateSwitch.getParent();
+                insertIndex = overlaySettingsPanel.indexOfChild(parentRow);
+            }
+            if (insertIndex >= 0) {
+                overlaySettingsPanel.addView(romajiRow, insertIndex + 1);
+            } else {
+                overlaySettingsPanel.addView(romajiRow);
+            }
         }
         overlayResizeContainer = overlayView.findViewById(R.id.overlay_resize_container);
         overlayResizeHandle = overlayView.findViewById(R.id.overlay_resize_handle);
@@ -1457,6 +1515,22 @@ public class FloatingOverlayService extends Service {
     private void setupAiPromptTemplates() {
         if (aiPromptTemplatesContainer == null) return;
         aiPromptTemplatesContainer.removeAllViews();
+        if (currentLyrics != null && currentLyrics.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(currentLyrics)) {
+            View itemView = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
+            ImageView iconView = itemView.findViewById(R.id.prompt_icon);
+            TextView titleView = itemView.findViewById(R.id.prompt_title);
+            TextView descView = itemView.findViewById(R.id.prompt_desc);
+
+            titleView.setText(R.string.ai_chip_transliterate);
+            descView.setText(R.string.ai_transliterating);
+            iconView.setImageResource(R.drawable.ic_sparkles);
+
+            itemView.setOnClickListener(v -> {
+                Haptics.tick(v);
+                performTransliteration();
+            });
+            aiPromptTemplatesContainer.addView(itemView);
+        }
         String lang = LocaleHelper.getLanguage(this);
         List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
         for (final SongChatManager.PromptTemplate template : templates) {
@@ -1481,6 +1555,64 @@ public class FloatingOverlayService extends Service {
             });
             aiPromptTemplatesContainer.addView(itemView);
         }
+    }
+
+    private boolean isLyricsNonLatin(LyricsData lyrics) {
+        if (lyrics == null || lyrics.lines == null || lyrics.lines.isEmpty()) return false;
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        for (LyricsData.LyricsLine line : lyrics.lines) {
+            if (line != null && !line.isInterlude && line.text != null) {
+                sb.append(line.text).append(" ");
+                count++;
+                if (count >= 5) break;
+            }
+        }
+        return ScriptDetector.isNonLatin(sb.toString());
+    }
+
+    private void performTransliteration() {
+        if (currentLyrics == null || aiTransliterationService == null) return;
+        Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
+        String title = currentTrack != null ? currentTrack.title : "";
+        String artist = currentTrack != null ? currentTrack.artist : "";
+        String targetLang = LocaleHelper.getLanguage(this);
+        aiTransliterationService.transliterateSyllablesAsync(
+                currentLyrics, title, artist, targetLang,
+                new AiSyllableTransliterationService.Callback() {
+                    @Override
+                    public void onSuccess(LyricsData enrichedData) {
+                        currentLyrics = enrichedData;
+                        if (highlighter != null) {
+                            highlighter.setTransliterationEnabled(true);
+                        }
+                        sharedPrefs.edit().putBoolean("pref_romaji_enabled", true).apply();
+                        if (overlayRomajiSwitch != null) {
+                            overlayRomajiSwitch.setChecked(true);
+                        }
+                        if (lyricsCacheManager != null && currentTrack != null) {
+                            lyricsCacheManager.cache(currentTrack, enrichedData);
+                        }
+                        renderOverlayLyrics(currentLyrics);
+                        Toast.makeText(FloatingOverlayService.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        Toast.makeText(FloatingOverlayService.this, message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
+                    }
+                });
+    }
+
+    public void toggleRomaji() {
+        if (highlighter == null) return;
+        boolean newState = !highlighter.isTransliterationEnabled();
+        highlighter.setTransliterationEnabled(newState);
+        sharedPrefs.edit().putBoolean("pref_romaji_enabled", newState).apply();
+        if (overlayRomajiSwitch != null) {
+            overlayRomajiSwitch.setChecked(newState);
+        }
+        Toast.makeText(this, newState ? R.string.romaji_enabled : R.string.romaji_disabled, Toast.LENGTH_SHORT).show();
     }
 
     private void submitAiChatInput() {
@@ -1950,6 +2082,168 @@ public class FloatingOverlayService extends Service {
                     }
                 }
                 confirmDialog.show();
+            });
+        }
+
+        dialog.show();
+    }
+
+    public void showEditSyllablesDialog(int lineIndex, LyricsData.LyricsLine line) {
+        if (line == null) return;
+
+        final Context themedContext = new ContextThemeWrapper(this, R.style.Theme_LyricSync);
+        View dialogView = LayoutInflater.from(themedContext).inflate(R.layout.dialog_edit_syllables, null);
+        AlertDialog dialog = new AlertDialog.Builder(themedContext)
+                .setView(dialogView)
+                .create();
+
+        if (dialog.getWindow() != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+            } else {
+                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
+            }
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        TextView textLineIndex = dialogView.findViewById(R.id.dialog_line_index);
+        TextView textLineOriginal = dialogView.findViewById(R.id.text_line_original);
+        LinearLayout containerSyllables = dialogView.findViewById(R.id.container_syllables);
+        EditText editLineTranslation = dialogView.findViewById(R.id.edit_line_translation);
+        TextView btnAiRegenerate = dialogView.findViewById(R.id.btn_ai_regenerate);
+        TextView btnCancel = dialogView.findViewById(R.id.btn_cancel);
+        TextView btnSave = dialogView.findViewById(R.id.btn_save);
+
+        if (textLineIndex != null) {
+            textLineIndex.setText(String.format(java.util.Locale.getDefault(), "#%d", lineIndex + 1));
+        }
+        if (textLineOriginal != null) {
+            textLineOriginal.setText(line.text != null ? line.text : "");
+        }
+        if (editLineTranslation != null) {
+            editLineTranslation.setText(line.translation != null ? line.translation : "");
+        }
+
+        List<EditText> syllableEditList = new ArrayList<>();
+        Runnable populateChips = () -> {
+            if (containerSyllables == null) return;
+            containerSyllables.removeAllViews();
+            syllableEditList.clear();
+            if (line.words != null && !line.words.isEmpty()) {
+                for (LyricsData.Word word : line.words) {
+                    View chipView = LayoutInflater.from(themedContext).inflate(R.layout.item_edit_syllable_chip, containerSyllables, false);
+                    TextView textSyllable = chipView.findViewById(R.id.text_syllable_original);
+                    EditText editSyllable = chipView.findViewById(R.id.edit_syllable_romanji);
+                    textSyllable.setText(word.text != null ? word.text : "");
+                    editSyllable.setText(word.romanji != null ? word.romanji : "");
+                    syllableEditList.add(editSyllable);
+                    containerSyllables.addView(chipView);
+                }
+            } else {
+                View chipView = LayoutInflater.from(themedContext).inflate(R.layout.item_edit_syllable_chip, containerSyllables, false);
+                TextView textSyllable = chipView.findViewById(R.id.text_syllable_original);
+                EditText editSyllable = chipView.findViewById(R.id.edit_syllable_romanji);
+                textSyllable.setText(line.text != null ? line.text : "");
+                editSyllable.setText(line.romanji != null ? line.romanji : "");
+                syllableEditList.add(editSyllable);
+                containerSyllables.addView(chipView);
+            }
+        };
+        populateChips.run();
+
+        if (btnCancel != null) {
+            btnCancel.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        if (btnAiRegenerate != null) {
+            btnAiRegenerate.setOnClickListener(v -> {
+                if (aiTransliterationService == null) return;
+                Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
+                btnAiRegenerate.setEnabled(false);
+                LyricsData singleData = new LyricsData(LyricsData.Type.SYLLABLE);
+                LyricsData.LyricsLine testLine = new LyricsData.LyricsLine();
+                testLine.text = line.text;
+                testLine.startTime = line.startTime;
+                testLine.endTime = line.endTime;
+                if (line.words != null) {
+                    for (LyricsData.Word w : line.words) {
+                        LyricsData.Word nw = new LyricsData.Word();
+                        nw.text = w.text;
+                        nw.startTime = w.startTime;
+                        nw.endTime = w.endTime;
+                        testLine.words.add(nw);
+                    }
+                }
+                singleData.lines.add(testLine);
+
+                String title = currentTrack != null ? currentTrack.title : "";
+                String artist = currentTrack != null ? currentTrack.artist : "";
+                String targetLang = LocaleHelper.getLanguage(this);
+                aiTransliterationService.transliterateSyllablesAsync(
+                        singleData, title, artist, targetLang,
+                        new AiSyllableTransliterationService.Callback() {
+                            @Override
+                            public void onSuccess(LyricsData enrichedData) {
+                                btnAiRegenerate.setEnabled(true);
+                                if (enrichedData.lines != null && !enrichedData.lines.isEmpty()) {
+                                    LyricsData.LyricsLine resLine = enrichedData.lines.get(0);
+                                    if (resLine.translation != null && editLineTranslation != null) {
+                                        editLineTranslation.setText(resLine.translation);
+                                    }
+                                    if (resLine.words != null && resLine.words.size() == syllableEditList.size()) {
+                                        for (int i = 0; i < syllableEditList.size(); i++) {
+                                            syllableEditList.get(i).setText(resLine.words.get(i).romanji);
+                                        }
+                                    } else if (!syllableEditList.isEmpty() && resLine.romanji != null) {
+                                        syllableEditList.get(0).setText(resLine.romanji);
+                                    }
+                                }
+                                Toast.makeText(FloatingOverlayService.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
+                            }
+
+                            @Override
+                            public void onError(String message) {
+                                btnAiRegenerate.setEnabled(true);
+                                Toast.makeText(FloatingOverlayService.this, message != null ? message : "Error", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+            });
+        }
+
+        if (btnSave != null) {
+            btnSave.setOnClickListener(v -> {
+                if (editLineTranslation != null) {
+                    line.translation = editLineTranslation.getText().toString().trim();
+                }
+                List<String> wordsRomanji = new ArrayList<>();
+                StringBuilder sbRomaji = new StringBuilder();
+                if (line.words != null && !line.words.isEmpty()) {
+                    for (int i = 0; i < line.words.size() && i < syllableEditList.size(); i++) {
+                        String r = syllableEditList.get(i).getText().toString().trim();
+                        line.words.get(i).romanji = r;
+                        wordsRomanji.add(r);
+                        if (!r.isEmpty()) {
+                            if (sbRomaji.length() > 0) sbRomaji.append(" ");
+                            sbRomaji.append(r);
+                        }
+                    }
+                    line.romanji = sbRomaji.toString();
+                } else if (!syllableEditList.isEmpty()) {
+                    String r = syllableEditList.get(0).getText().toString().trim();
+                    line.romanji = r;
+                    wordsRomanji.add(r);
+                }
+
+                if (highlighter != null) {
+                    highlighter.updateLineTransliteration(lineIndex, wordsRomanji, line.romanji);
+                    highlighter.updateLineTranslation(lineIndex, line.translation);
+                }
+
+                if (lyricsCacheManager != null && currentTrack != null && currentLyrics != null) {
+                    lyricsCacheManager.cache(currentTrack, currentLyrics);
+                }
+
+                dialog.dismiss();
             });
         }
 
@@ -2479,6 +2773,7 @@ public class FloatingOverlayService extends Service {
                     lyricsStatusText = describeLyrics(lyrics);
                     if (currentTrack != null) updateTrackInfo(currentTrack);
                     renderOverlayLyrics(lyrics);
+                    setupAiPromptTemplates();
                     publishNowPlaying();
                     if (songChatManager != null && track != null) {
                         StringBuilder sb = new StringBuilder();
@@ -2537,6 +2832,8 @@ public class FloatingOverlayService extends Service {
 
         highlighter.setSyllableMode(lyrics.type == LyricsData.Type.SYLLABLE);
         highlighter.setTranslationEnabled(translationEnabled);
+        boolean romajiPref = sharedPrefs.getBoolean("pref_romaji_enabled", true);
+        highlighter.setTransliterationEnabled(romajiPref);
 
         for (int i = 0; i < lyrics.lines.size(); i++) {
             LyricsData.LyricsLine line = lyrics.lines.get(i);
@@ -2551,6 +2848,10 @@ public class FloatingOverlayService extends Service {
             if (!line.isInterlude) {
                 final int index = i;
                 lv.rootView.setOnClickListener(v -> seekToLine(index));
+                lv.rootView.setOnLongClickListener(v -> {
+                    showEditSyllablesDialog(index, line);
+                    return true;
+                });
             }
 
             lyricsContainer.addView(lv.rootView);
