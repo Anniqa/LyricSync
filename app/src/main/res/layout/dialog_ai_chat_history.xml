@@ -37,7 +37,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/ai_history_clear_all"
-            android:textColor="@color/accent_coral"
+            android:textColor="@color/state_error"
             android:textSize="12sp"
             android:textStyle="bold"
             android:paddingStart="8dp"
