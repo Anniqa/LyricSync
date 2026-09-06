@@ -949,7 +949,24 @@ public class FloatingOverlayService extends Service {
         }
 
         fetchQuotaIfAuthenticated();
-        triggerSongMeaningAnalysis();
+        if (songChatManager != null && songChatManager.getMeaning() != null) {
+            SongMeaning existing = songChatManager.getMeaning();
+            if (aiSummaryText != null && existing.summary != null) {
+                aiSummaryText.setText(CleanMarkdownFormatter.formatClean(existing.summary));
+            }
+            if (existing.mood != null && !existing.mood.trim().isEmpty()) {
+                String moodText = "✨ " + existing.mood.trim();
+                if (aiMoodBadge != null) {
+                    aiMoodBadge.setText(moodText);
+                    aiMoodBadge.setVisibility(View.VISIBLE);
+                }
+            }
+            if (existing.webSources != null && !existing.webSources.isEmpty()) {
+                displayWebSources(existing.webSources);
+            }
+        } else {
+            triggerSongMeaningAnalysis();
+        }
     }
 
     private void initAiChatView() {
@@ -1047,7 +1064,7 @@ public class FloatingOverlayService extends Service {
                     paramX[0] = aiChatParams != null ? aiChatParams.x : 0;
                     paramY[0] = aiChatParams != null ? aiChatParams.y : 0;
                     isDragging[0] = false;
-                    return false;
+                    return true;
 
                 case MotionEvent.ACTION_MOVE:
                     float dx = event.getRawX() - touchX[0];
@@ -1056,8 +1073,13 @@ public class FloatingOverlayService extends Service {
                         isDragging[0] = true;
                     }
                     if (isDragging[0] && aiChatParams != null && windowManager != null) {
-                        aiChatParams.x = paramX[0] + (int) dx;
-                        aiChatParams.y = paramY[0] + (int) dy;
+                        DisplayMetrics dm = getResources().getDisplayMetrics();
+                        int maxX = Math.max(0, (dm.widthPixels - aiChatParams.width) / 2);
+                        int maxY = Math.max(0, (dm.heightPixels - aiChatParams.height) / 2);
+                        int targetX = paramX[0] + (int) dx;
+                        int targetY = paramY[0] + (int) dy;
+                        aiChatParams.x = Math.max(-maxX, Math.min(maxX, targetX));
+                        aiChatParams.y = Math.max(-maxY, Math.min(maxY, targetY));
                         try {
                             windowManager.updateViewLayout(aiChatContainer, aiChatParams);
                         } catch (Exception e) {
@@ -1065,10 +1087,13 @@ public class FloatingOverlayService extends Service {
                         }
                         return true;
                     }
-                    return false;
+                    return true;
 
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
+                    if (isDragging[0]) {
+                        Haptics.tick(v);
+                    }
                     return isDragging[0];
             }
             return false;
@@ -1333,7 +1358,11 @@ public class FloatingOverlayService extends Service {
 
         for (String source : sources) {
             if (source == null || source.trim().isEmpty()) continue;
-            final String url = source.trim();
+            String cleanUrl = source.trim();
+            if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+                cleanUrl = "https://" + cleanUrl;
+            }
+            final String url = cleanUrl;
             String domain = url;
             try {
                 java.net.URI uri = new java.net.URI(url);
@@ -2252,6 +2281,8 @@ public class FloatingOverlayService extends Service {
         Anim.setTextAnimated(overlayArtist, "");
         if (overlayMoodBadge != null) overlayMoodBadge.setVisibility(View.GONE);
         if (aiMoodBadge != null) aiMoodBadge.setVisibility(View.GONE);
+        if (aiChatTitle != null) aiChatTitle.setText("✨ AI Insights");
+        if (aiChatArtist != null) aiChatArtist.setText("");
         if (aiChatMessages != null) aiChatMessages.removeAllViews();
         if (aiWebSourcesContainer != null) aiWebSourcesContainer.removeAllViews();
         if (aiWebSourcesScroll != null) aiWebSourcesScroll.setVisibility(View.GONE);
