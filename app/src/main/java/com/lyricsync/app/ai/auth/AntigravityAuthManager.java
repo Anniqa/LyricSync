@@ -206,23 +206,39 @@ public class AntigravityAuthManager {
     /**
      * Clears all stored auth credentials and tokens.
      */
-    public synchronized void logout() {
-        this.cachedAccessToken = null;
-        this.cachedRefreshToken = null;
-        this.cachedTokenExpiry = 0L;
-        this.cachedEmail = null;
+    public void logout() {
+        List<TokenCallback> callbacksToCancel;
+        synchronized (refreshLock) {
+            this.cachedAccessToken = null;
+            this.cachedRefreshToken = null;
+            this.cachedTokenExpiry = 0L;
+            this.cachedEmail = null;
 
-        if (prefs != null) {
-            prefs.edit()
-                    .remove(PREF_ACCESS_TOKEN)
-                    .remove(PREF_REFRESH_TOKEN)
-                    .remove(PREF_TOKEN_EXPIRY)
-                    .remove(PREF_EMAIL)
-                    .apply();
+            if (prefs != null) {
+                prefs.edit()
+                        .remove(PREF_ACCESS_TOKEN)
+                        .remove(PREF_REFRESH_TOKEN)
+                        .remove(PREF_TOKEN_EXPIRY)
+                        .remove(PREF_EMAIL)
+                        .apply();
+            }
+
+            if (loopbackServer != null) {
+                try {
+                    loopbackServer.stop();
+                } catch (Exception ignored) {}
+                loopbackServer = null;
+            }
+
+            callbacksToCancel = new ArrayList<>(pendingTokenCallbacks);
+            pendingTokenCallbacks.clear();
+            isRefreshing = false;
         }
 
-        if (loopbackServer != null && loopbackServer.isRunning()) {
-            loopbackServer.stop();
+        for (TokenCallback cb : callbacksToCancel) {
+            try {
+                cb.onError("Logged out while token operation was in progress");
+            } catch (Exception ignored) {}
         }
     }
 
@@ -280,44 +296,56 @@ public class AntigravityAuthManager {
                 .post(formBody)
                 .build();
 
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                notifyTokenError("Failed to refresh access token: " + e.getMessage());
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                try (ResponseBody responseBody = response.body()) {
-                    if (responseBody == null) {
-                        notifyTokenError("Empty response while refreshing access token");
-                        return;
-                    }
-                    String body = responseBody.string();
-                    if (!response.isSuccessful()) {
-                        String error = parseErrorMessage(body, "HTTP " + response.code());
-                        notifyTokenError("Token refresh failed: " + error);
-                        return;
-                    }
-
-                    JsonObject json = JsonParser.parseString(body).getAsJsonObject();
-                    String newAccessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
-                    long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
-                    long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
-                    String newRefreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : refreshToken;
-
-                    if (newAccessToken == null) {
-                        notifyTokenError("No access token present in refresh response");
-                        return;
-                    }
-
-                    saveTokens(newAccessToken, newRefreshToken, expiryMs);
-                    notifyTokenSuccess(newAccessToken);
-                } catch (Exception e) {
-                    notifyTokenError("Error parsing token refresh response: " + e.getMessage());
+        try {
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    notifyTokenError("Failed to refresh access token: " + e.getMessage());
                 }
-            }
-        });
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    try (ResponseBody responseBody = response.body()) {
+                        if (responseBody == null) {
+                            notifyTokenError("Empty response while refreshing access token");
+                            return;
+                        }
+                        String body = responseBody.string();
+                        if (!response.isSuccessful()) {
+                            String error = parseErrorMessage(body, "HTTP " + response.code());
+                            notifyTokenError("Token refresh failed: " + error);
+                            return;
+                        }
+
+                        JsonObject json = JsonParser.parseString(body).getAsJsonObject();
+                        String newAccessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
+                        long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
+                        long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
+                        String newRefreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : refreshToken;
+
+                        if (newAccessToken == null) {
+                            notifyTokenError("No access token present in refresh response");
+                            return;
+                        }
+
+                        // Guard against resuscitation if logout() occurred while refresh was in-flight
+                        synchronized (refreshLock) {
+                            String currentRt = getRefreshToken();
+                            if (currentRt == null || currentRt.trim().isEmpty() || !isRefreshing) {
+                                notifyTokenError("Authentication was revoked during token refresh");
+                                return;
+                            }
+                            saveTokens(newAccessToken, newRefreshToken, expiryMs);
+                            notifyTokenSuccess(newAccessToken);
+                        }
+                    } catch (Exception e) {
+                        notifyTokenError("Error parsing token refresh response: " + e.getMessage());
+                    }
+                }
+            });
+        } catch (Exception e) {
+            notifyTokenError("Failed to initiate token refresh: " + e.getMessage());
+        }
     }
 
     private void notifyTokenSuccess(String newAccessToken) {
@@ -370,48 +398,54 @@ public class AntigravityAuthManager {
                 .post(formBody)
                 .build();
 
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                if (callback != null) {
-                    callback.onError("Network error during token exchange: " + e.getMessage());
-                }
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                try (ResponseBody responseBody = response.body()) {
-                    if (responseBody == null) {
-                        if (callback != null) callback.onError("Empty token exchange response");
-                        return;
-                    }
-                    String body = responseBody.string();
-                    if (!response.isSuccessful()) {
-                        String error = parseErrorMessage(body, "HTTP " + response.code());
-                        if (callback != null) callback.onError("Token exchange failed: " + error);
-                        return;
-                    }
-
-                    JsonObject json = JsonParser.parseString(body).getAsJsonObject();
-                    String accessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
-                    String refreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : null;
-                    long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
-                    long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
-
-                    if (accessToken == null) {
-                        if (callback != null) callback.onError("No access token in response");
-                        return;
-                    }
-
-                    saveTokens(accessToken, refreshToken, expiryMs);
-                    fetchUserEmail(accessToken, callback);
-                } catch (Exception e) {
+        try {
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
                     if (callback != null) {
-                        callback.onError("Failed to parse token exchange response: " + e.getMessage());
+                        callback.onError("Network error during token exchange: " + e.getMessage());
                     }
                 }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    try (ResponseBody responseBody = response.body()) {
+                        if (responseBody == null) {
+                            if (callback != null) callback.onError("Empty token exchange response");
+                            return;
+                        }
+                        String body = responseBody.string();
+                        if (!response.isSuccessful()) {
+                            String error = parseErrorMessage(body, "HTTP " + response.code());
+                            if (callback != null) callback.onError("Token exchange failed: " + error);
+                            return;
+                        }
+
+                        JsonObject json = JsonParser.parseString(body).getAsJsonObject();
+                        String accessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
+                        String refreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : null;
+                        long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
+                        long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
+
+                        if (accessToken == null) {
+                            if (callback != null) callback.onError("No access token in response");
+                            return;
+                        }
+
+                        saveTokens(accessToken, refreshToken, expiryMs);
+                        fetchUserEmail(accessToken, callback);
+                    } catch (Exception e) {
+                        if (callback != null) {
+                            callback.onError("Failed to parse token exchange response: " + e.getMessage());
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            if (callback != null) {
+                callback.onError("Failed to initiate token exchange: " + e.getMessage());
             }
-        });
+        }
     }
 
     /**
@@ -429,53 +463,70 @@ public class AntigravityAuthManager {
                 .get()
                 .build();
 
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                // If fetching email fails, authentication is still preserved
-                String existingEmail = getEmail();
-                if (callback != null) {
-                    callback.onSuccess(existingEmail != null ? existingEmail : "authenticated");
-                }
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String email = null;
-                try (ResponseBody responseBody = response.body()) {
-                    if (response.isSuccessful() && responseBody != null) {
-                        JsonObject json = JsonParser.parseString(responseBody.string()).getAsJsonObject();
-                        if (json.has("email")) {
-                            email = json.get("email").getAsString();
-                            saveEmail(email);
-                        }
+        try {
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    // If fetching email fails, authentication is still preserved
+                    String existingEmail = getEmail();
+                    if (callback != null) {
+                        callback.onSuccess(existingEmail != null ? existingEmail : "authenticated");
                     }
-                } catch (Exception ignored) {}
+                }
 
-                if (email == null) {
-                    email = getEmail();
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String email = null;
+                    try (ResponseBody responseBody = response.body()) {
+                        if (response.isSuccessful() && responseBody != null) {
+                            JsonObject json = JsonParser.parseString(responseBody.string()).getAsJsonObject();
+                            if (json.has("email")) {
+                                email = json.get("email").getAsString();
+                                saveEmail(email);
+                            }
+                        }
+                    } catch (Exception ignored) {}
+
+                    if (email == null) {
+                        email = getEmail();
+                    }
+                    if (callback != null) {
+                        callback.onSuccess(email != null ? email : "authenticated");
+                    }
                 }
-                if (callback != null) {
-                    callback.onSuccess(email != null ? email : "authenticated");
-                }
+            });
+        } catch (Exception e) {
+            String existingEmail = getEmail();
+            if (callback != null) {
+                callback.onSuccess(existingEmail != null ? existingEmail : "authenticated");
             }
-        });
+        }
     }
 
     /**
      * Initiates native browser login flow with loopback listener on port 51121.
      */
-    public void startBrowserLogin(Activity activity, final AuthCallback callback) {
+    public synchronized void startBrowserLogin(Activity activity, final AuthCallback callback) {
         final String state = UUID.randomUUID().toString();
         final String authUrl = buildAuthorizeUrl(state);
 
-        if (loopbackServer != null && loopbackServer.isRunning()) {
-            loopbackServer.stop();
+        if (loopbackServer != null) {
+            try {
+                loopbackServer.stop();
+            } catch (Exception ignored) {}
+            loopbackServer = null;
         }
+
         loopbackServer = createLoopbackServer();
         loopbackServer.start(new OAuthLoopbackServer.Callback() {
             @Override
             public void onCodeReceived(String authCode, String returnedState) {
+                if (returnedState == null || !state.equals(returnedState)) {
+                    if (callback != null) {
+                        callback.onError("CSRF state mismatch: expected " + state + " but received " + returnedState);
+                    }
+                    return;
+                }
                 exchangeCodeForTokens(authCode, callback);
             }
 
@@ -491,7 +542,10 @@ public class AntigravityAuthManager {
             launchBrowserUrl(activity, authUrl);
         } catch (Exception e) {
             if (loopbackServer != null) {
-                loopbackServer.stop();
+                try {
+                    loopbackServer.stop();
+                } catch (Exception ignored) {}
+                loopbackServer = null;
             }
             if (callback != null) {
                 callback.onError("Failed to launch browser: " + e.getMessage());
@@ -560,48 +614,54 @@ public class AntigravityAuthManager {
                 .post(formBody)
                 .build();
 
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                if (callback != null) {
-                    callback.onError("Gagal login dengan refresh token: " + e.getMessage());
-                }
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                try (ResponseBody responseBody = response.body()) {
-                    if (responseBody == null) {
-                        if (callback != null) callback.onError("Respon kosong dari server");
-                        return;
-                    }
-                    String body = responseBody.string();
-                    if (!response.isSuccessful()) {
-                        String error = parseErrorMessage(body, "HTTP " + response.code());
-                        if (callback != null) callback.onError("Login gagal: " + error);
-                        return;
-                    }
-
-                    JsonObject json = JsonParser.parseString(body).getAsJsonObject();
-                    String accessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
-                    long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
-                    long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
-                    String newRefreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : refreshToken;
-
-                    if (accessToken == null) {
-                        if (callback != null) callback.onError("Tidak ada access token yang diterima");
-                        return;
-                    }
-
-                    saveTokens(accessToken, newRefreshToken, expiryMs);
-                    fetchUserEmail(accessToken, callback);
-                } catch (Exception e) {
+        try {
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
                     if (callback != null) {
-                        callback.onError("Gagal memproses respon token: " + e.getMessage());
+                        callback.onError("Gagal login dengan refresh token: " + e.getMessage());
                     }
                 }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    try (ResponseBody responseBody = response.body()) {
+                        if (responseBody == null) {
+                            if (callback != null) callback.onError("Respon kosong dari server");
+                            return;
+                        }
+                        String body = responseBody.string();
+                        if (!response.isSuccessful()) {
+                            String error = parseErrorMessage(body, "HTTP " + response.code());
+                            if (callback != null) callback.onError("Login gagal: " + error);
+                            return;
+                        }
+
+                        JsonObject json = JsonParser.parseString(body).getAsJsonObject();
+                        String accessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
+                        long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
+                        long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
+                        String newRefreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : refreshToken;
+
+                        if (accessToken == null) {
+                            if (callback != null) callback.onError("Tidak ada access token yang diterima");
+                            return;
+                        }
+
+                        saveTokens(accessToken, newRefreshToken, expiryMs);
+                        fetchUserEmail(accessToken, callback);
+                    } catch (Exception e) {
+                        if (callback != null) {
+                            callback.onError("Gagal memproses respon token: " + e.getMessage());
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            if (callback != null) {
+                callback.onError("Gagal memulai request login: " + e.getMessage());
             }
-        });
+        }
     }
 
     private String parseErrorMessage(String jsonBody, String fallback) {

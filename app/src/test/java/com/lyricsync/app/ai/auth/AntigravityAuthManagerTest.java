@@ -326,10 +326,17 @@ public class AntigravityAuthManagerTest {
         assertTrue(launchedUrl.get().contains("client_id="));
         assertTrue(testServer.isRunning());
 
-        // Simulate callback from browser by making local HTTP request
+        String fullUrl = launchedUrl.get();
+        String validState = fullUrl.substring(fullUrl.indexOf("state=") + 6);
+        int ampIdx = validState.indexOf('&');
+        if (ampIdx != -1) {
+            validState = validState.substring(0, ampIdx);
+        }
+
+        // Simulate callback from browser by making local HTTP request with valid CSRF state
         OkHttpClient client = new OkHttpClient();
         Request callbackReq = new Request.Builder()
-                .url("http://127.0.0.1:51121/oauth-callback?code=mock_code&state=mock_state")
+                .url("http://127.0.0.1:51121/oauth-callback?code=mock_code&state=" + validState)
                 .get()
                 .build();
 
@@ -362,6 +369,109 @@ public class AntigravityAuthManagerTest {
         assertTrue(errorRef.get().contains("Activity cannot be null"));
     }
 
+    @Test
+    public void testStartBrowserLoginRejectsMismatchedCsrfState() throws InterruptedException {
+        final AtomicReference<String> launchedUrl = new AtomicReference<>();
+        final OAuthLoopbackServer testServer = new OAuthLoopbackServer();
+
+        AntigravityAuthManager customAuth = new AntigravityAuthManager(fakePrefs, mockHttpClient) {
+            @Override
+            protected OAuthLoopbackServer createLoopbackServer() {
+                return testServer;
+            }
+
+            @Override
+            protected void launchBrowserUrl(Activity activity, String url) {
+                launchedUrl.set(url);
+            }
+        };
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<String> errorMessage = new AtomicReference<>();
+
+        customAuth.startBrowserLogin(null, new AntigravityAuthManager.AuthCallback() {
+            @Override
+            public void onSuccess(String email) {}
+
+            @Override
+            public void onError(String message) {
+                errorMessage.set(message);
+                latch.countDown();
+            }
+        });
+
+        assertNotNull(launchedUrl.get());
+        assertTrue(testServer.isRunning());
+
+        // Hit loopback server with mismatched state
+        OkHttpClient client = new OkHttpClient();
+        Request callbackReq = new Request.Builder()
+                .url("http://127.0.0.1:51121/oauth-callback?code=mock_code&state=forged_untrusted_state")
+                .get()
+                .build();
+
+        try {
+            Response resp = client.newCall(callbackReq).execute();
+            resp.close();
+        } catch (IOException e) {
+            fail("Failed to hit loopback server: " + e.getMessage());
+        }
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertNotNull(errorMessage.get());
+        assertTrue(errorMessage.get().contains("CSRF state mismatch"));
+        assertFalse(customAuth.isAuthenticated());
+    }
+
+    @Test
+    public void testLogoutDuringInFlightRefreshPreventsResuscitation() throws InterruptedException {
+        fakePrefs.edit()
+                .putString(AntigravityAuthManager.PREF_ACCESS_TOKEN, "ya29.expired")
+                .putString(AntigravityAuthManager.PREF_REFRESH_TOKEN, "1//valid-refresh")
+                .putLong(AntigravityAuthManager.PREF_TOKEN_EXPIRY, System.currentTimeMillis() - 60000L)
+                .apply();
+
+        mockInterceptor.tokenResponseJson = "{" +
+                "\"access_token\":\"ya29.resuscitated-token\"," +
+                "\"expires_in\":3600," +
+                "\"refresh_token\":\"1//resuscitated-token\"" +
+                "}";
+
+        mockInterceptor.onTokenRequest = new Runnable() {
+            @Override
+            public void run() {
+                authManager.logout();
+            }
+        };
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<String> tokenRef = new AtomicReference<>();
+        final AtomicReference<String> errorRef = new AtomicReference<>();
+
+        authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
+            @Override
+            public void onTokenReady(String accessToken) {
+                tokenRef.set(accessToken);
+                latch.countDown();
+            }
+
+            @Override
+            public void onError(String message) {
+                errorRef.set(message);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertNull(tokenRef.get());
+        assertNotNull(errorRef.get());
+        assertFalse(authManager.isAuthenticated());
+        assertNull(authManager.getAccessToken());
+        assertNull(authManager.getRefreshToken());
+        assertNull(fakePrefs.getString(AntigravityAuthManager.PREF_ACCESS_TOKEN, null));
+        assertNull(fakePrefs.getString(AntigravityAuthManager.PREF_REFRESH_TOKEN, null));
+    }
+
     // --- Test Helpers ---
 
     static class MockHttpInterceptor implements Interceptor {
@@ -369,6 +479,7 @@ public class AntigravityAuthManagerTest {
         volatile String tokenResponseJson;
         volatile String userInfoResponseJson;
         volatile int tokenResponseCode = 200;
+        volatile Runnable onTokenRequest;
 
         @Override
         public Response intercept(Chain chain) throws IOException {
@@ -377,6 +488,9 @@ public class AntigravityAuthManagerTest {
             String url = request.url().toString();
 
             if (url.startsWith(AntigravityAuthManager.TOKEN_URL)) {
+                if (onTokenRequest != null) {
+                    onTokenRequest.run();
+                }
                 String body = tokenResponseJson != null ? tokenResponseJson : "{\"access_token\":\"dummy\",\"expires_in\":3600}";
                 return new Response.Builder()
                         .request(request)
