@@ -28,12 +28,22 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.lyricsync.app.ai.auth.AntigravityAuthManager;
+import com.lyricsync.app.ai.client.AntigravityApiClient;
+import com.lyricsync.app.ai.client.AntigravityQuotaClient;
+import com.lyricsync.app.ai.model.QuotaSummary;
+import com.lyricsync.app.ai.service.SongChatManager;
+import com.lyricsync.app.ai.service.SongMeaningService;
+import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.view.ContextThemeWrapper;
@@ -140,6 +150,29 @@ public class FloatingOverlayService extends Service {
     private boolean translationEnabled = false;
     private SyllableHighlighter highlighter;
 
+    // AI Insights UI & Subsystems
+    private ImageView overlayAiButton;
+    private View overlayAiContainer;
+    private TextView aiSheetTitle;
+    private TextView aiSheetArtist;
+    private ImageView aiWebSearchChip;
+    private ImageView aiCloseButton;
+    private TextView aiMoodBadge;
+    private TextView aiSummaryText;
+    private LinearLayout aiQuickChipsContainer;
+    private View aiChatScroll;
+    private LinearLayout aiChatMessages;
+    private EditText aiChatInput;
+    private ImageView aiChatSend;
+    private TextView aiQuotaBadge;
+
+    private SongMeaningService songMeaningService;
+    private SongChatManager songChatManager;
+    private AntigravityQuotaClient quotaClient;
+    private AntigravityApiClient.Cancellable activeMeaningCall;
+    private AntigravityApiClient.Cancellable activeChatCall;
+    private boolean aiWebSearchEnabled = false;
+
     // Album-derived colouring
     private final ArgbEvaluator argb = new ArgbEvaluator();
     private GradientDrawable overlayBackground;
@@ -234,6 +267,9 @@ public class FloatingOverlayService extends Service {
                 new com.lyricsync.app.ai.client.AntigravityApiClient(authManager);
         aiTranslationService = new com.lyricsync.app.lyrics.translation.AiTranslationService(
                 this, authManager, apiClient, translateService);
+        songMeaningService = new SongMeaningService(sharedPrefs, apiClient);
+        songChatManager = new SongChatManager(apiClient);
+        quotaClient = new AntigravityQuotaClient(authManager);
         translationEnabled = sharedPrefs.getBoolean(
                 com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
         loadTypefaces();
@@ -406,6 +442,25 @@ public class FloatingOverlayService extends Service {
 
         setupTransportControls();
         setupSyncOffsetUi();
+
+        overlayAiButton = overlayView.findViewById(R.id.overlay_ai_button);
+        overlayAiContainer = overlayView.findViewById(R.id.overlay_ai_container);
+        if (overlayAiContainer != null) {
+            aiSheetTitle = overlayAiContainer.findViewById(R.id.ai_sheet_title);
+            aiSheetArtist = overlayAiContainer.findViewById(R.id.ai_sheet_artist);
+            aiWebSearchChip = overlayAiContainer.findViewById(R.id.ai_web_search_chip);
+            aiCloseButton = overlayAiContainer.findViewById(R.id.ai_close_button);
+            aiMoodBadge = overlayAiContainer.findViewById(R.id.ai_mood_badge);
+            aiSummaryText = overlayAiContainer.findViewById(R.id.ai_summary_text);
+            aiQuickChipsContainer = overlayAiContainer.findViewById(R.id.ai_quick_chips_container);
+            aiChatScroll = overlayAiContainer.findViewById(R.id.ai_chat_scroll);
+            aiChatMessages = overlayAiContainer.findViewById(R.id.ai_chat_messages);
+            aiChatInput = overlayAiContainer.findViewById(R.id.ai_chat_input);
+            aiChatSend = overlayAiContainer.findViewById(R.id.ai_chat_send);
+            aiQuotaBadge = overlayAiContainer.findViewById(R.id.ai_quota_badge);
+        }
+        setupAiSheetUi();
+
         setLyricsVisible(lyricsVisible, false, false);
 
         // Until a media session reports in, say so rather than showing an empty box.
@@ -819,6 +874,290 @@ public class FloatingOverlayService extends Service {
             overlaySyncOffsetSlider.setProgress(clamped + SYNC_LIMIT_MS);
         }
         updateSyncOffsetLabel(clamped);
+    }
+
+    // ── AI Insights UI ─────────────────────────────────────────────────────
+
+    private void setupAiSheetUi() {
+        if (overlayAiButton != null) {
+            overlayAiButton.setOnClickListener(v -> {
+                Haptics.tick(v);
+                toggleAiSheet();
+            });
+        }
+        if (aiCloseButton != null) {
+            aiCloseButton.setOnClickListener(v -> {
+                Haptics.tick(v);
+                if (overlayAiContainer != null) {
+                    overlayAiContainer.setVisibility(View.GONE);
+                }
+            });
+        }
+        if (aiWebSearchChip != null) {
+            aiWebSearchChip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                aiWebSearchEnabled = !aiWebSearchEnabled;
+                aiWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
+                Toast.makeText(this, aiWebSearchEnabled ? "AI Web Search aktif" : "AI Web Search nonaktif", Toast.LENGTH_SHORT).show();
+            });
+        }
+        if (aiQuickChipsContainer != null) {
+            aiQuickChipsContainer.removeAllViews();
+            for (final String prompt : SongChatManager.QUICK_PROMPTS) {
+                TextView chip = new TextView(this);
+                chip.setText(prompt);
+                chip.setTextColor(getResources().getColor(R.color.text_primary));
+                chip.setTextSize(11f);
+                chip.setBackgroundResource(R.drawable.bg_tip_box);
+                chip.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                lp.setMarginEnd(dpToPx(6));
+                chip.setLayoutParams(lp);
+                chip.setOnClickListener(v -> {
+                    Haptics.tick(v);
+                    sendAiChatMessage(prompt);
+                });
+                aiQuickChipsContainer.addView(chip);
+            }
+        }
+        if (aiChatSend != null) {
+            aiChatSend.setOnClickListener(v -> {
+                Haptics.tick(v);
+                submitAiChatInput();
+            });
+        }
+        if (aiChatInput != null) {
+            aiChatInput.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_SEND) {
+                    Haptics.tick(v);
+                    submitAiChatInput();
+                    return true;
+                }
+                return false;
+            });
+        }
+    }
+
+    private void toggleAiSheet() {
+        if (overlayAiContainer == null) return;
+        boolean isCurrentlyVisible = overlayAiContainer.getVisibility() == View.VISIBLE;
+        if (isCurrentlyVisible) {
+            overlayAiContainer.setVisibility(View.GONE);
+            return;
+        }
+
+        overlayAiContainer.setVisibility(View.VISIBLE);
+
+        if (currentTrack != null) {
+            if (aiSheetTitle != null) aiSheetTitle.setText(currentTrack.title);
+            if (aiSheetArtist != null) aiSheetArtist.setText(currentTrack.artist);
+        }
+
+        if (quotaClient != null && aiQuotaBadge != null) {
+            quotaClient.fetchQuota(new AntigravityQuotaClient.QuotaCallback() {
+                @Override
+                public void onQuotaLoaded(QuotaSummary summary) {
+                    handler.post(() -> {
+                        if (aiQuotaBadge != null && summary != null) {
+                            int pct = Math.round(summary.geminiWeeklyFraction * 100f);
+                            aiQuotaBadge.setText("AI Quota: " + pct + "%");
+                            aiQuotaBadge.setVisibility(View.VISIBLE);
+                        }
+                    });
+                }
+
+                @Override
+                public void onError(String error) {
+                    // Silently ignore or leave hidden
+                }
+            });
+        }
+
+        AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
+        if (auth == null || !auth.isAuthenticated()) {
+            if (aiSummaryText != null) {
+                aiSummaryText.setText("Buka aplikasi LyricSync dan login dengan akun Google untuk menggunakan fitur AI Insights & Chat.");
+            }
+            return;
+        }
+
+        triggerSongMeaningAnalysis();
+    }
+
+    private void triggerSongMeaningAnalysis() {
+        if (currentTrack == null || songMeaningService == null) return;
+        if (activeMeaningCall != null) {
+            activeMeaningCall.cancel();
+            activeMeaningCall = null;
+        }
+
+        if (aiSummaryText != null) {
+            aiSummaryText.setText("Menganalisis makna lagu " + currentTrack.title + "…");
+        }
+        if (aiMoodBadge != null) {
+            aiMoodBadge.setVisibility(View.GONE);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        if (currentLyrics != null && currentLyrics.lines != null) {
+            for (LyricsData.LyricsLine line : currentLyrics.lines) {
+                if (line != null && line.text != null && !line.isInterlude) {
+                    sb.append(line.text).append("\n");
+                }
+            }
+        }
+        String fullLyrics = sb.toString().trim();
+
+        activeMeaningCall = songMeaningService.getSongMeaning(
+                currentTrack.title,
+                currentTrack.artist,
+                fullLyrics,
+                aiWebSearchEnabled,
+                new SongMeaningService.MeaningCallback() {
+                    @Override
+                    public void onResult(SongMeaning meaning, boolean fromCache) {
+                        handler.post(() -> {
+                            if (meaning == null) return;
+                            if (aiMoodBadge != null && meaning.mood != null && !meaning.mood.trim().isEmpty()) {
+                                aiMoodBadge.setText("✨ " + meaning.mood.trim());
+                                aiMoodBadge.setVisibility(View.VISIBLE);
+                            }
+                            if (aiSummaryText != null && meaning.summary != null) {
+                                aiSummaryText.setText(meaning.summary);
+                            }
+                            if (songChatManager != null && currentTrack != null) {
+                                songChatManager.setCurrentSong(currentTrack.title, currentTrack.artist, fullLyrics, meaning);
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        handler.post(() -> {
+                            if (aiSummaryText != null) {
+                                aiSummaryText.setText("Gagal menganalisis makna lagu: " + (e != null ? e.getMessage() : "Error"));
+                            }
+                        });
+                    }
+                });
+    }
+
+    private void submitAiChatInput() {
+        if (aiChatInput == null) return;
+        String text = aiChatInput.getText().toString().trim();
+        if (text.isEmpty()) return;
+        aiChatInput.setText("");
+        sendAiChatMessage(text);
+    }
+
+    private void sendAiChatMessage(String userQuery) {
+        if (songChatManager == null || userQuery == null || userQuery.trim().isEmpty()) return;
+
+        AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
+        if (auth == null || !auth.isAuthenticated()) {
+            Toast.makeText(this, "Silakan login Google di LyricSync", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (aiChatScroll != null) {
+            aiChatScroll.setVisibility(View.VISIBLE);
+        }
+
+        addUserChatBubble(userQuery);
+
+        final TextView aiBubble = addAiChatBubble("Berpikir…");
+
+        if (activeChatCall != null) {
+            activeChatCall.cancel();
+            activeChatCall = null;
+        }
+
+        final StringBuilder responseAcc = new StringBuilder();
+        activeChatCall = songChatManager.sendMessage(userQuery, aiWebSearchEnabled,
+                new AntigravityApiClient.StreamListener() {
+                    @Override
+                    public void onDelta(String textDelta) {
+                        handler.post(() -> {
+                            responseAcc.append(textDelta);
+                            if (aiBubble != null) {
+                                aiBubble.setText(responseAcc.toString());
+                            }
+                            if (aiChatScroll != null) {
+                                aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                        handler.post(() -> {
+                            if (aiBubble != null) {
+                                String finalContent = (fullText != null && !fullText.trim().isEmpty())
+                                        ? fullText : responseAcc.toString();
+                                if (webSources != null && !webSources.isEmpty()) {
+                                    finalContent += "\n\n🌐 Sumber:\n" + String.join("\n", webSources);
+                                }
+                                aiBubble.setText(finalContent);
+                            }
+                            if (aiChatScroll != null) {
+                                aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(Exception error) {
+                        handler.post(() -> {
+                            if (aiBubble != null) {
+                                aiBubble.setText("Error: " + (error != null ? error.getMessage() : "Unknown error"));
+                            }
+                        });
+                    }
+                });
+    }
+
+    private void addUserChatBubble(String text) {
+        if (aiChatMessages == null) return;
+        TextView bubble = new TextView(this);
+        bubble.setText(text);
+        bubble.setTextColor(getResources().getColor(R.color.text_primary));
+        bubble.setTextSize(12f);
+        bubble.setBackgroundResource(R.drawable.bg_tip_box);
+        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.END;
+        lp.setMargins(dpToPx(32), dpToPx(4), 0, dpToPx(4));
+        bubble.setLayoutParams(lp);
+
+        aiChatMessages.addView(bubble);
+        if (aiChatScroll != null) {
+            aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private TextView addAiChatBubble(String initialText) {
+        if (aiChatMessages == null) return null;
+        TextView bubble = new TextView(this);
+        bubble.setText(initialText);
+        bubble.setTextColor(getResources().getColor(R.color.text_secondary));
+        bubble.setTextSize(12f);
+        bubble.setBackgroundResource(R.drawable.bg_tip_box);
+        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.START;
+        lp.setMargins(0, dpToPx(4), dpToPx(32), dpToPx(4));
+        bubble.setLayoutParams(lp);
+
+        aiChatMessages.addView(bubble);
+        if (aiChatScroll != null) {
+            aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+        return bubble;
     }
 
     /** Font + animation chips inside the settings panel; choices apply live via prefs. */
@@ -1289,6 +1628,26 @@ public class FloatingOverlayService extends Service {
         if (aiTranslationService != null) {
             aiTranslationService.cancel();
         }
+        if (activeMeaningCall != null) {
+            activeMeaningCall.cancel();
+            activeMeaningCall = null;
+        }
+        if (activeChatCall != null) {
+            activeChatCall.cancel();
+            activeChatCall = null;
+        }
+        if (songChatManager != null && track != null) {
+            songChatManager.setCurrentSong(track.title, track.artist, "", null);
+        }
+        if (aiChatMessages != null) {
+            aiChatMessages.removeAllViews();
+        }
+        if (aiMoodBadge != null) {
+            aiMoodBadge.setVisibility(View.GONE);
+        }
+        if (aiSummaryText != null) {
+            aiSummaryText.setText("Tap ✨ untuk analisis makna lagu.");
+        }
         lyricsManager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
             @Override
             public void onLyricsLoaded(LyricsData lyrics) {
@@ -1306,6 +1665,17 @@ public class FloatingOverlayService extends Service {
                     if (currentTrack != null) updateTrackInfo(currentTrack);
                     renderOverlayLyrics(lyrics);
                     publishNowPlaying();
+                    if (songChatManager != null && track != null) {
+                        StringBuilder sb = new StringBuilder();
+                        if (lyrics != null && lyrics.lines != null) {
+                            for (LyricsData.LyricsLine l : lyrics.lines) {
+                                if (l != null && l.text != null && !l.isInterlude) {
+                                    sb.append(l.text).append("\n");
+                                }
+                            }
+                        }
+                        songChatManager.setCurrentSong(track.title, track.artist, sb.toString().trim(), null);
+                    }
                 });
             }
 
@@ -1582,6 +1952,14 @@ public class FloatingOverlayService extends Service {
         }
         if (translateService != null) {
             translateService.cancel();
+        }
+        if (activeMeaningCall != null) {
+            activeMeaningCall.cancel();
+            activeMeaningCall = null;
+        }
+        if (activeChatCall != null) {
+            activeChatCall.cancel();
+            activeChatCall = null;
         }
         stopRenderLoop();
         stopSkeletonShimmer();

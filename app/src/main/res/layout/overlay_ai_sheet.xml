@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/ai_sheet_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/overlay_bg_rounded"
+    android:padding="14dp"
+    android:layout_marginTop="6dp">
+
+    <!-- ── Header ──────────────────────────────────────────────── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/ai_sheet_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="✨ AI Insights" />
+
+            <TextView
+                android:id="@+id/ai_sheet_artist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/ai_web_search_chip"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:padding="5dp"
+            android:background="@drawable/bg_icon_button"
+            android:src="@drawable/ic_search"
+            android:contentDescription="Toggle Web Search"
+            android:alpha="0.5" />
+
+        <ImageView
+            android:id="@+id/ai_close_button"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:padding="6dp"
+            android:layout_marginStart="5dp"
+            android:background="@drawable/bg_icon_button"
+            android:src="@drawable/ic_close"
+            android:contentDescription="Close AI" />
+    </LinearLayout>
+
+    <!-- ── Mood Badge ──────────────────────────────────────────── -->
+    <TextView
+        android:id="@+id/ai_mood_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:textColor="#E0E0E0"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:background="@drawable/bg_pill_ok"
+        android:visibility="gone" />
+
+    <!-- ── Summary ─────────────────────────────────────────────── -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="150dp"
+        android:layout_marginTop="6dp"
+        android:scrollbars="vertical"
+        android:fadeScrollbars="true">
+
+        <TextView
+            android:id="@+id/ai_summary_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:lineSpacingExtra="3dp"
+            android:text="Tap the sparkles button to analyze song meaning…" />
+    </ScrollView>
+
+    <!-- ── Quick Chips ─────────────────────────────────────────── -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:overScrollMode="never"
+        android:layout_marginTop="8dp">
+
+        <LinearLayout
+            android:id="@+id/ai_quick_chips_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <!-- ── Chat Messages ───────────────────────────────────────── -->
+    <ScrollView
+        android:id="@+id/ai_chat_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="200dp"
+        android:layout_marginTop="8dp"
+        android:scrollbars="vertical"
+        android:fadeScrollbars="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/ai_chat_messages"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <!-- ── Chat Input Bar ──────────────────────────────────────── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="8dp">
+
+        <EditText
+            android:id="@+id/ai_chat_input"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:hint="Ask about this song…"
+            android:textColorHint="@color/text_dim"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:paddingStart="12dp"
+            android:paddingEnd="8dp"
+            android:background="@drawable/bg_tip_box"
+            android:inputType="text"
+            android:imeOptions="actionSend"
+            android:maxLines="1"
+            android:singleLine="true" />
+
+        <ImageView
+            android:id="@+id/ai_chat_send"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="8dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_icon_button"
+            android:src="@drawable/ic_chevron_right"
+            android:contentDescription="Send" />
+    </LinearLayout>
+
+    <!-- ── Quota Badge ─────────────────────────────────────────── -->
+    <TextView
+        android:id="@+id/ai_quota_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:textColor="@color/text_dim"
+        android:textSize="9sp"
+        android:layout_marginTop="4dp"
+        android:visibility="gone" />
+
+</LinearLayout>
