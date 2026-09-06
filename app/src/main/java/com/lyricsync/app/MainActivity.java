@@ -138,6 +138,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private View aiStudioHeader;
     private View aiStudioContent;
     private ImageView aiStudioChevron;
+    private TextView aiStudioTrackInfo;
     private TextView aiStudioMoodBadge;
     private TextView aiStudioQuotaBadge;
     private TextView aiStudioSummary;
@@ -1041,6 +1042,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         aiStudioHeader = findViewById(R.id.ai_studio_header);
         aiStudioContent = findViewById(R.id.ai_studio_content);
         aiStudioChevron = findViewById(R.id.ai_studio_chevron);
+        aiStudioTrackInfo = findViewById(R.id.ai_studio_track_info);
         aiStudioMoodBadge = findViewById(R.id.ai_studio_mood_badge);
         aiStudioQuotaBadge = findViewById(R.id.ai_studio_quota_badge);
         aiStudioSummary = findViewById(R.id.ai_studio_summary);
@@ -1173,8 +1175,17 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 if (aiStudioChatScroll != null) {
                     aiStudioChatScroll.setVisibility(View.GONE);
                 }
+                if (aiStudioTrackInfo != null) {
+                    aiStudioTrackInfo.setVisibility(View.GONE);
+                }
             }
             return;
+        }
+
+        if (aiStudioTrackInfo != null) {
+            String artistStr = (track.artist != null && !track.artist.trim().isEmpty()) ? " · " + track.artist.trim() : "";
+            aiStudioTrackInfo.setText(track.title.trim() + artistStr);
+            aiStudioTrackInfo.setVisibility(View.VISIBLE);
         }
 
         boolean sameTrack = currentTrackTitle != null
@@ -1253,7 +1264,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onResult(SongMeaning meaning, boolean fromCache) {
                         runOnUiThread(() -> {
+                            activeMeaningCall = null;
                             if (isFinishing() || isDestroyed()) return;
+                            if (title == null || !title.equals(currentTrackTitle)) return;
                             if (meaning == null) return;
 
                             if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
@@ -1268,7 +1281,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
                                 displayWebSources(meaning.webSources);
                             }
-                            if (songChatManager != null && title != null && title.equals(currentTrackTitle)) {
+                            if (songChatManager != null && title.equals(currentTrackTitle)) {
                                 songChatManager.setCurrentSong(title, artist, "", meaning);
                             }
                         });
@@ -1277,7 +1290,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onError(Exception e) {
                         runOnUiThread(() -> {
+                            activeMeaningCall = null;
                             if (isFinishing() || isDestroyed()) return;
+                            if (title == null || !title.equals(currentTrackTitle)) return;
                             if (aiStudioSummary != null) {
                                 aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(
                                         "Gagal menganalisis makna lagu: " + (e != null ? e.getMessage() : "Error")));
@@ -1394,6 +1409,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
                         runOnUiThread(() -> {
+                            activeChatCall = null;
                             if (isFinishing() || isDestroyed()) return;
                             if (aiBubble != null) {
                                 String finalContent = (fullText != null && !fullText.trim().isEmpty())
@@ -1412,6 +1428,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onError(Exception error) {
                         runOnUiThread(() -> {
+                            activeChatCall = null;
                             if (isFinishing() || isDestroyed()) return;
                             if (aiBubble != null) {
                                 aiBubble.setText(CleanMarkdownFormatter.formatClean(
@@ -1428,7 +1445,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         bubble.setText(CleanMarkdownFormatter.formatClean(text));
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
         bubble.setTextSize(12f);
-        bubble.setBackgroundResource(R.drawable.bg_tip_box);
+        bubble.setBackgroundResource(R.drawable.bg_pill_ok);
         bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
