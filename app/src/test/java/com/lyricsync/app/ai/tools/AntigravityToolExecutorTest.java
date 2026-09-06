@@ -356,6 +356,273 @@ public class AntigravityToolExecutorTest {
         assertTrue(handle.isCancelled());
     }
 
+    // --- Google Search Grounding Tests ---
+
+    @Test
+    public void testBuildSearchPayloadStructure() {
+        String payload = AntigravityToolExecutor.buildSearchPayload("custom-project-123", "Queen Bohemian Rhapsody meaning", 5);
+        assertNotNull(payload);
+
+        JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
+        assertEquals("custom-project-123", root.get("project").getAsString());
+        assertEquals("gemini-2.5-flash", root.get("model").getAsString());
+        assertEquals("agent", root.get("requestType").getAsString());
+        assertEquals("antigravity", root.get("userAgent").getAsString());
+        assertTrue(root.has("requestId"));
+        assertTrue(root.get("requestId").getAsString().startsWith("agent-"));
+
+        assertTrue(root.has("request"));
+        JsonObject request = root.getAsJsonObject("request");
+
+        // Contents
+        assertTrue(request.has("contents"));
+        com.google.gson.JsonArray contents = request.getAsJsonArray("contents");
+        assertEquals(1, contents.size());
+        JsonObject turn = contents.get(0).getAsJsonObject();
+        assertEquals("user", turn.get("role").getAsString());
+        com.google.gson.JsonArray parts = turn.getAsJsonArray("parts");
+        assertEquals(1, parts.size());
+        assertEquals("Queen Bohemian Rhapsody meaning", parts.get(0).getAsJsonObject().get("text").getAsString());
+
+        // Tools
+        assertTrue(request.has("tools"));
+        com.google.gson.JsonArray tools = request.getAsJsonArray("tools");
+        assertEquals(1, tools.size());
+        JsonObject tool0 = tools.get(0).getAsJsonObject();
+        assertTrue("Tool must contain googleSearch", tool0.has("googleSearch"));
+        assertTrue(tool0.get("googleSearch").isJsonObject());
+    }
+
+    @Test
+    public void testBuildSearchPayloadDefaultProjectId() {
+        String payload = AntigravityToolExecutor.buildSearchPayload(null, "Queen song facts", 3);
+        JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
+        assertEquals("aicode-consumers", root.get("project").getAsString());
+        assertEquals("gemini-2.5-flash", root.get("model").getAsString());
+    }
+
+    @Test
+    public void testParseSearchGroundingResponseExtractsTextSourcesCitationsAndQueries() {
+        String sseChunk = "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Bohemian Rhapsody was written by Freddie Mercury and released in 1975.\"}]}, \"groundingMetadata\": {\"webSearchQueries\": [\"queen bohemian rhapsody history\", \"freddie mercury songwriting 1975\"], \"groundingChunks\": [{\"web\": {\"title\": \"Bohemian Rhapsody - Wikipedia\", \"uri\": \"https://en.wikipedia.org/wiki/Bohemian_Rhapsody\"}}, {\"web\": {\"title\": \"Songfacts: Bohemian Rhapsody\", \"uri\": \"https://www.songfacts.com/facts/queen/bohemian-rhapsody\"}}], \"groundingSupports\": [{\"groundingChunkIndices\": [0], \"segment\": {\"text\": \"Bohemian Rhapsody was written by Freddie Mercury and released in 1975.\"}}]}}]}\n\n";
+
+        AntigravityToolExecutor.ToolResult result = AntigravityToolExecutor.parseSearchGroundingResponse(sseChunk);
+        assertNotNull(result);
+        assertFalse("Result must not be an error", result.isError);
+        assertNotNull(result.content);
+
+        // Verify Java sources list
+        assertEquals(2, result.sources.size());
+        assertEquals("Bohemian Rhapsody - Wikipedia", result.sources.get(0).title);
+        assertEquals("https://en.wikipedia.org/wiki/Bohemian_Rhapsody", result.sources.get(0).url);
+        assertEquals("Songfacts: Bohemian Rhapsody", result.sources.get(1).title);
+        assertEquals("https://www.songfacts.com/facts/queen/bohemian-rhapsody", result.sources.get(1).url);
+
+        // Verify JSON content structure
+        JsonObject json = JsonParser.parseString(result.content).getAsJsonObject();
+        assertEquals("success", json.get("status").getAsString());
+        assertTrue(json.get("answer").getAsString().contains("Freddie Mercury and released in 1975"));
+
+        // Verify queries
+        com.google.gson.JsonArray queries = json.getAsJsonArray("searchQueries");
+        assertNotNull(queries);
+        assertEquals(2, queries.size());
+        assertEquals("queen bohemian rhapsody history", queries.get(0).getAsString());
+        assertEquals("freddie mercury songwriting 1975", queries.get(1).getAsString());
+
+        // Verify citations
+        com.google.gson.JsonArray citations = json.getAsJsonArray("citations");
+        assertNotNull(citations);
+        assertEquals(1, citations.size());
+        JsonObject citation = citations.get(0).getAsJsonObject();
+        assertEquals("Bohemian Rhapsody - Wikipedia", citation.get("title").getAsString());
+        assertEquals("https://en.wikipedia.org/wiki/Bohemian_Rhapsody", citation.get("url").getAsString());
+        assertEquals("Bohemian Rhapsody was written by Freddie Mercury and released in 1975.", citation.get("citedText").getAsString());
+    }
+
+    @Test
+    public void testParseSearchGroundingResponseResolvesVertexRedirectUrls() {
+        String sseChunk = "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Song info\"}]}, \"groundingMetadata\": {\"groundingChunks\": [{\"web\": {\"title\": \"Redirected Source\", \"uri\": \"https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc123xyz?url=https%3A%2F%2Fwww.rollingstone.com%2Fmusic%2Fqueen\"}}]}}]}\n\n";
+
+        AntigravityToolExecutor.ToolResult result = AntigravityToolExecutor.parseSearchGroundingResponse(sseChunk);
+        assertNotNull(result);
+        assertFalse(result.isError);
+        assertEquals(1, result.sources.size());
+        assertEquals("https://www.rollingstone.com/music/queen", result.sources.get(0).url);
+        assertEquals("Redirected Source", result.sources.get(0).title);
+    }
+
+    @Test
+    public void testParseSearchGroundingResponseErrorFrame() {
+        String sseErrorChunk = "data: {\"error\": {\"code\": 429, \"message\": \"Quota exceeded for project\"}}\n\n";
+
+        AntigravityToolExecutor.ToolResult result = AntigravityToolExecutor.parseSearchGroundingResponse(sseErrorChunk);
+        assertNotNull(result);
+        assertTrue("Result must be error", result.isError);
+        assertTrue("Must contain fallback message", result.content.contains("Pencarian web tidak tersedia saat ini. Lanjutkan dengan pengetahuan internal."));
+        assertEquals(0, result.sources.size());
+    }
+
+    @Test
+    public void testExecuteWebSearchSuccess() throws InterruptedException {
+        mockInterceptor.contentType = "text/event-stream";
+        mockInterceptor.responseBody = "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Freddie Mercury wrote Bohemian Rhapsody in 1975.\"}]}, \"groundingMetadata\": {\"webSearchQueries\": [\"queen bohemian rhapsody\"], \"groundingChunks\": [{\"web\": {\"title\": \"Queen Official\", \"uri\": \"https://queenonline.com/history\"}}], \"groundingSupports\": [{\"groundingChunkIndices\": [0], \"segment\": {\"text\": \"Freddie Mercury wrote Bohemian Rhapsody in 1975.\"}}]}}]}\n\n";
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<AntigravityToolExecutor.ToolResult> resultRef = new AtomicReference<>();
+
+        AntigravityApiClient.Cancellable handle = executor.executeWebSearch("Queen Bohemian Rhapsody", 5, new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        assertNotNull(handle);
+        assertEquals(1, mockInterceptor.requestCount);
+        assertEquals("https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse", mockInterceptor.lastUrl);
+
+        AntigravityToolExecutor.ToolResult result = resultRef.get();
+        assertNotNull(result);
+        assertFalse("Must not be error", result.isError);
+        assertEquals(1, result.sources.size());
+        assertEquals("Queen Official", result.sources.get(0).title);
+        assertEquals("https://queenonline.com/history", result.sources.get(0).url);
+
+        JsonObject json = JsonParser.parseString(result.content).getAsJsonObject();
+        assertEquals("success", json.get("status").getAsString());
+        assertTrue(json.get("answer").getAsString().contains("Freddie Mercury wrote Bohemian Rhapsody"));
+    }
+
+    @Test
+    public void testExecuteWebSearchFallbackOn503() throws InterruptedException {
+        mockInterceptor.contentType = "text/event-stream";
+        mockInterceptor.urlResponseCodes.put(
+                "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse", 503);
+        mockInterceptor.urlResponseCodes.put(
+                "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse", 200);
+        mockInterceptor.urlResponseBodies.put(
+                "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+                "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Recovered from prod endpoint.\"}]}}]}\n\n");
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<AntigravityToolExecutor.ToolResult> resultRef = new AtomicReference<>();
+
+        executor.executeWebSearch("Fallback test", 5, new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        assertEquals(2, mockInterceptor.requestCount);
+        assertEquals("https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse", mockInterceptor.lastUrl);
+
+        AntigravityToolExecutor.ToolResult result = resultRef.get();
+        assertNotNull(result);
+        assertFalse("Fallback to prod must succeed", result.isError);
+        assertTrue(result.content.contains("Recovered from prod endpoint."));
+    }
+
+    @Test
+    public void testExecuteWebSearchFallbackOn404() throws InterruptedException {
+        mockInterceptor.contentType = "text/event-stream";
+        mockInterceptor.urlResponseCodes.put(
+                "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse", 404);
+        mockInterceptor.urlResponseCodes.put(
+                "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse", 200);
+        mockInterceptor.urlResponseBodies.put(
+                "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+                "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Recovered from 404 fallback.\"}]}}]}\n\n");
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<AntigravityToolExecutor.ToolResult> resultRef = new AtomicReference<>();
+
+        executor.executeWebSearch("404 Fallback test", 5, new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        assertEquals(2, mockInterceptor.requestCount);
+        assertEquals("https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse", mockInterceptor.lastUrl);
+
+        AntigravityToolExecutor.ToolResult result = resultRef.get();
+        assertNotNull(result);
+        assertFalse(result.isError);
+        assertTrue(result.content.contains("Recovered from 404 fallback."));
+    }
+
+    @Test
+    public void testExecuteWebSearchGracefulErrorOn429() throws InterruptedException {
+        mockInterceptor.responseCode = 429;
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<AntigravityToolExecutor.ToolResult> resultRef = new AtomicReference<>();
+
+        executor.executeWebSearch("Rate limited query", 5, new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        AntigravityToolExecutor.ToolResult result = resultRef.get();
+        assertNotNull(result);
+        assertTrue("Must be marked error", result.isError);
+        assertTrue("Must contain graceful Indonesian message",
+                result.content.contains("Pencarian web tidak tersedia saat ini. Lanjutkan dengan pengetahuan internal."));
+        assertEquals(0, result.sources.size());
+    }
+
+    @Test
+    public void testExecuteWebSearchGracefulErrorOnNetworkFailure() throws InterruptedException {
+        mockInterceptor.throwNetworkError = true;
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<AntigravityToolExecutor.ToolResult> resultRef = new AtomicReference<>();
+
+        executor.executeWebSearch("Network broken query", 5, new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        AntigravityToolExecutor.ToolResult result = resultRef.get();
+        assertNotNull(result);
+        assertTrue("Must be marked error", result.isError);
+        assertTrue("Must contain graceful Indonesian message",
+                result.content.contains("Pencarian web tidak tersedia saat ini. Lanjutkan dengan pengetahuan internal."));
+        assertEquals(0, result.sources.size());
+    }
+
+    @Test
+    public void testExecuteWebSearchCancellation() {
+        mockInterceptor.contentType = "text/event-stream";
+        mockInterceptor.responseBody = "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Delayed\"}]}}]}\n\n";
+
+        AntigravityApiClient.Cancellable handle = executor.executeWebSearch("Cancel query", 5, new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {}
+        });
+
+        assertNotNull(handle);
+        assertFalse(handle.isCancelled());
+        handle.cancel();
+        assertTrue(handle.isCancelled());
+    }
+
     // --- Mock HTTP Interceptor Helper ---
 
     static class MockHttpInterceptor implements Interceptor {
@@ -364,6 +631,9 @@ public class AntigravityToolExecutorTest {
         volatile String contentType = "text/html; charset=utf-8";
         volatile String responseBody = "<html><body>Sample</body></html>";
         volatile String lastUrl;
+        volatile boolean throwNetworkError = false;
+        final java.util.Map<String, Integer> urlResponseCodes = new java.util.HashMap<>();
+        final java.util.Map<String, String> urlResponseBodies = new java.util.HashMap<>();
 
         @Override
         public Response intercept(Chain chain) throws IOException {
@@ -371,13 +641,28 @@ public class AntigravityToolExecutorTest {
             Request request = chain.request();
             lastUrl = request.url().toString();
 
-            if (responseCode >= 400) {
+            if (throwNetworkError) {
+                throw new IOException("Simulated network failure");
+            }
+
+            int code = responseCode;
+            if (urlResponseCodes.containsKey(lastUrl)) {
+                code = urlResponseCodes.get(lastUrl);
+            }
+
+            String bodyStr = responseBody;
+            if (urlResponseBodies.containsKey(lastUrl)) {
+                bodyStr = urlResponseBodies.get(lastUrl);
+            }
+
+            if (code >= 400) {
                 return new Response.Builder()
                         .request(request)
                         .protocol(Protocol.HTTP_1_1)
-                        .code(responseCode)
-                        .message("Error " + responseCode)
-                        .body(ResponseBody.create(MediaType.parse("text/plain"), "Not Found"))
+                        .code(code)
+                        .message("Error " + code)
+                        .body(ResponseBody.create(MediaType.parse("application/json; charset=utf-8"),
+                                "{\"error\": \"HTTP " + code + "\"}"))
                         .build();
             }
 
@@ -386,7 +671,7 @@ public class AntigravityToolExecutorTest {
                     .protocol(Protocol.HTTP_1_1)
                     .code(200)
                     .message("OK")
-                    .body(ResponseBody.create(MediaType.parse(contentType), responseBody))
+                    .body(ResponseBody.create(MediaType.parse(contentType), bodyStr))
                     .build();
         }
     }

@@ -1,16 +1,22 @@
 package com.lyricsync.app.ai.tools;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.client.AntigravityApiClient.Cancellable;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,6 +27,7 @@ import okhttp3.Interceptor;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import okio.Buffer;
@@ -37,6 +44,15 @@ public class AntigravityToolExecutor {
     public static final long MAX_RESPONSE_BYTES = 1024 * 1024L; // 1 MB buffer limit
     public static final String DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36";
+
+    public static final String ENDPOINT_DAILY =
+            "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
+    public static final String ENDPOINT_PROD =
+            "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
+    public static final String DEFAULT_PROJECT = "aicode-consumers";
+    public static final String SEARCH_MODEL = "gemini-2.5-flash";
+    public static final String FALLBACK_SEARCH_ERROR_MESSAGE =
+            "Pencarian web tidak tersedia saat ini. Lanjutkan dengan pengetahuan internal.";
 
     // --- Pre-compiled Regex Patterns ---
 
@@ -129,14 +145,35 @@ public class AntigravityToolExecutor {
 
     // --- Instance State & Constructors ---
 
+    private final AntigravityAuthManager authManager;
     private final OkHttpClient httpClient;
+    private String projectId = DEFAULT_PROJECT;
 
     public AntigravityToolExecutor() {
-        this(createDefaultHttpClient());
+        this(null, createDefaultHttpClient());
     }
 
     public AntigravityToolExecutor(OkHttpClient httpClient) {
+        this(null, httpClient);
+    }
+
+    public AntigravityToolExecutor(AntigravityAuthManager authManager) {
+        this(authManager, createDefaultHttpClient());
+    }
+
+    public AntigravityToolExecutor(AntigravityAuthManager authManager, OkHttpClient httpClient) {
+        this.authManager = authManager;
         this.httpClient = httpClient != null ? httpClient : createDefaultHttpClient();
+    }
+
+    public void setProjectId(String projectId) {
+        if (projectId != null && !projectId.trim().isEmpty()) {
+            this.projectId = projectId.trim();
+        }
+    }
+
+    public String getProjectId() {
+        return projectId;
     }
 
     private static OkHttpClient createDefaultHttpClient() {
@@ -614,5 +651,468 @@ public class AntigravityToolExecutor {
         });
 
         return handle;
+    }
+
+    // --- Google Search Grounding Execution ---
+
+    /**
+     * Resolves Google Vertex redirect URLs to original target URLs.
+     */
+    public static String resolveGroundingUrl(String uri) {
+        if (uri == null || uri.trim().isEmpty()) {
+            return "";
+        }
+        String trimmed = uri.trim();
+        if (trimmed.contains("vertexaisearch.cloud.google.com/grounding-api-redirect")) {
+            try {
+                int urlIdx = trimmed.indexOf("?url=");
+                if (urlIdx == -1) {
+                    urlIdx = trimmed.indexOf("&url=");
+                }
+                if (urlIdx == -1 && trimmed.contains("url=")) {
+                    urlIdx = trimmed.indexOf("url=") - 1;
+                }
+                if (urlIdx != -1) {
+                    String encodedUrl = trimmed.substring(urlIdx + 5);
+                    int amp = encodedUrl.indexOf('&');
+                    if (amp != -1) {
+                        encodedUrl = encodedUrl.substring(0, amp);
+                    }
+                    String decoded = URLDecoder.decode(encodedUrl, "UTF-8");
+                    if (decoded.startsWith("http://") || decoded.startsWith("https://")) {
+                        return decoded;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return trimmed;
+    }
+
+    /**
+     * Creates a standardized, graceful error ToolResult so the AI model continues without crashing.
+     */
+    public static ToolResult createGracefulErrorResult(String message) {
+        String msg = (message != null && !message.trim().isEmpty()) ? message : FALLBACK_SEARCH_ERROR_MESSAGE;
+        JsonObject err = new JsonObject();
+        err.addProperty("status", "error");
+        err.addProperty("message", msg);
+        err.addProperty("content", msg);
+        return new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList());
+    }
+
+    /**
+     * Builds the JSON request payload matching the Google Antigravity Cloudcode PA protocol
+     * with Google Search Grounding enabled via gemini-2.5-flash.
+     */
+    public static String buildSearchPayload(String projectId, String query, int maxResults) {
+        JsonObject root = new JsonObject();
+        root.addProperty("project", (projectId != null && !projectId.trim().isEmpty()) ? projectId.trim() : DEFAULT_PROJECT);
+        root.addProperty("model", SEARCH_MODEL);
+        root.addProperty("userAgent", "antigravity");
+        root.addProperty("requestType", "agent");
+        root.addProperty("requestId", "agent-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8));
+
+        JsonObject request = new JsonObject();
+
+        JsonArray contents = new JsonArray();
+        JsonObject turn = new JsonObject();
+        turn.addProperty("role", "user");
+
+        JsonArray parts = new JsonArray();
+        JsonObject part = new JsonObject();
+        part.addProperty("text", query != null ? query : "");
+        parts.add(part);
+
+        turn.add("parts", parts);
+        contents.add(turn);
+        request.add("contents", contents);
+
+        JsonArray tools = new JsonArray();
+        JsonObject tool = new JsonObject();
+        tool.add("googleSearch", new JsonObject());
+        tools.add(tool);
+        request.add("tools", tools);
+
+        root.add("request", request);
+        return root.toString();
+    }
+
+    /**
+     * Parses Google Search Grounding SSE stream text or raw JSON chunks.
+     * Extracts answer text, groundingChunks (sources), groundingSupports (citations),
+     * and webSearchQueries. Resilient against malformed or error frames.
+     */
+    public static ToolResult parseSearchGroundingResponse(String sseStreamText) {
+        if (sseStreamText == null || sseStreamText.trim().isEmpty()) {
+            return createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE);
+        }
+
+        StringBuilder fullAnswer = new StringBuilder();
+        List<SourceItem> rawChunks = new ArrayList<>();
+        List<SourceItem> sources = new ArrayList<>();
+        List<SourceItem> citations = new ArrayList<>();
+        List<String> searchQueries = new ArrayList<>();
+
+        String[] events = sseStreamText.split("(?:\r?\n){2,}");
+        for (String event : events) {
+            String trimmedEvent = event.trim();
+            if (trimmedEvent.isEmpty()) continue;
+
+            StringBuilder dataPayload = new StringBuilder();
+            String[] lines = trimmedEvent.split("\r?\n");
+            for (String line : lines) {
+                String trimmedLine = line.trim();
+                if (trimmedLine.startsWith(":")) continue; // Comment/heartbeat
+                if (trimmedLine.startsWith("data:")) {
+                    String sub = trimmedLine.substring(5).trim();
+                    if (dataPayload.length() > 0) dataPayload.append("\n");
+                    dataPayload.append(sub);
+                } else if (trimmedLine.startsWith("{")) {
+                    if (dataPayload.length() > 0) dataPayload.append("\n");
+                    dataPayload.append(trimmedLine);
+                }
+            }
+
+            String jsonStr = dataPayload.toString().trim();
+            if (jsonStr.isEmpty() || "[DONE]".equalsIgnoreCase(jsonStr)) {
+                continue;
+            }
+
+            try {
+                JsonElement elem = JsonParser.parseString(jsonStr);
+                if (!elem.isJsonObject()) continue;
+                JsonObject root = elem.getAsJsonObject();
+
+                JsonObject resp = root.has("response") && root.get("response").isJsonObject()
+                        ? root.getAsJsonObject("response")
+                        : root;
+
+                if (resp.has("error") || root.has("error")) {
+                    return createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE);
+                }
+
+                if (resp.has("candidates") && resp.get("candidates").isJsonArray()) {
+                    JsonArray candidates = resp.getAsJsonArray("candidates");
+                    for (JsonElement candElem : candidates) {
+                        if (!candElem.isJsonObject()) continue;
+                        JsonObject cand = candElem.getAsJsonObject();
+
+                        if (cand.has("content") && cand.get("content").isJsonObject()) {
+                            JsonObject content = cand.getAsJsonObject("content");
+                            if (content.has("parts") && content.get("parts").isJsonArray()) {
+                                JsonArray parts = content.getAsJsonArray("parts");
+                                for (JsonElement pElem : parts) {
+                                    if (!pElem.isJsonObject()) continue;
+                                    JsonObject part = pElem.getAsJsonObject();
+                                    if (part.has("text") && !part.get("text").isJsonNull() && part.get("text").isJsonPrimitive()) {
+                                        fullAnswer.append(part.get("text").getAsString());
+                                    }
+                                }
+                            }
+                        }
+
+                        if (cand.has("groundingMetadata") && cand.get("groundingMetadata").isJsonObject()) {
+                            extractGroundingFromMetadata(cand.getAsJsonObject("groundingMetadata"),
+                                    rawChunks, sources, citations, searchQueries);
+                        }
+                    }
+                }
+
+                if (resp.has("groundingMetadata") && resp.get("groundingMetadata").isJsonObject()) {
+                    extractGroundingFromMetadata(resp.getAsJsonObject("groundingMetadata"),
+                            rawChunks, sources, citations, searchQueries);
+                } else if (root.has("groundingMetadata") && root.get("groundingMetadata").isJsonObject()) {
+                    extractGroundingFromMetadata(root.getAsJsonObject("groundingMetadata"),
+                            rawChunks, sources, citations, searchQueries);
+                }
+
+            } catch (Exception ignored) {}
+        }
+
+        if (sources.isEmpty() && !citations.isEmpty()) {
+            for (SourceItem c : citations) {
+                boolean found = false;
+                for (SourceItem s : sources) {
+                    if (s.url.equals(c.url)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && !c.url.isEmpty()) {
+                    sources.add(new SourceItem(c.title, c.url));
+                }
+            }
+        }
+
+        JsonObject output = new JsonObject();
+        output.addProperty("status", "success");
+        output.addProperty("answer", fullAnswer.toString().trim());
+
+        JsonArray sourcesJson = new JsonArray();
+        for (SourceItem s : sources) {
+            JsonObject sObj = new JsonObject();
+            sObj.addProperty("title", s.title);
+            sObj.addProperty("url", s.url);
+            sourcesJson.add(sObj);
+        }
+        output.add("sources", sourcesJson);
+
+        JsonArray citationsJson = new JsonArray();
+        for (SourceItem c : citations) {
+            JsonObject cObj = new JsonObject();
+            cObj.addProperty("title", c.title);
+            cObj.addProperty("url", c.url);
+            cObj.addProperty("citedText", c.citedText != null ? c.citedText : "");
+            citationsJson.add(cObj);
+        }
+        output.add("citations", citationsJson);
+
+        JsonArray queriesJson = new JsonArray();
+        for (String q : searchQueries) {
+            queriesJson.add(q);
+        }
+        output.add("searchQueries", queriesJson);
+
+        return new ToolResult(false, output.toString(), sources);
+    }
+
+    private static void extractGroundingFromMetadata(JsonObject gm,
+                                                    List<SourceItem> rawChunks,
+                                                    List<SourceItem> sources,
+                                                    List<SourceItem> citations,
+                                                    List<String> searchQueries) {
+        if (gm == null) return;
+
+        // 1. webSearchQueries
+        if (gm.has("webSearchQueries") && gm.get("webSearchQueries").isJsonArray()) {
+            JsonArray qArr = gm.getAsJsonArray("webSearchQueries");
+            for (JsonElement qElem : qArr) {
+                if (qElem != null && !qElem.isJsonNull() && qElem.isJsonPrimitive()) {
+                    String q = qElem.getAsString().trim();
+                    if (!q.isEmpty() && !searchQueries.contains(q)) {
+                        searchQueries.add(q);
+                    }
+                }
+            }
+        }
+
+        // 2. groundingChunks
+        if (gm.has("groundingChunks") && gm.get("groundingChunks").isJsonArray()) {
+            JsonArray cArr = gm.getAsJsonArray("groundingChunks");
+            for (JsonElement cElem : cArr) {
+                if (!cElem.isJsonObject()) continue;
+                JsonObject cObj = cElem.getAsJsonObject();
+                String title = "";
+                String uri = "";
+                if (cObj.has("web") && cObj.get("web").isJsonObject()) {
+                    JsonObject web = cObj.getAsJsonObject("web");
+                    if (web.has("title") && !web.get("title").isJsonNull()) {
+                        title = web.get("title").getAsString().trim();
+                    }
+                    if (web.has("uri") && !web.get("uri").isJsonNull()) {
+                        uri = web.get("uri").getAsString().trim();
+                    } else if (web.has("url") && !web.get("url").isJsonNull()) {
+                        uri = web.get("url").getAsString().trim();
+                    }
+                } else {
+                    if (cObj.has("title") && !cObj.get("title").isJsonNull()) {
+                        title = cObj.get("title").getAsString().trim();
+                    }
+                    if (cObj.has("uri") && !cObj.get("uri").isJsonNull()) {
+                        uri = cObj.get("uri").getAsString().trim();
+                    } else if (cObj.has("url") && !cObj.get("url").isJsonNull()) {
+                        uri = cObj.get("url").getAsString().trim();
+                    }
+                }
+
+                String resolvedUrl = resolveGroundingUrl(uri);
+                if (title.isEmpty()) {
+                    title = resolvedUrl;
+                }
+                SourceItem item = new SourceItem(title, resolvedUrl);
+                rawChunks.add(item);
+
+                boolean alreadyInSources = false;
+                for (SourceItem s : sources) {
+                    if (s.url.equals(resolvedUrl)) {
+                        alreadyInSources = true;
+                        break;
+                    }
+                }
+                if (!alreadyInSources && !resolvedUrl.isEmpty()) {
+                    sources.add(item);
+                }
+            }
+        }
+
+        // 3. groundingSupports
+        if (gm.has("groundingSupports") && gm.get("groundingSupports").isJsonArray()) {
+            JsonArray sArr = gm.getAsJsonArray("groundingSupports");
+            for (JsonElement sElem : sArr) {
+                if (!sElem.isJsonObject()) continue;
+                JsonObject sObj = sElem.getAsJsonObject();
+
+                String citedText = "";
+                if (sObj.has("segment") && sObj.get("segment").isJsonObject()) {
+                    JsonObject seg = sObj.getAsJsonObject("segment");
+                    if (seg.has("text") && !seg.get("text").isJsonNull()) {
+                        citedText = seg.get("text").getAsString();
+                    }
+                } else if (sObj.has("citedText") && !sObj.get("citedText").isJsonNull()) {
+                    citedText = sObj.get("citedText").getAsString();
+                } else if (sObj.has("text") && !sObj.get("text").isJsonNull()) {
+                    citedText = sObj.get("text").getAsString();
+                }
+
+                if (sObj.has("groundingChunkIndices") && sObj.get("groundingChunkIndices").isJsonArray()) {
+                    JsonArray idxArr = sObj.getAsJsonArray("groundingChunkIndices");
+                    for (JsonElement idxElem : idxArr) {
+                        if (idxElem.isJsonPrimitive()) {
+                            int idx = idxElem.getAsInt();
+                            if (idx >= 0 && idx < rawChunks.size()) {
+                                SourceItem chunk = rawChunks.get(idx);
+                                citations.add(new SourceItem(chunk.title, chunk.url, citedText));
+                            }
+                        }
+                    }
+                } else if (sObj.has("title") || sObj.has("url") || sObj.has("uri")) {
+                    String title = sObj.has("title") ? sObj.get("title").getAsString() : "";
+                    String uri = sObj.has("url") ? sObj.get("url").getAsString() : (sObj.has("uri") ? sObj.get("uri").getAsString() : "");
+                    String resolvedUrl = resolveGroundingUrl(uri);
+                    if (title.isEmpty()) title = resolvedUrl;
+                    citations.add(new SourceItem(title, resolvedUrl, citedText));
+                }
+            }
+        }
+    }
+
+    /**
+     * Executes Google Search Grounding with gemini-2.5-flash and { "tools": [{ "googleSearch": {} }] }.
+     * Primary endpoint: daily-cloudcode-pa.googleapis.com
+     * Fallback endpoint: cloudcode-pa.googleapis.com (on 503 / 404)
+     * Resilient error handling on 429, 503, or network failure.
+     */
+    public Cancellable executeWebSearch(final String query, final int maxResults, final ToolCallback callback) {
+        final ToolCancellable handle = new ToolCancellable();
+
+        if (query == null || query.trim().isEmpty()) {
+            if (callback != null) {
+                callback.onResult(createGracefulErrorResult("Query pencarian tidak boleh kosong"));
+            }
+            return handle;
+        }
+
+        if (handle.isCancelled()) {
+            return handle;
+        }
+
+        if (authManager != null) {
+            authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
+                @Override
+                public void onTokenReady(String accessToken) {
+                    if (handle.isCancelled()) return;
+                    performSearchRequest(ENDPOINT_DAILY, accessToken, query, maxResults, handle, callback, false);
+                }
+
+                @Override
+                public void onError(String message) {
+                    if (handle.isCancelled()) return;
+                    if (callback != null) {
+                        callback.onResult(createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE));
+                    }
+                }
+            });
+        } else {
+            // For unit testing with mock HTTP client or unauthenticated execution
+            performSearchRequest(ENDPOINT_DAILY, "test-token", query, maxResults, handle, callback, false);
+        }
+
+        return handle;
+    }
+
+    private void performSearchRequest(final String endpoint, final String accessToken,
+                                      final String query, final int maxResults,
+                                      final ToolCancellable handle, final ToolCallback callback,
+                                      final boolean isRetry) {
+        if (handle.isCancelled()) return;
+
+        String payload = buildSearchPayload(projectId, query, maxResults);
+        Request request;
+        try {
+            Request.Builder reqBuilder = new Request.Builder()
+                    .url(endpoint)
+                    .addHeader("User-Agent", "antigravity/ide/2.11.0 darwin/arm64")
+                    .addHeader("Accept", "text/event-stream")
+                    .addHeader("Content-Type", "application/json")
+                    .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), payload));
+
+            if (accessToken != null && !accessToken.trim().isEmpty()) {
+                reqBuilder.addHeader("Authorization", "Bearer " + accessToken.trim());
+            }
+
+            request = reqBuilder.build();
+        } catch (Exception e) {
+            if (!handle.isCancelled() && callback != null) {
+                callback.onResult(createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE));
+            }
+            return;
+        }
+
+        final Call call = httpClient.newCall(request);
+        handle.setCall(call);
+
+        call.enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                if (handle.isCancelled()) return;
+                if (!isRetry && ENDPOINT_DAILY.equals(endpoint)) {
+                    performSearchRequest(ENDPOINT_PROD, accessToken, query, maxResults, handle, callback, true);
+                    return;
+                }
+                if (callback != null) {
+                    callback.onResult(createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE));
+                }
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (handle.isCancelled()) {
+                    response.close();
+                    return;
+                }
+
+                int code = response.code();
+                if ((code == 503 || code == 404) && !isRetry && ENDPOINT_DAILY.equals(endpoint)) {
+                    response.close();
+                    performSearchRequest(ENDPOINT_PROD, accessToken, query, maxResults, handle, callback, true);
+                    return;
+                }
+
+                try (ResponseBody responseBody = response.body()) {
+                    if (!response.isSuccessful() || responseBody == null) {
+                        if (callback != null) {
+                            callback.onResult(createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE));
+                        }
+                        return;
+                    }
+
+                    String sseText = responseBody.string();
+                    ToolResult result = parseSearchGroundingResponse(sseText);
+                    if (result.isError) {
+                        result = createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE);
+                    } else if (maxResults > 0 && result.sources.size() > maxResults) {
+                        result.sources = new ArrayList<>(result.sources.subList(0, maxResults));
+                    }
+
+                    if (callback != null) {
+                        callback.onResult(result);
+                    }
+                } catch (Exception e) {
+                    if (!handle.isCancelled() && callback != null) {
+                        callback.onResult(createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE));
+                    }
+                }
+            }
+        });
     }
 }
