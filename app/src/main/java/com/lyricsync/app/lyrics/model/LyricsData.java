@@ -10,12 +10,15 @@ public class LyricsData {
     public List<LyricsLine> lines = new ArrayList<>();
     public String provider;
     public String translationLang;
+    public boolean hasTransliteration;
+    public String sourceScript;
 
     public static class LyricsLine {
         public long startTime;
         public long endTime;
         public String text;
         public String translation;
+        public String romanji;
         public List<Word> words = new ArrayList<>();
         public boolean isInterlude;
         public List<LyricsLine> backgroundVocals;
@@ -58,6 +61,7 @@ public class LyricsData {
         public long startTime;
         public long endTime;
         public String text;
+        public String romanji;
 
         public Word() {}
 
@@ -65,6 +69,13 @@ public class LyricsData {
             this.startTime = startTime;
             this.endTime = endTime;
             this.text = text;
+        }
+
+        public Word(long startTime, long endTime, String text, String romanji) {
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.text = text;
+            this.romanji = romanji;
         }
     }
 
