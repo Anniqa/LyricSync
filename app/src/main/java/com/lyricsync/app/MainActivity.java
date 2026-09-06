@@ -2079,7 +2079,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         addUserChatBubble(msg.content);
                     } else {
                         TextView bubble = addAiChatBubble("");
-                        CleanMarkdownFormatter.formatClean(msg.content, false, bubble);
+                        bubble.setText(CleanMarkdownFormatter.formatClean(msg.content, false));
                     }
                 }
             }

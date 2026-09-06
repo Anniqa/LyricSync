@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ArgbEvaluator;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
+import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -18,6 +19,7 @@ import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -1804,7 +1806,7 @@ public class FloatingOverlayService extends Service {
                         addUserChatBubble(msg.content);
                     } else {
                         TextView bubble = addAiChatBubble("");
-                        CleanMarkdownFormatter.formatClean(msg.content, false, bubble);
+                        bubble.setText(CleanMarkdownFormatter.formatClean(msg.content, false));
                     }
                 }
             }
