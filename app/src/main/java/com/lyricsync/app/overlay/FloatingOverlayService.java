@@ -1589,7 +1589,7 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
                         activeTransliterationCall = null;
-                        if (currentTrack == null || !track.title.equals(currentTrack.title)) return;
+                        if (currentTrack == null || !java.util.Objects.equals(track.title, currentTrack.title)) return;
                         currentLyrics = enrichedData;
                         if (highlighter != null) {
                             highlighter.setTransliterationEnabled(true);
@@ -1614,14 +1614,14 @@ public class FloatingOverlayService extends Service {
     }
 
     public void toggleRomaji() {
-        if (highlighter == null) return;
-        boolean newState = !highlighter.isTransliterationEnabled();
-        highlighter.setTransliterationEnabled(newState);
-        sharedPrefs.edit().putBoolean("pref_romaji_enabled", newState).apply();
         if (overlayRomajiSwitch != null) {
-            overlayRomajiSwitch.setChecked(newState);
+            overlayRomajiSwitch.toggle();
+        } else if (highlighter != null) {
+            boolean newState = !highlighter.isTransliterationEnabled();
+            highlighter.setTransliterationEnabled(newState);
+            sharedPrefs.edit().putBoolean("pref_romaji_enabled", newState).apply();
+            Toast.makeText(this, newState ? R.string.romaji_enabled : R.string.romaji_disabled, Toast.LENGTH_SHORT).show();
         }
-        Toast.makeText(this, newState ? R.string.romaji_enabled : R.string.romaji_disabled, Toast.LENGTH_SHORT).show();
     }
 
     private void submitAiChatInput() {

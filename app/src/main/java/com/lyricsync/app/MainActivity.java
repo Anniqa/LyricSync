@@ -1747,7 +1747,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
                         activeTransliterationCall = null;
-                        if (currentTrack != null && currentTrack.title != null && !currentTrack.title.equals(track.title)) return;
+                        if (currentTrack == null || !java.util.Objects.equals(track.title, currentTrack.title)) return;
                         lyricsData = enrichedData;
                         if (lyricsCacheManager != null && currentTrack != null) {
                             lyricsCacheManager.cache(currentTrack, enrichedData);
