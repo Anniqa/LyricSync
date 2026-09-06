@@ -59,6 +59,7 @@ public class AntigravityQuotaClient {
 
     /**
      * Parses the JSON payload from retrieveUserQuotaSummary into a QuotaSummary domain object.
+     * Uses resilient item-by-item parsing so a malformed group or bucket does not abort other entries.
      */
     public static QuotaSummary parseQuota(String json) {
         QuotaSummary summary = new QuotaSummary();
@@ -75,34 +76,42 @@ public class AntigravityQuotaClient {
             if (root.has("groups") && root.get("groups").isJsonArray()) {
                 JsonArray groups = root.getAsJsonArray("groups");
                 for (JsonElement groupElem : groups) {
-                    if (!groupElem.isJsonObject()) continue;
-                    JsonObject group = groupElem.getAsJsonObject();
-                    if (group.has("buckets") && group.get("buckets").isJsonArray()) {
-                        JsonArray buckets = group.getAsJsonArray("buckets");
-                        for (JsonElement bucketElem : buckets) {
-                            if (!bucketElem.isJsonObject()) continue;
-                            JsonObject bucket = bucketElem.getAsJsonObject();
-                            String bucketId = bucket.has("bucketId") && !bucket.get("bucketId").isJsonNull()
-                                    ? bucket.get("bucketId").getAsString() : "";
-                            float fraction = bucket.has("remainingFraction") && !bucket.get("remainingFraction").isJsonNull()
-                                    ? bucket.get("remainingFraction").getAsFloat() : 0.0f;
-                            String resetTime = bucket.has("resetTime") && !bucket.get("resetTime").isJsonNull()
-                                    ? bucket.get("resetTime").getAsString() : null;
+                    try {
+                        if (!groupElem.isJsonObject()) continue;
+                        JsonObject group = groupElem.getAsJsonObject();
+                        if (group.has("buckets") && group.get("buckets").isJsonArray()) {
+                            JsonArray buckets = group.getAsJsonArray("buckets");
+                            for (JsonElement bucketElem : buckets) {
+                                try {
+                                    if (!bucketElem.isJsonObject()) continue;
+                                    JsonObject bucket = bucketElem.getAsJsonObject();
+                                    String bucketId = bucket.has("bucketId") && !bucket.get("bucketId").isJsonNull()
+                                            ? bucket.get("bucketId").getAsString() : "";
+                                    float fraction = bucket.has("remainingFraction") && !bucket.get("remainingFraction").isJsonNull()
+                                            ? bucket.get("remainingFraction").getAsFloat() : 0.0f;
+                                    String resetTime = bucket.has("resetTime") && !bucket.get("resetTime").isJsonNull()
+                                            ? bucket.get("resetTime").getAsString() : null;
 
-                            if ("gemini-weekly".equalsIgnoreCase(bucketId)) {
-                                summary.geminiWeeklyFraction = fraction;
-                                summary.geminiWeeklyResetTime = resetTime;
-                            } else if ("gemini-5h".equalsIgnoreCase(bucketId)) {
-                                summary.gemini5hFraction = fraction;
-                                summary.gemini5hResetTime = resetTime;
-                            } else if ("third-party-weekly".equalsIgnoreCase(bucketId) || "3p-weekly".equalsIgnoreCase(bucketId)) {
-                                summary.thirdPartyWeeklyFraction = fraction;
-                                summary.thirdPartyWeeklyResetTime = resetTime;
-                            } else if ("third-party-5h".equalsIgnoreCase(bucketId) || "3p-5h".equalsIgnoreCase(bucketId)) {
-                                summary.thirdParty5hFraction = fraction;
-                                summary.thirdParty5hResetTime = resetTime;
+                                    if ("gemini-weekly".equalsIgnoreCase(bucketId)) {
+                                        summary.geminiWeeklyFraction = fraction;
+                                        summary.geminiWeeklyResetTime = resetTime;
+                                    } else if ("gemini-5h".equalsIgnoreCase(bucketId)) {
+                                        summary.gemini5hFraction = fraction;
+                                        summary.gemini5hResetTime = resetTime;
+                                    } else if ("third-party-weekly".equalsIgnoreCase(bucketId) || "3p-weekly".equalsIgnoreCase(bucketId)) {
+                                        summary.thirdPartyWeeklyFraction = fraction;
+                                        summary.thirdPartyWeeklyResetTime = resetTime;
+                                    } else if ("third-party-5h".equalsIgnoreCase(bucketId) || "3p-5h".equalsIgnoreCase(bucketId)) {
+                                        summary.thirdParty5hFraction = fraction;
+                                        summary.thirdParty5hResetTime = resetTime;
+                                    }
+                                } catch (Exception ignored) {
+                                    // Skip malformed individual bucket
+                                }
                             }
                         }
+                    } catch (Exception ignored) {
+                        // Skip malformed group
                     }
                 }
             }
@@ -113,6 +122,7 @@ public class AntigravityQuotaClient {
 
     /**
      * Parses the JSON payload from fetchAvailableModels, filtering out internal models.
+     * Uses resilient item-by-item parsing so a malformed model entry does not discard valid models.
      */
     public static List<AntigravityModel> parseModels(String json) {
         List<AntigravityModel> models = new ArrayList<>();
@@ -129,34 +139,38 @@ public class AntigravityQuotaClient {
             if (root.has("models") && root.get("models").isJsonObject()) {
                 JsonObject modelsObj = root.getAsJsonObject("models");
                 for (Map.Entry<String, JsonElement> entry : modelsObj.entrySet()) {
-                    String modelId = entry.getKey();
-                    if (!entry.getValue().isJsonObject()) continue;
-                    JsonObject mObj = entry.getValue().getAsJsonObject();
+                    try {
+                        String modelId = entry.getKey();
+                        if (!entry.getValue().isJsonObject()) continue;
+                        JsonObject mObj = entry.getValue().getAsJsonObject();
 
-                    boolean isInternal = mObj.has("isInternal") && !mObj.get("isInternal").isJsonNull()
-                            && mObj.get("isInternal").getAsBoolean();
-                    if (isInternal) {
-                        continue;
+                        boolean isInternal = mObj.has("isInternal") && !mObj.get("isInternal").isJsonNull()
+                                && mObj.get("isInternal").getAsBoolean();
+                        if (isInternal) {
+                            continue;
+                        }
+                        if ("chat_20706".equalsIgnoreCase(modelId) || "chat_23310".equalsIgnoreCase(modelId)) {
+                            continue;
+                        }
+
+                        String displayName = mObj.has("displayName") && !mObj.get("displayName").isJsonNull()
+                                ? mObj.get("displayName").getAsString() : modelId;
+
+                        int maxOutputTokens = 0;
+                        if (mObj.has("maxOutputTokens") && !mObj.get("maxOutputTokens").isJsonNull()) {
+                            maxOutputTokens = mObj.get("maxOutputTokens").getAsInt();
+                        } else if (mObj.has("maxTokens") && !mObj.get("maxTokens").isJsonNull()) {
+                            maxOutputTokens = mObj.get("maxTokens").getAsInt();
+                        }
+
+                        boolean supportsThinking = mObj.has("supportsThinking") && !mObj.get("supportsThinking").isJsonNull()
+                                && mObj.get("supportsThinking").getAsBoolean();
+
+                        AntigravityModel model = new AntigravityModel(modelId, displayName, maxOutputTokens, supportsThinking, false);
+                        models.add(model);
+                    } catch (Exception ignored) {
+                        // Skip malformed model entry, allowing other valid models to be parsed
                     }
-                    if ("chat_20706".equalsIgnoreCase(modelId) || "chat_23310".equalsIgnoreCase(modelId)) {
-                        continue;
-                    }
-
-                    String displayName = mObj.has("displayName") && !mObj.get("displayName").isJsonNull()
-                            ? mObj.get("displayName").getAsString() : modelId;
-
-                    int maxOutputTokens = 0;
-                    if (mObj.has("maxOutputTokens") && !mObj.get("maxOutputTokens").isJsonNull()) {
-                        maxOutputTokens = mObj.get("maxOutputTokens").getAsInt();
-                    } else if (mObj.has("maxTokens") && !mObj.get("maxTokens").isJsonNull()) {
-                        maxOutputTokens = mObj.get("maxTokens").getAsInt();
-                    }
-
-                    boolean supportsThinking = mObj.has("supportsThinking") && !mObj.get("supportsThinking").isJsonNull()
-                            && mObj.get("supportsThinking").getAsBoolean();
-
-                    AntigravityModel model = new AntigravityModel(modelId, displayName, maxOutputTokens, supportsThinking, false);
-                    models.add(model);
                 }
             }
         } catch (Exception ignored) {}
@@ -175,19 +189,25 @@ public class AntigravityQuotaClient {
             return;
         }
 
-        authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
-            @Override
-            public void onTokenReady(String accessToken) {
-                executeFetchModels(accessToken, callback);
-            }
-
-            @Override
-            public void onError(String message) {
-                if (callback != null) {
-                    callback.onError(message);
+        try {
+            authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
+                @Override
+                public void onTokenReady(String accessToken) {
+                    executeFetchModels(accessToken, callback);
                 }
+
+                @Override
+                public void onError(String message) {
+                    if (callback != null) {
+                        callback.onError(message);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            if (callback != null) {
+                callback.onError("Failed to acquire access token: " + e.getMessage());
             }
-        });
+        }
     }
 
     private void executeFetchModels(String accessToken, final ModelDiscoveryCallback callback) {
@@ -211,6 +231,7 @@ public class AntigravityQuotaClient {
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
+                    List<AntigravityModel> models = null;
                     try (ResponseBody responseBody = response.body()) {
                         if (responseBody == null) {
                             if (callback != null) {
@@ -227,14 +248,17 @@ public class AntigravityQuotaClient {
                             return;
                         }
 
-                        List<AntigravityModel> models = parseModels(responseString);
-                        if (callback != null) {
-                            callback.onModelsLoaded(models);
-                        }
+                        models = parseModels(responseString);
                     } catch (Exception e) {
                         if (callback != null) {
                             callback.onError("Error parsing models response: " + e.getMessage());
                         }
+                        return;
+                    }
+
+                    // Invoke success callback outside the parsing try-catch to uphold single-callback contract
+                    if (callback != null) {
+                        callback.onModelsLoaded(models);
                     }
                 }
             });
@@ -256,19 +280,25 @@ public class AntigravityQuotaClient {
             return;
         }
 
-        authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
-            @Override
-            public void onTokenReady(String accessToken) {
-                executeFetchQuota(accessToken, callback);
-            }
-
-            @Override
-            public void onError(String message) {
-                if (callback != null) {
-                    callback.onError(message);
+        try {
+            authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
+                @Override
+                public void onTokenReady(String accessToken) {
+                    executeFetchQuota(accessToken, callback);
                 }
+
+                @Override
+                public void onError(String message) {
+                    if (callback != null) {
+                        callback.onError(message);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            if (callback != null) {
+                callback.onError("Failed to acquire access token: " + e.getMessage());
             }
-        });
+        }
     }
 
     private void executeFetchQuota(String accessToken, final QuotaCallback callback) {
@@ -293,6 +323,7 @@ public class AntigravityQuotaClient {
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
+                    QuotaSummary summary = null;
                     try (ResponseBody responseBody = response.body()) {
                         if (responseBody == null) {
                             if (callback != null) {
@@ -309,14 +340,17 @@ public class AntigravityQuotaClient {
                             return;
                         }
 
-                        QuotaSummary summary = parseQuota(responseString);
-                        if (callback != null) {
-                            callback.onQuotaLoaded(summary);
-                        }
+                        summary = parseQuota(responseString);
                     } catch (Exception e) {
                         if (callback != null) {
                             callback.onError("Error parsing quota response: " + e.getMessage());
                         }
+                        return;
+                    }
+
+                    // Invoke success callback outside the parsing try-catch to uphold single-callback contract
+                    if (callback != null) {
+                        callback.onQuotaLoaded(summary);
                     }
                 }
             });

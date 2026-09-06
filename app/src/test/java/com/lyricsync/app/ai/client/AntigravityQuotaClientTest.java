@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import okhttp3.Interceptor;
@@ -100,6 +101,18 @@ public class AntigravityQuotaClientTest {
     }
 
     @Test
+    public void testParseQuotaResilienceWithMalformedBucket() {
+        String json = "{\"groups\":[{\"buckets\":[" +
+                "\"malformed_bucket_string\"," +
+                "{\"bucketId\":\"gemini-weekly\",\"remainingFraction\":0.77,\"resetTime\":\"2026-09-10T12:00:00Z\"}" +
+                "]}]}";
+        QuotaSummary summary = AntigravityQuotaClient.parseQuota(json);
+        assertNotNull(summary);
+        assertEquals(0.77f, summary.geminiWeeklyFraction, 0.001f);
+        assertEquals("2026-09-10T12:00:00Z", summary.geminiWeeklyResetTime);
+    }
+
+    @Test
     public void testParseAvailableModelsJson() {
         String json = "{\"models\":{" +
                 "\"gemini-2.5-flash\":{\"displayName\":\"Gemini 2.5 Flash\",\"maxOutputTokens\":65536,\"supportsThinking\":true}," +
@@ -148,6 +161,18 @@ public class AntigravityQuotaClientTest {
     }
 
     @Test
+    public void testParseModelsResilienceWithMalformedItem() {
+        String json = "{\"models\":{" +
+                "\"broken-model\": \"not an object\"," +
+                "\"gemini-2.5-flash\":{\"displayName\":\"Gemini 2.5 Flash\",\"maxOutputTokens\":65536}" +
+                "}}";
+        List<AntigravityModel> models = AntigravityQuotaClient.parseModels(json);
+        assertNotNull(models);
+        assertEquals(1, models.size());
+        assertEquals("gemini-2.5-flash", models.get(0).id);
+    }
+
+    @Test
     public void testFetchModelsSuccess() throws InterruptedException {
         fakeAuthManager.mockToken = "ya29.valid-mock-token";
         mockInterceptor.modelsResponseJson = "{\"models\":{\"gemini-2.5-flash\":{\"displayName\":\"Gemini 2.5 Flash\",\"maxOutputTokens\":65536}}}";
@@ -184,6 +209,33 @@ public class AntigravityQuotaClientTest {
     }
 
     @Test
+    public void testFetchModelsCallbackExceptionDoesNotTriggerOnError() throws InterruptedException {
+        fakeAuthManager.mockToken = "ya29.valid-mock-token";
+        mockInterceptor.modelsResponseJson = "{\"models\":{\"gemini-2.5-flash\":{\"displayName\":\"Gemini 2.5 Flash\"}}}";
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicBoolean errorTriggered = new AtomicBoolean(false);
+
+        quotaClient.fetchModels(new AntigravityQuotaClient.ModelDiscoveryCallback() {
+            @Override
+            public void onModelsLoaded(List<AntigravityModel> models) {
+                latch.countDown();
+                throw new RuntimeException("Simulated caller exception in onModelsLoaded");
+            }
+
+            @Override
+            public void onError(String error) {
+                errorTriggered.set(true);
+            }
+        });
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        // Wait briefly to ensure onError wasn't called asynchronously
+        Thread.sleep(50);
+        assertFalse("onError must NOT be called if onModelsLoaded threw an exception", errorTriggered.get());
+    }
+
+    @Test
     public void testFetchModelsAuthFailure() throws InterruptedException {
         fakeAuthManager.mockToken = null;
         fakeAuthManager.mockError = "Not authenticated: no refresh token available";
@@ -208,6 +260,31 @@ public class AntigravityQuotaClientTest {
         assertNotNull(errorRef.get());
         assertTrue(errorRef.get().contains("Not authenticated"));
         assertEquals(0, mockInterceptor.requestCount);
+    }
+
+    @Test
+    public void testFetchModelsSynchronousTokenExceptionHandled() throws InterruptedException {
+        fakeAuthManager.throwSynchronously = true;
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<String> errorRef = new AtomicReference<>();
+
+        quotaClient.fetchModels(new AntigravityQuotaClient.ModelDiscoveryCallback() {
+            @Override
+            public void onModelsLoaded(List<AntigravityModel> models) {
+                latch.countDown();
+            }
+
+            @Override
+            public void onError(String error) {
+                errorRef.set(error);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertNotNull(errorRef.get());
+        assertTrue(errorRef.get().contains("Failed to acquire access token"));
     }
 
     @Test
@@ -275,6 +352,32 @@ public class AntigravityQuotaClientTest {
     }
 
     @Test
+    public void testFetchQuotaCallbackExceptionDoesNotTriggerOnError() throws InterruptedException {
+        fakeAuthManager.mockToken = "ya29.valid-mock-token";
+        mockInterceptor.quotaResponseJson = "{\"groups\":[{\"displayName\":\"Gemini Models\",\"buckets\":[{\"bucketId\":\"gemini-5h\",\"remainingFraction\":0.99}]}]}";
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicBoolean errorTriggered = new AtomicBoolean(false);
+
+        quotaClient.fetchQuota(new AntigravityQuotaClient.QuotaCallback() {
+            @Override
+            public void onQuotaLoaded(QuotaSummary summary) {
+                latch.countDown();
+                throw new RuntimeException("Simulated caller exception in onQuotaLoaded");
+            }
+
+            @Override
+            public void onError(String error) {
+                errorTriggered.set(true);
+            }
+        });
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        Thread.sleep(50);
+        assertFalse("onError must NOT be called if onQuotaLoaded threw an exception", errorTriggered.get());
+    }
+
+    @Test
     public void testFetchQuotaAuthFailure() throws InterruptedException {
         fakeAuthManager.mockToken = null;
         fakeAuthManager.mockError = "Authentication expired";
@@ -299,6 +402,31 @@ public class AntigravityQuotaClientTest {
         assertNotNull(errorRef.get());
         assertTrue(errorRef.get().contains("Authentication expired"));
         assertEquals(0, mockInterceptor.requestCount);
+    }
+
+    @Test
+    public void testFetchQuotaSynchronousTokenExceptionHandled() throws InterruptedException {
+        fakeAuthManager.throwSynchronously = true;
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<String> errorRef = new AtomicReference<>();
+
+        quotaClient.fetchQuota(new AntigravityQuotaClient.QuotaCallback() {
+            @Override
+            public void onQuotaLoaded(QuotaSummary summary) {
+                latch.countDown();
+            }
+
+            @Override
+            public void onError(String error) {
+                errorRef.set(error);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertNotNull(errorRef.get());
+        assertTrue(errorRef.get().contains("Failed to acquire access token"));
     }
 
     @Test
@@ -347,6 +475,7 @@ public class AntigravityQuotaClientTest {
     static class FakeAuthManager extends AntigravityAuthManager {
         volatile String mockToken;
         volatile String mockError;
+        volatile boolean throwSynchronously = false;
 
         FakeAuthManager() {
             super((android.content.SharedPreferences) null, null);
@@ -354,6 +483,9 @@ public class AntigravityQuotaClientTest {
 
         @Override
         public void getValidAccessToken(TokenCallback callback) {
+            if (throwSynchronously) {
+                throw new IllegalStateException("Simulated synchronous token exception");
+            }
             if (callback == null) return;
             if (mockToken != null) {
                 callback.onTokenReady(mockToken);
