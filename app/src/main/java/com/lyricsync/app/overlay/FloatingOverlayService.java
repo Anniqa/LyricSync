@@ -135,6 +135,7 @@ public class FloatingOverlayService extends Service {
     private androidx.appcompat.widget.SwitchCompat overlayResizeSwitch;
     private boolean showResizeHandle = false;
     private com.lyricsync.app.lyrics.translation.GoogleTranslateService translateService;
+    private com.lyricsync.app.lyrics.translation.AiTranslationService aiTranslationService;
     private androidx.appcompat.widget.SwitchCompat overlayTranslateSwitch;
     private boolean translationEnabled = false;
     private SyllableHighlighter highlighter;
@@ -227,6 +228,12 @@ public class FloatingOverlayService extends Service {
 
         sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
         translateService = new com.lyricsync.app.lyrics.translation.GoogleTranslateService();
+        com.lyricsync.app.ai.auth.AntigravityAuthManager authManager =
+                com.lyricsync.app.ai.auth.AntigravityAuthManager.getInstance(this);
+        com.lyricsync.app.ai.client.AntigravityApiClient apiClient =
+                new com.lyricsync.app.ai.client.AntigravityApiClient(authManager);
+        aiTranslationService = new com.lyricsync.app.lyrics.translation.AiTranslationService(
+                this, authManager, apiClient, translateService);
         translationEnabled = sharedPrefs.getBoolean(
                 com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
         loadTypefaces();
@@ -1279,6 +1286,9 @@ public class FloatingOverlayService extends Service {
         if (translateService != null) {
             translateService.cancel();
         }
+        if (aiTranslationService != null) {
+            aiTranslationService.cancel();
+        }
         lyricsManager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
             @Override
             public void onLyricsLoaded(LyricsData lyrics) {
@@ -1380,7 +1390,7 @@ public class FloatingOverlayService extends Service {
     }
 
     private void fetchTranslationForCurrentLyrics() {
-        if (currentLyrics == null || currentLyrics.isEmpty() || translateService == null) return;
+        if (currentLyrics == null || currentLyrics.isEmpty()) return;
         final String targetLang = sharedPrefs.getString(
                 com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG,
                 com.lyricsync.app.lyrics.translation.GoogleTranslateService.DEFAULT_TARGET_LANG);
@@ -1388,7 +1398,8 @@ public class FloatingOverlayService extends Service {
         final LyricsData targetLyrics = currentLyrics;
         final TrackInfo targetTrack = currentTrack;
 
-        translateService.translateLines(targetLyrics.lines, targetLang, new com.lyricsync.app.lyrics.translation.GoogleTranslateService.TranslationCallback() {
+        com.lyricsync.app.lyrics.translation.GoogleTranslateService.TranslationCallback callback =
+                new com.lyricsync.app.lyrics.translation.GoogleTranslateService.TranslationCallback() {
             @Override
             public void onSuccess(com.lyricsync.app.lyrics.translation.GoogleTranslateParser.ParseResult result, String resolvedLang) {
                 if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
@@ -1412,7 +1423,19 @@ public class FloatingOverlayService extends Service {
             public void onError(Exception error) {
                 AppLog.w(TAG, "Translation error: " + error.getMessage());
             }
-        });
+        };
+
+        boolean aiEnabled = sharedPrefs.getBoolean(
+                com.lyricsync.app.lyrics.translation.AiTranslationService.PREF_AI_TRANSLATION_ENABLED, true);
+        com.lyricsync.app.ai.auth.AntigravityAuthManager auth =
+                com.lyricsync.app.ai.auth.AntigravityAuthManager.getInstance(this);
+        boolean isAuthenticated = auth != null && auth.isAuthenticated();
+
+        if (aiEnabled && isAuthenticated && aiTranslationService != null) {
+            aiTranslationService.translateLyrics(targetLyrics.lines, targetLang, callback);
+        } else if (translateService != null) {
+            translateService.translateLines(targetLyrics.lines, targetLang, callback);
+        }
     }
 
     /** Tap a line to jump the player there. No-op on players that don't support seeking. */
@@ -1554,6 +1577,9 @@ public class FloatingOverlayService extends Service {
         isDestroyed = true;
         running = false;
         super.onDestroy();
+        if (aiTranslationService != null) {
+            aiTranslationService.cancel();
+        }
         if (translateService != null) {
             translateService.cancel();
         }
