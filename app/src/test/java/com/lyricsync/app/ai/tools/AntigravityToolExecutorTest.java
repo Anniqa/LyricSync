@@ -623,6 +623,39 @@ public class AntigravityToolExecutorTest {
         assertTrue(handle.isCancelled());
     }
 
+    @Test
+    public void testExecuteWebSearchTruncatesSourcesAndContentMatchingMaxResults() throws InterruptedException {
+        mockInterceptor.contentType = "text/event-stream";
+        mockInterceptor.responseBody = "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Multiple sources info\"}]}, \"groundingMetadata\": {\"groundingChunks\": [{\"web\": {\"title\": \"Source 1\", \"uri\": \"https://example.com/1\"}}, {\"web\": {\"title\": \"Source 2\", \"uri\": \"https://example.com/2\"}}, {\"web\": {\"title\": \"Source 3\", \"uri\": \"https://example.com/3\"}}]}}]}\n\n";
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<AntigravityToolExecutor.ToolResult> resultRef = new AtomicReference<>();
+
+        executor.executeWebSearch("Queen Bohemian Rhapsody", 1, new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        AntigravityToolExecutor.ToolResult result = resultRef.get();
+        assertNotNull(result);
+        assertFalse(result.isError);
+
+        // Verify Java List is truncated to 1
+        assertEquals(1, result.sources.size());
+        assertEquals("Source 1", result.sources.get(0).title);
+
+        // Verify JSON content is also synchronized and truncated to 1
+        JsonObject json = JsonParser.parseString(result.content).getAsJsonObject();
+        com.google.gson.JsonArray sourcesJson = json.getAsJsonArray("sources");
+        assertNotNull(sourcesJson);
+        assertEquals(1, sourcesJson.size());
+        assertEquals("Source 1", sourcesJson.get(0).getAsJsonObject().get("title").getAsString());
+    }
+
     // --- Mock HTTP Interceptor Helper ---
 
     static class MockHttpInterceptor implements Interceptor {

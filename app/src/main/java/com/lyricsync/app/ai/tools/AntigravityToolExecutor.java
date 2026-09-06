@@ -147,7 +147,7 @@ public class AntigravityToolExecutor {
 
     private final AntigravityAuthManager authManager;
     private final OkHttpClient httpClient;
-    private String projectId = DEFAULT_PROJECT;
+    private volatile String projectId = DEFAULT_PROJECT;
 
     public AntigravityToolExecutor() {
         this(null, createDefaultHttpClient());
@@ -743,6 +743,10 @@ public class AntigravityToolExecutor {
      * and webSearchQueries. Resilient against malformed or error frames.
      */
     public static ToolResult parseSearchGroundingResponse(String sseStreamText) {
+        return parseSearchGroundingResponse(sseStreamText, -1);
+    }
+
+    public static ToolResult parseSearchGroundingResponse(String sseStreamText, int maxResults) {
         if (sseStreamText == null || sseStreamText.trim().isEmpty()) {
             return createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE);
         }
@@ -842,6 +846,10 @@ public class AntigravityToolExecutor {
                     sources.add(new SourceItem(c.title, c.url));
                 }
             }
+        }
+
+        if (maxResults > 0 && sources.size() > maxResults) {
+            sources = new ArrayList<>(sources.subList(0, maxResults));
         }
 
         JsonObject output = new JsonObject();
@@ -1097,11 +1105,23 @@ public class AntigravityToolExecutor {
                     }
 
                     String sseText = responseBody.string();
-                    ToolResult result = parseSearchGroundingResponse(sseText);
+                    ToolResult result = parseSearchGroundingResponse(sseText, maxResults);
                     if (result.isError) {
                         result = createGracefulErrorResult(FALLBACK_SEARCH_ERROR_MESSAGE);
                     } else if (maxResults > 0 && result.sources.size() > maxResults) {
                         result.sources = new ArrayList<>(result.sources.subList(0, maxResults));
+                        try {
+                            JsonObject json = JsonParser.parseString(result.content).getAsJsonObject();
+                            JsonArray newSourcesArr = new JsonArray();
+                            for (SourceItem s : result.sources) {
+                                JsonObject sObj = new JsonObject();
+                                sObj.addProperty("title", s.title);
+                                sObj.addProperty("url", s.url);
+                                newSourcesArr.add(sObj);
+                            }
+                            json.add("sources", newSourcesArr);
+                            result.content = json.toString();
+                        } catch (Exception ignored) {}
                     }
 
                     if (callback != null) {
