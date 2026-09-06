@@ -112,6 +112,7 @@ public class AntigravityApiClientToolLoopTest {
         assertTrue(tools.size() >= 1);
         JsonObject tool0 = tools.get(0).getAsJsonObject();
         assertTrue("tool object must have functionDeclarations", tool0.has("functionDeclarations"));
+        assertFalse("tool object must NOT have built-in googleSearch", tool0.has("googleSearch"));
 
         JsonArray decls = tool0.getAsJsonArray("functionDeclarations");
         assertEquals(2, decls.size());

@@ -274,7 +274,7 @@ public class AntigravityApiClient {
      *
      * @param modelId Model identifier (e.g. "gemini-3-flash", "claude-sonnet-4-6")
      * @param messages Conversation turns
-     * @param enableWebSearch When true, injects functionDeclarations and googleSearch tool
+     * @param enableWebSearch When true, injects agent functionDeclarations (web_search, web_fetch)
      * @param effortLevel Optional reasoning effort level ("low", "medium", "high")
      * @return Formatted JSON payload string
      */
@@ -298,12 +298,11 @@ public class AntigravityApiClient {
         JsonObject request = new JsonObject();
         request.add("contents", contents != null ? contents : new JsonArray());
 
-        // Inject tools if enabled
+        // Inject tools if enabled (agent function declarations: web_search, web_fetch)
         if (enableTools) {
             JsonArray tools = new JsonArray();
             JsonObject tool = new JsonObject();
             tool.add("functionDeclarations", buildToolDeclarations());
-            tool.add("googleSearch", new JsonObject());
             tools.add(tool);
             request.add("tools", tools);
         }

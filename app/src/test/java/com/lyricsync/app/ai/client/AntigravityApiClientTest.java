@@ -101,8 +101,9 @@ public class AntigravityApiClientTest {
         JsonArray tools = req.getAsJsonArray("tools");
         assertEquals(1, tools.size());
         JsonObject tool0 = tools.get(0).getAsJsonObject();
-        assertTrue("Tool should contain googleSearch", tool0.has("googleSearch"));
-        assertTrue(tool0.get("googleSearch").isJsonObject());
+        assertTrue("Tool should contain functionDeclarations", tool0.has("functionDeclarations"));
+        assertFalse("Tool must NOT contain googleSearch built-in tool alongside functionDeclarations to avoid Gemini API conflict",
+                tool0.has("googleSearch"));
     }
 
     @Test
