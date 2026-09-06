@@ -160,7 +160,7 @@ public class FloatingOverlayService extends Service {
     private TextView aiMoodBadge;
     private TextView aiSummaryText;
     private LinearLayout aiQuickChipsContainer;
-    private View aiChatScroll;
+    private ScrollView aiChatScroll;
     private LinearLayout aiChatMessages;
     private EditText aiChatInput;
     private ImageView aiChatSend;
