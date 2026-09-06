@@ -178,6 +178,10 @@ public class FloatingOverlayService extends Service {
     private EditText aiChatInput;
     private ImageView aiChatSend;
     private TextView aiQuotaBadge;
+    private LinearLayout aiToolStatusContainer;
+    private TextView aiToolStatusIcon;
+    private TextView aiToolStatusText;
+    private Runnable pendingToolStatusHide;
 
     // Secondary Window: Floating AI Bubble (Minimized mode)
     private View aiBubbleView;
@@ -1003,6 +1007,9 @@ public class FloatingOverlayService extends Service {
         aiChatInput = aiChatView.findViewById(R.id.ai_chat_input);
         aiChatSend = aiChatView.findViewById(R.id.ai_chat_send);
         aiQuotaBadge = aiChatView.findViewById(R.id.ai_quota_badge);
+        aiToolStatusContainer = aiChatView.findViewById(R.id.ai_tool_status_container);
+        aiToolStatusIcon = aiChatView.findViewById(R.id.ai_tool_status_icon);
+        aiToolStatusText = aiChatView.findViewById(R.id.ai_tool_status_text);
 
         if (aiMinimizeButton != null) {
             aiMinimizeButton.setOnClickListener(v -> {
@@ -1452,6 +1459,48 @@ public class FloatingOverlayService extends Service {
         activeChatCall = songChatManager.sendMessage(userQuery, aiWebSearchEnabled,
                 new AntigravityApiClient.StreamListener() {
                     @Override
+                    public void onToolExecuting(String toolName, String queryOrUrl) {
+                        handler.post(() -> {
+                            if (isDestroyed || aiToolStatusContainer == null) return;
+                            cancelPendingToolStatusHide();
+                            if ("web_fetch".equals(toolName)) {
+                                if (aiToolStatusIcon != null) aiToolStatusIcon.setText("🌐");
+                                String host = queryOrUrl;
+                                try {
+                                    android.net.Uri uri = android.net.Uri.parse(queryOrUrl);
+                                    if (uri.getHost() != null) host = uri.getHost();
+                                } catch (Exception ignored) {}
+                                if (aiToolStatusText != null) {
+                                    aiToolStatusText.setText("Membaca artikel: " + (host != null ? host : ""));
+                                }
+                            } else {
+                                if (aiToolStatusIcon != null) aiToolStatusIcon.setText("🔍");
+                                String query = queryOrUrl != null ? queryOrUrl : "";
+                                if (query.length() > 60) query = query.substring(0, 60) + "…";
+                                if (aiToolStatusText != null) {
+                                    aiToolStatusText.setText("Mencari di Google: \"" + query + "\"");
+                                }
+                            }
+                            aiToolStatusContainer.setVisibility(View.VISIBLE);
+                        });
+                    }
+
+                    @Override
+                    public void onToolCompleted(String toolName, int resultsCount) {
+                        handler.post(() -> {
+                            if (isDestroyed || aiToolStatusContainer == null) return;
+                            if (aiToolStatusText != null) {
+                                if ("web_fetch".equals(toolName)) {
+                                    aiToolStatusText.setText("✓ Artikel dibaca");
+                                } else {
+                                    aiToolStatusText.setText("✓ Ditemukan " + resultsCount + " sumber");
+                                }
+                            }
+                            scheduleToolStatusHide();
+                        });
+                    }
+
+                    @Override
                     public void onDelta(String textDelta) {
                         handler.post(() -> {
                             responseAcc.append(textDelta);
@@ -1467,6 +1516,7 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
                         handler.post(() -> {
+                            hideToolStatusNow();
                             if (aiBubble != null) {
                                 String finalContent = (fullText != null && !fullText.trim().isEmpty())
                                         ? fullText : responseAcc.toString();
@@ -1475,6 +1525,7 @@ public class FloatingOverlayService extends Service {
                             if (webSources != null && !webSources.isEmpty()) {
                                 displayWebSources(webSources);
                             }
+                            addSourceChipsBelowBubble(aiBubble, webSources);
                             if (aiChatScroll != null) {
                                 aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
                             }
@@ -1484,12 +1535,73 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onError(Exception error) {
                         handler.post(() -> {
+                            hideToolStatusNow();
                             if (aiBubble != null) {
                                 aiBubble.setText(CleanMarkdownFormatter.formatClean("Error: " + (error != null ? error.getMessage() : "Unknown error")));
                             }
                         });
                     }
                 });
+    }
+
+    private void cancelPendingToolStatusHide() {
+        if (pendingToolStatusHide != null) {
+            handler.removeCallbacks(pendingToolStatusHide);
+            pendingToolStatusHide = null;
+        }
+    }
+
+    private void scheduleToolStatusHide() {
+        cancelPendingToolStatusHide();
+        pendingToolStatusHide = () -> {
+            pendingToolStatusHide = null;
+            hideToolStatusNow();
+        };
+        handler.postDelayed(pendingToolStatusHide, 1200);
+    }
+
+    private void hideToolStatusNow() {
+        cancelPendingToolStatusHide();
+        if (aiToolStatusContainer != null) {
+            aiToolStatusContainer.setVisibility(View.GONE);
+        }
+    }
+
+    /** Clickable web-source chips appended below the last AI chat bubble (max 5). */
+    private void addSourceChipsBelowBubble(TextView aiBubble, List<String> webSources) {
+        if (aiBubble == null || aiChatMessages == null || webSources == null) return;
+        int added = 0;
+        for (String source : webSources) {
+            if (added >= 5) break;
+            if (source == null) continue;
+            final String url = source.trim();
+            if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
+            TextView chip = new TextView(this);
+            chip.setText(url);
+            chip.setTextColor(getResources().getColor(R.color.accent));
+            chip.setTextSize(10f);
+            chip.setBackgroundResource(R.drawable.bg_tip_box);
+            chip.setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3));
+            chip.setMaxLines(1);
+            chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.gravity = Gravity.START;
+            lp.setMargins(0, dpToPx(2), dpToPx(32), dpToPx(2));
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Toast.makeText(FloatingOverlayService.this, "Tidak dapat membuka link: " + url, Toast.LENGTH_SHORT).show();
+                }
+            });
+            aiChatMessages.addView(chip);
+            added++;
+        }
     }
 
     private void addUserChatBubble(String text) {

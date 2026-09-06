@@ -356,6 +356,41 @@
                                 android:orientation="vertical" />
                         </ScrollView>
 
+                        <!-- AI Tool Status Pill -->
+                        <LinearLayout
+                            android:id="@+id/ai_tool_status_container"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_tool_status_pill"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:paddingTop="5dp"
+                            android:paddingBottom="5dp"
+                            android:layout_marginTop="6dp"
+                            android:layout_gravity="center_horizontal"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:id="@+id/ai_tool_status_icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textSize="14sp" />
+
+                            <TextView
+                                android:id="@+id/ai_tool_status_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:textColor="#B8C4E0"
+                                android:textSize="12sp"
+                                android:maxLines="1"
+                                android:singleLine="true"
+                                android:ellipsize="end"
+                                android:maxWidth="240dp" />
+                        </LinearLayout>
+
                         <!-- Chat input row -->
                         <LinearLayout
                             android:layout_width="match_parent"

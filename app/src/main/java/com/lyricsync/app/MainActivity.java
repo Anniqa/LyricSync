@@ -151,6 +151,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private ImageView aiStudioWebSearchChip;
     private EditText aiStudioChatInput;
     private ImageView aiStudioChatSend;
+    private LinearLayout aiStudioToolStatusContainer;
+    private TextView aiStudioToolStatusIcon;
+    private TextView aiStudioToolStatusText;
+    private Runnable pendingToolStatusHide;
 
     private AntigravityAuthManager authManager;
     private AntigravityApiClient apiClient;
@@ -1055,6 +1059,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         aiStudioWebSearchChip = findViewById(R.id.ai_studio_web_search_chip);
         aiStudioChatInput = findViewById(R.id.ai_studio_chat_input);
         aiStudioChatSend = findViewById(R.id.ai_studio_chat_send);
+        aiStudioToolStatusContainer = findViewById(R.id.ai_tool_status_container);
+        aiStudioToolStatusIcon = findViewById(R.id.ai_tool_status_icon);
+        aiStudioToolStatusText = findViewById(R.id.ai_tool_status_text);
 
         boolean studioExpanded = prefs.getBoolean("ai_studio_expanded", true);
         if (aiStudioContent != null) {
@@ -1393,6 +1400,48 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         activeChatCall = songChatManager.sendMessage(userQuery, aiWebSearchEnabled,
                 new AntigravityApiClient.StreamListener() {
                     @Override
+                    public void onToolExecuting(String toolName, String queryOrUrl) {
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed() || aiStudioToolStatusContainer == null) return;
+                            cancelPendingToolStatusHide();
+                            if ("web_fetch".equals(toolName)) {
+                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setText("🌐");
+                                String host = queryOrUrl;
+                                try {
+                                    Uri uri = Uri.parse(queryOrUrl);
+                                    if (uri.getHost() != null) host = uri.getHost();
+                                } catch (Exception ignored) {}
+                                if (aiStudioToolStatusText != null) {
+                                    aiStudioToolStatusText.setText("Membaca artikel: " + (host != null ? host : ""));
+                                }
+                            } else {
+                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setText("🔍");
+                                String query = queryOrUrl != null ? queryOrUrl : "";
+                                if (query.length() > 60) query = query.substring(0, 60) + "…";
+                                if (aiStudioToolStatusText != null) {
+                                    aiStudioToolStatusText.setText("Mencari di Google: \"" + query + "\"");
+                                }
+                            }
+                            aiStudioToolStatusContainer.setVisibility(View.VISIBLE);
+                        });
+                    }
+
+                    @Override
+                    public void onToolCompleted(String toolName, int resultsCount) {
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed() || aiStudioToolStatusContainer == null) return;
+                            if (aiStudioToolStatusText != null) {
+                                if ("web_fetch".equals(toolName)) {
+                                    aiStudioToolStatusText.setText("✓ Artikel dibaca");
+                                } else {
+                                    aiStudioToolStatusText.setText("✓ Ditemukan " + resultsCount + " sumber");
+                                }
+                            }
+                            scheduleToolStatusHide();
+                        });
+                    }
+
+                    @Override
                     public void onDelta(String textDelta) {
                         runOnUiThread(() -> {
                             if (isFinishing() || isDestroyed()) return;
@@ -1411,6 +1460,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         runOnUiThread(() -> {
                             activeChatCall = null;
                             if (isFinishing() || isDestroyed()) return;
+                            hideToolStatusNow();
                             if (aiBubble != null) {
                                 String finalContent = (fullText != null && !fullText.trim().isEmpty())
                                         ? fullText : responseAcc.toString();
@@ -1419,6 +1469,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             if (webSources != null && !webSources.isEmpty()) {
                                 displayWebSources(webSources);
                             }
+                            addSourceChipsBelowBubble(aiBubble, webSources);
                             if (aiStudioChatScroll != null) {
                                 aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
                             }
@@ -1430,6 +1481,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         runOnUiThread(() -> {
                             activeChatCall = null;
                             if (isFinishing() || isDestroyed()) return;
+                            hideToolStatusNow();
                             if (aiBubble != null) {
                                 aiBubble.setText(CleanMarkdownFormatter.formatClean(
                                         "Error: " + (error != null ? error.getMessage() : "Unknown error")));
@@ -1437,6 +1489,65 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         });
                     }
                 });
+    }
+
+    private void cancelPendingToolStatusHide() {
+        if (pendingToolStatusHide != null) {
+            handler.removeCallbacks(pendingToolStatusHide);
+            pendingToolStatusHide = null;
+        }
+    }
+
+    private void scheduleToolStatusHide() {
+        cancelPendingToolStatusHide();
+        pendingToolStatusHide = () -> {
+            pendingToolStatusHide = null;
+            hideToolStatusNow();
+        };
+        handler.postDelayed(pendingToolStatusHide, 1200);
+    }
+
+    private void hideToolStatusNow() {
+        cancelPendingToolStatusHide();
+        if (aiStudioToolStatusContainer != null) {
+            aiStudioToolStatusContainer.setVisibility(View.GONE);
+        }
+    }
+
+    /** Clickable web-source chips appended below the last AI chat bubble (max 5). */
+    private void addSourceChipsBelowBubble(TextView aiBubble, List<String> webSources) {
+        if (aiBubble == null || aiStudioChatContainer == null || webSources == null) return;
+        int added = 0;
+        for (String source : webSources) {
+            if (added >= 5) break;
+            if (source == null) continue;
+            final String url = source.trim();
+            if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
+            TextView chip = new TextView(this);
+            chip.setText(url);
+            chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
+            chip.setTextSize(10f);
+            chip.setBackgroundResource(R.drawable.bg_tip_box);
+            chip.setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3));
+            chip.setMaxLines(1);
+            chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.gravity = Gravity.START;
+            lp.setMargins(0, dpToPx(2), dpToPx(32), dpToPx(2));
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Tidak dapat membuka link: " + url, Toast.LENGTH_SHORT).show();
+                }
+            });
+            aiStudioChatContainer.addView(chip);
+            added++;
+        }
     }
 
     private void addUserChatBubble(String text) {
