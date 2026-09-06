@@ -44,6 +44,8 @@ public class SyllableHighlighter {
         public InterludeDotView interludeView;
         public WordFlowLayout wordFlowLayout;
         public List<GradientWordView> wordViews;
+        public WordFlowLayout romajiWordFlowLayout;
+        public List<GradientWordView> romajiWordViews;
         public List<List<GradientWordView>> backgroundWordViews;
         public List<boolean[]> bgWordLastActive;
         public List<View> bgFlowLayouts;
@@ -69,6 +71,67 @@ public class SyllableHighlighter {
 
     public void setAnimConfig(AnimConfig config) {
         this.animConfig = config;
+    }
+
+    private boolean transliterationEnabled = true;
+
+    public void setTransliterationEnabled(boolean enabled) {
+        this.transliterationEnabled = enabled;
+        for (LineView lv : lineViews) {
+            if (lv.romajiWordFlowLayout != null) {
+                boolean hasRomanji = lv.line != null && hasAnyWordRomanji(lv.line);
+                lv.romajiWordFlowLayout.setVisibility(enabled && hasRomanji ? View.VISIBLE : View.GONE);
+            }
+        }
+    }
+
+    public boolean isTransliterationEnabled() {
+        return transliterationEnabled;
+    }
+
+    public boolean hasAnyWordRomanji(LyricsData.LyricsLine line) {
+        if (line == null || line.words == null) return false;
+        for (LyricsData.Word w : line.words) {
+            if (w.romanji != null && !w.romanji.trim().isEmpty()) return true;
+        }
+        return false;
+    }
+
+    public List<LineView> getLineViews() {
+        return lineViews;
+    }
+
+    public void updateLineTransliteration(int index, List<String> wordsRomanji, String lineRomanji) {
+        if (index < 0 || index >= lineViews.size()) return;
+        LineView lv = lineViews.get(index);
+        if (lv.line == null) return;
+        lv.line.romanji = lineRomanji;
+        if (wordsRomanji != null && lv.line.words != null) {
+            for (int i = 0; i < Math.min(wordsRomanji.size(), lv.line.words.size()); i++) {
+                lv.line.words.get(i).romanji = wordsRomanji.get(i);
+            }
+        }
+        boolean hasRomanji = hasAnyWordRomanji(lv.line);
+        if (lv.romajiWordFlowLayout == null) {
+            if (hasRomanji && lv.usePerWord && lv.rootView instanceof LinearLayout) {
+                setupRomajiLayer(lv.line, lv, (LinearLayout) lv.rootView);
+            }
+        } else {
+            if (lv.romajiWordViews != null && wordsRomanji != null) {
+                for (int i = 0; i < Math.min(wordsRomanji.size(), lv.romajiWordViews.size()); i++) {
+                    String r = wordsRomanji.get(i);
+                    if (r != null && !r.trim().isEmpty()) {
+                        GradientWordView wv = lv.romajiWordViews.get(i);
+                        wv.setText(r);
+                        if (lv.line.words != null && i < lv.line.words.size()) {
+                            LyricsData.Word w = lv.line.words.get(i);
+                            wv.initLetterEmphasis(r, w.startTime, w.endTime);
+                        }
+                    }
+                }
+            }
+            lv.romajiWordFlowLayout.setVisibility(transliterationEnabled && hasRomanji ? View.VISIBLE : View.GONE);
+        }
     }
 
     private boolean translationEnabled = false;
@@ -204,6 +267,10 @@ public class SyllableHighlighter {
         container.addView(flow);
         lv.wordFlowLayout = flow;
 
+        if (hasAnyWordRomanji(line)) {
+            setupRomajiLayer(line, lv, container);
+        }
+
         if (line.backgroundVocals != null && !line.backgroundVocals.isEmpty()) {
             lv.backgroundWordViews = new ArrayList<>();
             lv.bgFlowLayouts = new ArrayList<>();
@@ -234,6 +301,64 @@ public class SyllableHighlighter {
         }
 
         return container;
+    }
+
+    private void setupRomajiLayer(LyricsData.LyricsLine line, LineView lv, LinearLayout container) {
+        if (line == null || line.words == null || line.words.isEmpty()) return;
+        WordFlowLayout romajiFlow = new WordFlowLayout(context);
+        LinearLayout.LayoutParams romajiParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        romajiFlow.setLayoutParams(romajiParams);
+        romajiFlow.setPadding(0, dpToPx(1), 0, dpToPx(2));
+        romajiFlow.setClipChildren(false);
+        romajiFlow.setClipToPadding(false);
+
+        List<GradientWordView> romajiWordViews = new ArrayList<>();
+        float romajiFontSize = fontSizeSp * 0.82f;
+        int initialColor = lv.lastState == STATE_ACTIVE ? ACTIVE_COLOR : (lv.lastState == STATE_PAST ? PAST_COLOR : INACTIVE_COLOR);
+        for (int i = 0; i < line.words.size(); i++) {
+            LyricsData.Word word = line.words.get(i);
+            String rText = (word.romanji != null && !word.romanji.trim().isEmpty())
+                    ? word.romanji
+                    : (word.text != null ? word.text : "");
+            GradientWordView rwv = new GradientWordView(context);
+            rwv.setAnimConfig(animConfig);
+            rwv.setWordIndex(i);
+            rwv.setText(rText);
+            rwv.setTiming(word.startTime, word.endTime);
+            rwv.setWordStyle(romajiFontSize, initialColor, fontMedium);
+            rwv.initLetterEmphasis(rText, word.startTime, word.endTime);
+            if (lv.lastState == STATE_ACTIVE) {
+                rwv.setLineActive(true);
+            }
+
+            WordFlowLayout.LayoutParams rwlp = new WordFlowLayout.LayoutParams(
+                    WordFlowLayout.LayoutParams.WRAP_CONTENT,
+                    WordFlowLayout.LayoutParams.WRAP_CONTENT);
+            if (i < line.words.size() - 1) {
+                rwlp.rightMargin = dpToPx(2);
+            }
+            rwv.setLayoutParams(rwlp);
+
+            romajiFlow.addView(rwv);
+            romajiWordViews.add(rwv);
+        }
+
+        boolean hasRomanji = hasAnyWordRomanji(line);
+        romajiFlow.setVisibility(transliterationEnabled && hasRomanji ? View.VISIBLE : View.GONE);
+
+        if (container != null) {
+            int flowIndex = lv.wordFlowLayout != null ? container.indexOfChild(lv.wordFlowLayout) : -1;
+            if (flowIndex >= 0) {
+                container.addView(romajiFlow, flowIndex + 1);
+            } else {
+                container.addView(romajiFlow);
+            }
+        }
+
+        lv.romajiWordFlowLayout = romajiFlow;
+        lv.romajiWordViews = romajiWordViews;
     }
 
     private View createPerLineView(LyricsData.LyricsLine line, LineView lv, LinearLayout.LayoutParams params) {
@@ -337,6 +462,10 @@ public class SyllableHighlighter {
         }
     }
 
+    public void updateProgress(long currentTimeMs) {
+        updateHighlight(currentTimeMs, 0.016);
+    }
+
     public void updateHighlight(long currentPosition, double deltaTime) {
         updateHighlight(currentPosition, deltaTime, 0, lineViews.size());
     }
@@ -378,6 +507,7 @@ public class SyllableHighlighter {
     private static final double ACTIVE_LINE_SCALE = 1.022;
 
     private void updateLineScale(LineView lv, boolean isActive, double deltaTime) {
+        if (lv.rootView == null) return;
         if (lv.lineScale == null) {
             lv.lineScale = new Spring(1.0, 0.5, 0.9);
         }
@@ -394,6 +524,7 @@ public class SyllableHighlighter {
 
     /** Fade a line to its new resting alpha instead of snapping it. */
     private void animateLineAlpha(LineView lv, float target) {
+        if (lv.rootView == null) return;
         if (Math.abs(lv.rootView.getAlpha() - target) < 0.01f
                 && lv.rootView.getTranslationY() == 0f) {
             lv.rootView.setAlpha(target);
@@ -429,17 +560,36 @@ public class SyllableHighlighter {
                 // Already being sung (or done): never hide it again.
                 wv.setAlpha(1f);
                 wv.setTranslationY(0f);
-                continue;
+            } else {
+                wv.setAlpha(0f);
+                wv.setTranslationY(dpToPx(7));
+                wv.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setStartDelay(Math.min(26L * k, 200))
+                        .setDuration(230)
+                        .setInterpolator(Anim.DECEL)
+                        .start();
             }
-            wv.setAlpha(0f);
-            wv.setTranslationY(dpToPx(7));
-            wv.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setStartDelay(Math.min(26L * k, 200))
-                    .setDuration(230)
-                    .setInterpolator(Anim.DECEL)
-                    .start();
+
+            if (lv.romajiWordViews != null && i < lv.romajiWordViews.size()) {
+                GradientWordView rwv = lv.romajiWordViews.get(i);
+                rwv.animate().cancel();
+                if (i < lv.line.words.size() && position >= lv.line.words.get(i).startTime) {
+                    rwv.setAlpha(1f);
+                    rwv.setTranslationY(0f);
+                } else {
+                    rwv.setAlpha(0f);
+                    rwv.setTranslationY(dpToPx(7));
+                    rwv.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .setStartDelay(Math.min(26L * k, 200))
+                            .setDuration(230)
+                            .setInterpolator(Anim.DECEL)
+                            .start();
+                }
+            }
             k++;
         }
     }
@@ -450,16 +600,35 @@ public class SyllableHighlighter {
             GradientWordView wv = lv.wordViews.get(w);
             wv.updateState(position, deltaTime);
         }
+        if (lv.romajiWordViews != null) {
+            for (int w = 0; w < lv.romajiWordViews.size(); w++) {
+                GradientWordView rwv = lv.romajiWordViews.get(w);
+                rwv.updateState(position, deltaTime);
+            }
+        }
 
         if (stateChanged) {
             for (GradientWordView wv : lv.wordViews) {
                 wv.setLineActive(isActive);
             }
+            if (lv.romajiWordViews != null) {
+                for (GradientWordView rwv : lv.romajiWordViews) {
+                    rwv.setLineActive(isActive);
+                }
+            }
+            float romajiFontSize = fontSizeSp * 0.82f;
             if (isActive) {
-                lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
+                if (lv.rootView != null) {
+                    lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
+                }
                 animateLineAlpha(lv, 1.0f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, ACTIVE_COLOR, fontBold);
+                }
+                if (lv.romajiWordViews != null) {
+                    for (GradientWordView rwv : lv.romajiWordViews) {
+                        rwv.setWordStyle(romajiFontSize, ACTIVE_COLOR, fontMedium);
+                    }
                 }
                 if (lv.translationView != null) {
                     lv.translationView.setTextColor(ACTIVE_COLOR);
@@ -470,11 +639,18 @@ public class SyllableHighlighter {
                 // fireworks burst of a line-final word — keep software layers
                 // when that effect is active.
                 boolean needsOverflow = animConfig != null && animConfig.fireworks;
-                lv.rootView.setLayerType(
-                        needsOverflow ? View.LAYER_TYPE_NONE : View.LAYER_TYPE_HARDWARE, null);
+                if (lv.rootView != null) {
+                    lv.rootView.setLayerType(
+                            needsOverflow ? View.LAYER_TYPE_NONE : View.LAYER_TYPE_HARDWARE, null);
+                }
                 animateLineAlpha(lv, 0.82f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, PAST_COLOR, fontBold);
+                }
+                if (lv.romajiWordViews != null) {
+                    for (GradientWordView rwv : lv.romajiWordViews) {
+                        rwv.setWordStyle(romajiFontSize, PAST_COLOR, fontMedium);
+                    }
                 }
                 if (lv.translationView != null) {
                     lv.translationView.setTextColor(PAST_COLOR);
@@ -483,6 +659,11 @@ public class SyllableHighlighter {
                 animateLineAlpha(lv, 0.42f);
                 for (GradientWordView wv : lv.wordViews) {
                     wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
+                }
+                if (lv.romajiWordViews != null) {
+                    for (GradientWordView rwv : lv.romajiWordViews) {
+                        rwv.setWordStyle(romajiFontSize, INACTIVE_COLOR, fontMedium);
+                    }
                 }
                 if (lv.translationView != null) {
                     lv.translationView.setTextColor(INACTIVE_COLOR);
@@ -498,22 +679,24 @@ public class SyllableHighlighter {
         GradientTextView gv = lv.gradientView;
         if (isActive) {
             if (stateChanged) {
-                lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
+                if (lv.rootView != null) {
+                    lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
+                    // Whole-line rise, the per-line counterpart of the word cascade.
+                    lv.rootView.animate().cancel();
+                    lv.rootView.setTranslationY(dpToPx(8));
+                    lv.rootView.animate()
+                            .alpha(1.0f)
+                            .translationY(0f)
+                            .setDuration(Anim.D_MED)
+                            .setInterpolator(Anim.DECEL)
+                            .start();
+                }
                 gv.setTypeface(fontBold);
                 gv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp);
                 gv.setTextColor(ACTIVE_COLOR);
                 if (lv.translationView != null) {
                     lv.translationView.setTextColor(ACTIVE_COLOR);
                 }
-                // Whole-line rise, the per-line counterpart of the word cascade.
-                lv.rootView.animate().cancel();
-                lv.rootView.setTranslationY(dpToPx(8));
-                lv.rootView.animate()
-                        .alpha(1.0f)
-                        .translationY(0f)
-                        .setDuration(Anim.D_MED)
-                        .setInterpolator(Anim.DECEL)
-                        .start();
             }
             float progress = calculateProgress(lv.line, position);
             if (stateChanged || Math.abs(progress - lv.lastProgress) > 0.5f) {
@@ -540,7 +723,9 @@ public class SyllableHighlighter {
                 gv.setProgress(0f);
                 animateLineAlpha(lv, 0.42f);
             }
-            lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            if (lv.rootView != null) {
+                lv.rootView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            }
             lv.lastProgress = isPast ? 100f : 0f;
         }
 
