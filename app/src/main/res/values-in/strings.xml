@@ -104,6 +104,10 @@
     <string name="ai_quota_weekly">Kuota Mingguan</string>
     <string name="ai_quota_5h">Kuota 5-Jam</string>
     <string name="ai_web_search_label">Google Web Search Grounding</string>
+    <string name="ai_search_model_label">Model Grounding Pencarian</string>
+    <string name="ai_custom_model">Model Kustom...</string>
+    <string name="ai_custom_model_title">ID Model Kustom</string>
+    <string name="ai_custom_model_hint">Masukkan ID model (misal: gemini-3.8-flash-low)</string>
     <string name="ai_translation_label">Gunakan Gemini AI untuk terjemahan puitis</string>
 
     <!-- App Language -->

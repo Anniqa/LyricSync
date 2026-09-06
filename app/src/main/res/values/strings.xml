@@ -104,6 +104,10 @@
     <string name="ai_quota_weekly">Weekly Quota</string>
     <string name="ai_quota_5h">5-Hour Quota</string>
     <string name="ai_web_search_label">Google Web Search Grounding</string>
+    <string name="ai_search_model_label">Search Grounding Model</string>
+    <string name="ai_custom_model">Custom Model...</string>
+    <string name="ai_custom_model_title">Custom Model ID</string>
+    <string name="ai_custom_model_hint">Enter model ID (e.g. gemini-3.8-flash-low)</string>
     <string name="ai_translation_label">Use Gemini AI for poetic translation</string>
     <!-- App Language -->
     <string name="app_language_title">App Language</string>

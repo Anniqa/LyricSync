@@ -51,7 +51,19 @@ public class AntigravityToolExecutor {
             "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
     public static final String DEFAULT_PROJECT = "aicode-consumers";
     public static final String SEARCH_MODEL = "gemini-2.5-flash";
-    public static final String FALLBACK_SEARCH_ERROR_MESSAGE =
+    private static volatile String activeSearchModel = SEARCH_MODEL;
+
+    public static void setSearchModel(String model) {
+        if (model != null && !model.trim().isEmpty()) {
+            activeSearchModel = model.trim();
+        }
+    }
+
+    public static String getSearchModel() {
+        return activeSearchModel != null ? activeSearchModel : SEARCH_MODEL;
+    }
+
+    public static String FALLBACK_SEARCH_ERROR_MESSAGE =
             "Pencarian web tidak tersedia saat ini. Lanjutkan dengan pengetahuan internal.";
 
     // --- Pre-compiled Regex Patterns ---
@@ -707,7 +719,7 @@ public class AntigravityToolExecutor {
     public static String buildSearchPayload(String projectId, String query, int maxResults) {
         JsonObject root = new JsonObject();
         root.addProperty("project", (projectId != null && !projectId.trim().isEmpty()) ? projectId.trim() : DEFAULT_PROJECT);
-        root.addProperty("model", SEARCH_MODEL);
+        root.addProperty("model", getSearchModel());
         root.addProperty("userAgent", "antigravity");
         root.addProperty("requestType", "agent");
         root.addProperty("requestId", "agent-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8));

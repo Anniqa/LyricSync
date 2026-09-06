@@ -44,7 +44,13 @@ import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.service.SongMeaningService;
 import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
+import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -136,7 +142,31 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private TextView tvAiEmail;
     private Spinner spinnerAiModel;
     private Spinner spinnerAiEffort;
+    private Spinner spinnerAiSearchModel;
     private androidx.appcompat.widget.SwitchCompat switchAiWebSearch;
+
+    public static final List<String> BASE_ANTIGRAVITY_MODELS = Collections.unmodifiableList(Arrays.asList(
+            "gemini-3.8-flash-low",
+            "gemini-3.7-flash-high",
+            "gemini-3.7-flash-medium",
+            "gemini-3.7-flash-low",
+            "gemini-3.6-flash-high",
+            "gemini-3.6-flash-medium",
+            "gemini-3.6-flash-low",
+            "gemini-3-flash-agent",
+            "gemini-3.5-flash-low",
+            "gemini-3.5-flash-extra-low",
+            "gemini-pro-agent",
+            "gemini-3.1-pro-low",
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "claude-sonnet-4-6",
+            "claude-opus-4-6-thinking",
+            "claude-3-7-sonnet",
+            "claude-3-5-sonnet",
+            "gpt-oss-120b-medium"
+    ));
     private ProgressBar quotaWeeklyProgress;
     private TextView tvQuotaWeekly;
     private ProgressBar quota5hProgress;
@@ -203,6 +233,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
+        String savedSearchModel = prefs.getString("pref_ai_search_model", "gemini-2.5-flash");
+        AntigravityToolExecutor.setSearchModel(savedSearchModel);
 
         initViews();
         applyWindowInsets();
@@ -653,7 +685,93 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
         }
 
+        // Setup Search Grounding Model Selector
+        spinnerAiSearchModel = findViewById(R.id.spinner_ai_search_model);
+        if (spinnerAiSearchModel != null) {
+            final String[] searchModelIds = {
+                    "gemini-3.8-flash-low",
+                    "gemini-3.7-flash-low",
+                    "gemini-3.1-flash-lite",
+                    "gemini-2.5-flash",
+                    "gemini-2.5-pro"
+            };
+            final String[] searchModelLabels = {
+                    "Gemini 3.8 Flash (Low Latency)",
+                    "Gemini 3.7 Flash (Low Latency)",
+                    "Gemini 3.1 Flash Lite (Ultra Fast)",
+                    "Gemini 2.5 Flash",
+                    "Gemini 2.5 Pro"
+            };
+            ArrayAdapter<String> searchAdapter = new ArrayAdapter<>(this, R.layout.item_spinner_lang, searchModelLabels);
+            searchAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
+            spinnerAiSearchModel.setAdapter(searchAdapter);
+
+            String savedSearchModel = prefs.getString("pref_ai_search_model", "gemini-2.5-flash");
+            AntigravityToolExecutor.setSearchModel(savedSearchModel);
+            for (int i = 0; i < searchModelIds.length; i++) {
+                if (searchModelIds[i].equalsIgnoreCase(savedSearchModel)) {
+                    spinnerAiSearchModel.setSelection(i);
+                    break;
+                }
+            }
+
+            spinnerAiSearchModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (position >= 0 && position < searchModelIds.length) {
+                        String chosen = searchModelIds[position];
+                        prefs.edit().putString("pref_ai_search_model", chosen).apply();
+                        AntigravityToolExecutor.setSearchModel(chosen);
+                    }
+                }
+
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
+
+        // Initialize model spinner immediately with rich curated base models
+        if (spinnerAiModel != null) {
+            populateModelSpinner(BASE_ANTIGRAVITY_MODELS);
+        }
+
         updateAiAccountState();
+    }
+
+    private void populateModelSpinner(List<String> modelIds) {
+        if (spinnerAiModel == null || modelIds == null || modelIds.isEmpty()) return;
+        List<String> names = new ArrayList<>();
+        String savedModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
+        int selectedIdx = 0;
+        for (int i = 0; i < modelIds.size(); i++) {
+            String mId = modelIds.get(i);
+            ModelMeta meta = resolveModelMeta(mId);
+            names.add(meta.displayName);
+            if (mId.equalsIgnoreCase(savedModel)) {
+                selectedIdx = i;
+            }
+        }
+        ArrayAdapter<String> modelAdapter = new ArrayAdapter<>(
+                MainActivity.this, R.layout.item_spinner_lang, names);
+        modelAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
+        spinnerAiModel.setAdapter(modelAdapter);
+        spinnerAiModel.setSelection(selectedIdx);
+        updateAiStudioModelUi(savedModel);
+
+        spinnerAiModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < modelIds.size()) {
+                    String mId = modelIds.get(position);
+                    prefs.edit().putString("pref_ai_model", mId).apply();
+                    if (songChatManager != null) songChatManager.setModelId(mId);
+                    updateAiStudioModelUi(mId);
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
     }
 
     private void updateAiAccountState() {
@@ -706,52 +824,24 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onModelsLoaded(List<AntigravityModel> models) {
                         runOnUiThread(() -> {
-                            if (models == null || models.isEmpty() || spinnerAiModel == null) return;
+                            if (models == null || models.isEmpty()) return;
                             availableAiModels = models;
-                            List<String> names = new ArrayList<>();
-                            String savedModel = prefs.getString("pref_ai_model", "gemini-2.5-flash");
-                            int selectedIdx = 0;
-                            for (int i = 0; i < models.size(); i++) {
-                                AntigravityModel m = models.get(i);
-                                names.add(m.displayName != null ? m.displayName : m.id);
-                                if (m.id.equalsIgnoreCase(savedModel)) {
-                                    selectedIdx = i;
+                            List<String> combined = new ArrayList<>(BASE_ANTIGRAVITY_MODELS);
+                            Set<String> added = new HashSet<>();
+                            for (String b : BASE_ANTIGRAVITY_MODELS) added.add(b.toLowerCase(Locale.ROOT));
+                            for (AntigravityModel m : models) {
+                                if (m.id != null && !added.contains(m.id.toLowerCase(Locale.ROOT))) {
+                                    combined.add(m.id);
+                                    added.add(m.id.toLowerCase(Locale.ROOT));
                                 }
                             }
-                            ArrayAdapter<String> modelAdapter = new ArrayAdapter<>(
-                                    MainActivity.this, R.layout.item_spinner_lang, names);
-                            modelAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
-                            spinnerAiModel.setAdapter(modelAdapter);
-                            spinnerAiModel.setSelection(selectedIdx);
-                            updateAiStudioModelUi(savedModel);
-
-                            spinnerAiModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-                                @Override
-                                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                                    if (position >= 0 && position < availableAiModels.size()) {
-                                        String mId = availableAiModels.get(position).id;
-                                        prefs.edit().putString("pref_ai_model", mId).apply();
-                                        if (songChatManager != null) songChatManager.setModelId(mId);
-                                        updateAiStudioModelUi(mId);
-                                    }
-                                }
-
-                                @Override
-                                public void onNothingSelected(AdapterView<?> parent) {}
-                            });
+                            populateModelSpinner(combined);
                         });
                     }
 
                     @Override
                     public void onError(String error) {
-                        runOnUiThread(() -> {
-                            if (spinnerAiModel == null) return;
-                            String[] fallbackModels = {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"};
-                            ArrayAdapter<String> modelAdapter = new ArrayAdapter<>(
-                                    MainActivity.this, R.layout.item_spinner_lang, fallbackModels);
-                            modelAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
-                            spinnerAiModel.setAdapter(modelAdapter);
-                        });
+                        // Keeps BASE_ANTIGRAVITY_MODELS
                     }
                 });
             }
@@ -1242,34 +1332,102 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         }
     }
 
-    private void updateAiStudioModelUi(String modelId) {
-        if (modelId == null) modelId = SongChatManager.DEFAULT_MODEL;
-        String mId = modelId.toLowerCase(Locale.ROOT);
+    public static class ModelMeta {
+        public final String id;
+        public final String displayName;
+        public final String description;
+        public final int iconRes;
 
-        int iconRes = R.drawable.ic_model_gemini;
-        String name = "Gemini 2.5 Flash";
-        int descRes = R.string.ai_model_gemini_flash_desc;
+        public ModelMeta(String id, String displayName, String description, int iconRes) {
+            this.id = id;
+            this.displayName = displayName;
+            this.description = description;
+            this.iconRes = iconRes;
+        }
+    }
 
-        if (mId.contains("claude")) {
-            iconRes = R.drawable.ic_model_claude;
-            name = "Claude 3.5 Sonnet";
-            descRes = R.string.ai_model_claude_desc;
-        } else if (mId.contains("pro")) {
-            iconRes = R.drawable.ic_model_gemini;
+    private ModelMeta resolveModelMeta(String modelId) {
+        if (modelId == null || modelId.trim().isEmpty()) {
+            modelId = SongChatManager.DEFAULT_MODEL;
+        }
+        String id = modelId.trim();
+        String mLower = id.toLowerCase(Locale.ROOT);
+
+        int icon = mLower.contains("claude") ? R.drawable.ic_model_claude : R.drawable.ic_model_gemini;
+        String name = id;
+        String desc = "Google Antigravity";
+
+        if (mLower.startsWith("gemini-3.8-flash")) {
+            name = mLower.contains("low") ? "Gemini 3.8 Flash (Low)" : "Gemini 3.8 Flash";
+            desc = mLower.contains("low") ? "Ultra Low Latency · Fast Reasoning" : "Thinking · High Effort";
+        } else if (mLower.startsWith("gemini-3.7-flash")) {
+            if (mLower.contains("high")) {
+                name = "Gemini 3.7 Flash (High)";
+                desc = "Extended Thinking · High Effort";
+            } else if (mLower.contains("medium")) {
+                name = "Gemini 3.7 Flash (Med)";
+                desc = "Thinking · Balanced Reasoning";
+            } else if (mLower.contains("low")) {
+                name = "Gemini 3.7 Flash (Low)";
+                desc = "Low Latency · Fast";
+            } else {
+                name = "Gemini 3.7 Flash";
+                desc = "Thinking · Adaptable Reasoning";
+            }
+        } else if (mLower.startsWith("gemini-3.6-flash")) {
+            if (mLower.contains("high")) {
+                name = "Gemini 3.6 Flash (High)";
+                desc = "Thinking · High Effort";
+            } else if (mLower.contains("medium")) {
+                name = "Gemini 3.6 Flash (Med)";
+                desc = "Thinking · Balanced Reasoning";
+            } else if (mLower.contains("low")) {
+                name = "Gemini 3.6 Flash (Low)";
+                desc = "Low Latency · Fast";
+            } else {
+                name = "Gemini 3.6 Flash";
+                desc = "Thinking · Adaptable Reasoning";
+            }
+        } else if (mLower.startsWith("gemini-3.5-flash") || mLower.equals("gemini-3-flash-agent")) {
+            name = mLower.contains("agent") ? "Gemini 3.5 Flash (High)" : (mLower.contains("extra-low") ? "Gemini 3.5 Flash (Low)" : "Gemini 3.5 Flash (Med)");
+            desc = mLower.contains("agent") ? "Agentic Reasoning · High Effort" : (mLower.contains("extra-low") ? "Low Latency · Low Cost" : "Balanced Reasoning");
+        } else if (mLower.startsWith("gemini-3-flash")) {
+            name = "Gemini 3 Flash";
+            desc = "Fast & Balanced Reasoning";
+        } else if (mLower.startsWith("gemini-pro-agent") || mLower.startsWith("gemini-3.1-pro")) {
+            name = mLower.contains("agent") ? "Gemini 3.1 Pro (High)" : "Gemini 3.1 Pro (Low)";
+            desc = mLower.contains("agent") ? "Deep Analysis · Agentic High Effort" : "Pro Reasoning · Low Latency";
+        } else if (mLower.startsWith("gemini-3.1-flash-lite")) {
+            name = "Gemini 3.1 Flash Lite";
+            desc = "Ultra Lightweight · Instant Response";
+        } else if (mLower.equals("gemini-2.5-pro")) {
             name = "Gemini 2.5 Pro";
-            descRes = R.string.ai_model_gemini_pro_desc;
-        } else if (mId.contains("flash")) {
-            iconRes = R.drawable.ic_model_gemini;
-            name = "Gemini 2.5 Flash";
-            descRes = R.string.ai_model_gemini_flash_desc;
-        } else {
-            name = modelId;
+            desc = "Complex Reasoning & Analysis";
+        } else if (mLower.startsWith("gemini-2.5-flash")) {
+            name = mLower.contains("thinking") ? "Gemini 2.5 Flash Thinking" : "Gemini 2.5 Flash";
+            desc = "Fast & Efficient · High Quota";
+        } else if (mLower.startsWith("claude-sonnet-4-6")) {
+            name = "Claude Sonnet 4.6";
+            desc = "Extended Thinking · Deep Understanding";
+        } else if (mLower.startsWith("claude-opus-4-6")) {
+            name = "Claude Opus 4.6";
+            desc = "Maximum Intelligence · Extended Thinking";
+        } else if (mLower.startsWith("claude-3-7-sonnet")) {
+            name = "Claude 3.7 Sonnet";
+            desc = "Hybrid Reasoning & Poetic Lyrics";
+        } else if (mLower.startsWith("claude-3-5-sonnet")) {
+            name = "Claude 3.5 Sonnet";
+            desc = "Nuanced Lyrics Understanding";
+        } else if (mLower.startsWith("gpt-oss")) {
+            icon = R.drawable.ic_ai_sparkle;
+            name = "GPT-OSS 120B";
+            desc = "Open Weights · Medium Effort";
         }
 
         if (availableAiModels != null) {
             for (AntigravityModel am : availableAiModels) {
-                if (am.id != null && am.id.equalsIgnoreCase(modelId)) {
-                    if (am.displayName != null && !am.displayName.trim().isEmpty()) {
+                if (am.id != null && am.id.equalsIgnoreCase(id)) {
+                    if (am.displayName != null && !am.displayName.trim().isEmpty() && !am.displayName.equalsIgnoreCase("undefined")) {
                         name = am.displayName.trim();
                     }
                     break;
@@ -1277,20 +1435,26 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             }
         }
 
+        return new ModelMeta(id, name, desc, icon);
+    }
+
+    private void updateAiStudioModelUi(String modelId) {
+        ModelMeta meta = resolveModelMeta(modelId);
         if (aiStudioModelPillIcon != null) {
-            aiStudioModelPillIcon.setImageResource(iconRes);
+            aiStudioModelPillIcon.setImageResource(meta.iconRes);
         }
         if (aiStudioModelPillName != null) {
-            aiStudioModelPillName.setText(name);
+            aiStudioModelPillName.setText(meta.displayName);
         }
         if (aiStudioModelDescBadge != null) {
-            aiStudioModelDescBadge.setText(descRes);
+            aiStudioModelDescBadge.setText(meta.description);
         }
     }
 
     private void showModelSelectorDialog() {
         View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_model_selector, null);
         LinearLayout container = dialogView.findViewById(R.id.model_options_container);
+        View btnCustom = dialogView.findViewById(R.id.btn_add_custom_model);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(dialogView)
@@ -1302,36 +1466,31 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
         String currentModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
 
-        class ModelOption {
-            final String id;
-            final String name;
-            final int descRes;
-            final int iconRes;
-            ModelOption(String id, String name, int descRes, int iconRes) {
-                this.id = id;
-                this.name = name;
-                this.descRes = descRes;
-                this.iconRes = iconRes;
+        List<ModelMeta> options = new ArrayList<>();
+        Set<String> addedIds = new HashSet<>();
+
+        // 1. Add curated base models (Gemini 3.8, 3.7, 3.6, 3.1, 2.5, Claude, GPT-OSS)
+        for (String id : BASE_ANTIGRAVITY_MODELS) {
+            options.add(resolveModelMeta(id));
+            addedIds.add(id.toLowerCase(Locale.ROOT));
+        }
+
+        // 2. Add dynamically discovered models from Antigravity API
+        if (availableAiModels != null) {
+            for (AntigravityModel am : availableAiModels) {
+                if (am.id != null && !addedIds.contains(am.id.toLowerCase(Locale.ROOT))) {
+                    options.add(resolveModelMeta(am.id));
+                    addedIds.add(am.id.toLowerCase(Locale.ROOT));
+                }
             }
         }
 
-        List<ModelOption> options = new ArrayList<>();
-        if (availableAiModels != null && !availableAiModels.isEmpty()) {
-            for (AntigravityModel m : availableAiModels) {
-                String mLower = m.id != null ? m.id.toLowerCase(Locale.ROOT) : "";
-                int icon = mLower.contains("claude") ? R.drawable.ic_model_claude : R.drawable.ic_model_gemini;
-                int desc = mLower.contains("claude") ? R.string.ai_model_claude_desc :
-                        (mLower.contains("pro") ? R.string.ai_model_gemini_pro_desc : R.string.ai_model_gemini_flash_desc);
-                String displayName = (m.displayName != null && !m.displayName.trim().isEmpty()) ? m.displayName : m.id;
-                options.add(new ModelOption(m.id, displayName, desc, icon));
-            }
-        } else {
-            options.add(new ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", R.string.ai_model_gemini_flash_desc, R.drawable.ic_model_gemini));
-            options.add(new ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", R.string.ai_model_gemini_pro_desc, R.drawable.ic_model_gemini));
-            options.add(new ModelOption("claude-3-5-sonnet", "Claude 3.5 Sonnet", R.string.ai_model_claude_desc, R.drawable.ic_model_claude));
+        // 3. If currently selected model is custom, ensure it is shown
+        if (!addedIds.contains(currentModel.toLowerCase(Locale.ROOT))) {
+            options.add(0, resolveModelMeta(currentModel));
         }
 
-        for (final ModelOption opt : options) {
+        for (final ModelMeta opt : options) {
             View itemView = LayoutInflater.from(this).inflate(R.layout.item_model_option, container, false);
             ImageView iconView = itemView.findViewById(R.id.model_option_icon);
             TextView titleView = itemView.findViewById(R.id.model_option_title);
@@ -1339,8 +1498,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             ImageView checkView = itemView.findViewById(R.id.model_option_check);
 
             iconView.setImageResource(opt.iconRes);
-            titleView.setText(opt.name);
-            descView.setText(opt.descRes);
+            titleView.setText(opt.displayName);
+            descView.setText(opt.description);
 
             boolean isSelected = opt.id.equalsIgnoreCase(currentModel);
             checkView.setVisibility(isSelected ? View.VISIBLE : View.GONE);
@@ -1357,23 +1516,60 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     songChatManager.setModelId(opt.id);
                 }
                 updateAiStudioModelUi(opt.id);
-
-                if (spinnerAiModel != null && availableAiModels != null) {
-                    for (int i = 0; i < availableAiModels.size(); i++) {
-                        if (availableAiModels.get(i).id.equalsIgnoreCase(opt.id)) {
-                            spinnerAiModel.setSelection(i);
-                            break;
-                        }
-                    }
-                }
-
+                syncModelSpinnerSelection(opt.id);
                 dialog.dismiss();
             });
 
             container.addView(itemView);
         }
 
+        if (btnCustom != null) {
+            btnCustom.setOnClickListener(v -> {
+                Haptics.tick(v);
+                dialog.dismiss();
+                showCustomModelInputDialog();
+            });
+        }
+
         dialog.show();
+    }
+
+    private void showCustomModelInputDialog() {
+        final EditText input = new EditText(this);
+        input.setHint(R.string.ai_custom_model_hint);
+        input.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+        input.setTextColor(getResources().getColor(R.color.text_primary));
+        input.setHintTextColor(getResources().getColor(R.color.text_dim));
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.ai_custom_model_title)
+                .setView(input)
+                .setPositiveButton("Simpan", (d, which) -> {
+                    String customId = input.getText().toString().trim();
+                    if (!customId.isEmpty()) {
+                        prefs.edit().putString("pref_ai_model", customId).apply();
+                        if (songChatManager != null) {
+                            songChatManager.setModelId(customId);
+                        }
+                        updateAiStudioModelUi(customId);
+                        syncModelSpinnerSelection(customId);
+                        Toast.makeText(this, "Model AI diatur ke: " + customId, Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Batal", null)
+                .show();
+    }
+
+    private void syncModelSpinnerSelection(String modelId) {
+        if (spinnerAiModel != null && modelId != null && spinnerAiModel.getAdapter() != null) {
+            for (int i = 0; i < spinnerAiModel.getAdapter().getCount(); i++) {
+                Object item = spinnerAiModel.getAdapter().getItem(i);
+                if (item != null && (modelId.equalsIgnoreCase(item.toString()) || resolveModelMeta(modelId).displayName.equalsIgnoreCase(item.toString()))) {
+                    spinnerAiModel.setSelection(i);
+                    break;
+                }
+            }
+        }
     }
 
     public void onNowPlayingChanged(NowPlaying.Snapshot track) {
