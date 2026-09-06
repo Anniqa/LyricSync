@@ -96,6 +96,8 @@
     <string name="ai_account_desc">Dukung terjemahan puitis dan analisis lagu dengan Gemini AI</string>
     <string name="ai_connect_google">Hubungkan Google (Antigravity)</string>
     <string name="ai_manual_token">Atau masukkan token penyegar secara manual</string>
+    <string name="ai_manual_token_title">Masukkan Refresh Token</string>
+    <string name="ai_manual_token_hint">Tempel refresh token Antigravity Anda di sini</string>
     <string name="ai_disconnect">Keluar</string>
     <string name="ai_model_label">Model AI</string>
     <string name="ai_effort_label">Tingkat Penalaran</string>

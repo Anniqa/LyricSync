@@ -96,6 +96,8 @@
     <string name="ai_account_desc">Power poetic lyrics translation and song insights using Gemini AI</string>
     <string name="ai_connect_google">Connect Google (Antigravity)</string>
     <string name="ai_manual_token">Or enter refresh token manually</string>
+    <string name="ai_manual_token_title">Enter Refresh Token</string>
+    <string name="ai_manual_token_hint">Paste your Antigravity refresh token here</string>
     <string name="ai_disconnect">Logout</string>
     <string name="ai_model_label">AI Model</string>
     <string name="ai_effort_label">Reasoning Effort</string>
