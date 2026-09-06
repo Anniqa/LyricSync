@@ -90,4 +90,19 @@
     <string name="notif_hide">Hide</string>
     <string name="notif_show">Show</string>
     <string name="notif_stop">Stop</string>
+
+    <!-- Google Antigravity AI -->
+    <string name="ai_account_title">Google Antigravity AI</string>
+    <string name="ai_account_desc">Power poetic lyrics translation and song insights using Gemini AI</string>
+    <string name="ai_connect_google">Connect Google (Antigravity)</string>
+    <string name="ai_manual_token">Or enter refresh token manually</string>
+    <string name="ai_disconnect">Logout</string>
+    <string name="ai_model_label">AI Model</string>
+    <string name="ai_effort_label">Reasoning Effort</string>
+    <string name="ai_quota_weekly">Weekly Quota</string>
+    <string name="ai_quota_5h">5-Hour Quota</string>
+    <string name="ai_web_search_label">Google Web Search Grounding</string>
+    <string name="ai_translation_label">Use Gemini AI for poetic translation</string>
+    <string name="ai_manual_token_title">Enter Google Refresh Token</string>
+    <string name="ai_manual_token_hint">Paste refresh token (ya29... / 1//...)</string>
 </resources>

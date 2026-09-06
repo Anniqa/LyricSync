@@ -18,11 +18,22 @@ import android.provider.Settings;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.app.AlertDialog;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.lyricsync.app.ai.auth.AntigravityAuthManager;
+import com.lyricsync.app.ai.client.AntigravityQuotaClient;
+import com.lyricsync.app.ai.model.AntigravityModel;
+import com.lyricsync.app.ai.model.QuotaSummary;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -52,7 +63,9 @@ import com.lyricsync.app.util.SeekBars;
 import java.io.File;
 import java.io.FileWriter;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements NowPlaying.Listener {
@@ -97,6 +110,23 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private android.widget.LinearLayout animEffectChips;
     private TextView animComboLabel;
 
+    // ── AI Account Views & Subsystems ──────────────────────────────────────
+    private View layoutAiDisconnected;
+    private View layoutAiConnected;
+    private TextView tvAiEmail;
+    private Spinner spinnerAiModel;
+    private Spinner spinnerAiEffort;
+    private androidx.appcompat.widget.SwitchCompat switchAiWebSearch;
+    private ProgressBar quotaWeeklyProgress;
+    private TextView tvQuotaWeekly;
+    private ProgressBar quota5hProgress;
+    private TextView tvQuota5h;
+    private TextView tvAiTokens;
+
+    private AntigravityAuthManager authManager;
+    private AntigravityQuotaClient quotaClient;
+    private List<AntigravityModel> availableAiModels = new ArrayList<>();
+
     private ObjectAnimator[] eqAnimators;
     private ValueAnimator heroTintAnimator;
     private ValueAnimator startTintAnimator;
@@ -125,6 +155,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setupSliders();
         setupAppearanceChips();
         setupTranslationUi();
+        setupAiAccountUi();
         setupDeveloperSection();
         setupLogViewer();
 
@@ -136,6 +167,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         super.onResume();
         updatePermissionStatus();
         updateStartButton();
+        updateAiAccountState();
         NowPlaying.addListener(this);
         if (!entrancePlayed) {
             entrancePlayed = true;
@@ -217,6 +249,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 findViewById(R.id.card_dimensions),
                 findViewById(R.id.card_sync),
                 findViewById(R.id.card_translation),
+                findViewById(R.id.card_ai_account),
                 findViewById(R.id.card_dev));
 
         heroGlow.setAlpha(0f);
@@ -441,6 +474,254 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             @Override
             public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
+
+        androidx.appcompat.widget.SwitchCompat switchAiTrans = findViewById(R.id.switch_ai_translation);
+        if (switchAiTrans != null) {
+            switchAiTrans.setChecked(prefs.getBoolean(
+                    com.lyricsync.app.lyrics.translation.AiTranslationService.PREF_AI_TRANSLATION_ENABLED, true));
+            switchAiTrans.setOnCheckedChangeListener((btn, isChecked) -> {
+                Haptics.tick(btn);
+                prefs.edit().putBoolean(
+                        com.lyricsync.app.lyrics.translation.AiTranslationService.PREF_AI_TRANSLATION_ENABLED, isChecked).apply();
+            });
+        }
+    }
+
+    // ── AI Account & Subsystems ────────────────────────────────────────────
+
+    private void setupAiAccountUi() {
+        authManager = AntigravityAuthManager.getInstance(this);
+        quotaClient = new AntigravityQuotaClient(authManager);
+
+        layoutAiDisconnected = findViewById(R.id.layout_ai_disconnected);
+        layoutAiConnected = findViewById(R.id.layout_ai_connected);
+        tvAiEmail = findViewById(R.id.tv_ai_email);
+        spinnerAiModel = findViewById(R.id.spinner_ai_model);
+        spinnerAiEffort = findViewById(R.id.spinner_ai_effort);
+        switchAiWebSearch = findViewById(R.id.switch_ai_web_search);
+        quotaWeeklyProgress = findViewById(R.id.quota_weekly_progress);
+        tvQuotaWeekly = findViewById(R.id.tv_quota_weekly);
+        quota5hProgress = findViewById(R.id.quota_5h_progress);
+        tvQuota5h = findViewById(R.id.tv_quota_5h);
+        tvAiTokens = findViewById(R.id.tv_ai_tokens);
+
+        MaterialButton btnConnect = findViewById(R.id.btn_connect_google);
+        if (btnConnect != null) {
+            btnConnect.setOnClickListener(v -> {
+                Haptics.tick(v);
+                Toast.makeText(this, "Membuka browser untuk login Google...", Toast.LENGTH_SHORT).show();
+                authManager.startBrowserLogin(this, new AntigravityAuthManager.AuthCallback() {
+                    @Override
+                    public void onSuccess(String email) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "Berhasil login: " + email, Toast.LENGTH_SHORT).show();
+                            updateAiAccountState();
+                        });
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "Gagal login: " + message, Toast.LENGTH_LONG).show();
+                        });
+                    }
+                });
+            });
+        }
+
+        View btnManual = findViewById(R.id.btn_manual_token);
+        if (btnManual != null) {
+            btnManual.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showManualTokenDialog();
+            });
+        }
+
+        View btnDisconnect = findViewById(R.id.btn_disconnect_google);
+        if (btnDisconnect != null) {
+            btnDisconnect.setOnClickListener(v -> {
+                Haptics.tick(v);
+                authManager.logout();
+                Toast.makeText(this, "Berhasil logout", Toast.LENGTH_SHORT).show();
+                updateAiAccountState();
+            });
+        }
+
+        // Setup Effort Selector
+        if (spinnerAiEffort != null) {
+            String[] effortLabels = {"Low (Cepat)", "Medium (Seimbang)", "High (Maksimal)"};
+            String[] effortValues = {"low", "medium", "high"};
+            ArrayAdapter<String> effortAdapter = new ArrayAdapter<>(this, R.layout.item_spinner_lang, effortLabels);
+            effortAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
+            spinnerAiEffort.setAdapter(effortAdapter);
+
+            String savedEffort = prefs.getString("pref_ai_effort", "low");
+            for (int i = 0; i < effortValues.length; i++) {
+                if (effortValues[i].equalsIgnoreCase(savedEffort)) {
+                    spinnerAiEffort.setSelection(i);
+                    break;
+                }
+            }
+
+            spinnerAiEffort.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    prefs.edit().putString("pref_ai_effort", effortValues[position]).apply();
+                }
+
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
+
+        // Setup Web Search toggle
+        if (switchAiWebSearch != null) {
+            switchAiWebSearch.setChecked(prefs.getBoolean("pref_ai_web_search", false));
+            switchAiWebSearch.setOnCheckedChangeListener((btn, isChecked) -> {
+                Haptics.tick(btn);
+                prefs.edit().putBoolean("pref_ai_web_search", isChecked).apply();
+            });
+        }
+
+        updateAiAccountState();
+    }
+
+    private void updateAiAccountState() {
+        if (authManager == null) return;
+        boolean authenticated = authManager.isAuthenticated();
+
+        if (layoutAiDisconnected != null) {
+            layoutAiDisconnected.setVisibility(authenticated ? View.GONE : View.VISIBLE);
+        }
+        if (layoutAiConnected != null) {
+            layoutAiConnected.setVisibility(authenticated ? View.VISIBLE : View.GONE);
+        }
+
+        if (authenticated) {
+            String email = authManager.getEmail();
+            if (tvAiEmail != null) {
+                tvAiEmail.setText(email != null && !email.isEmpty() ? email : "Google Antigravity Connected");
+            }
+
+            // Fetch live quota
+            if (quotaClient != null) {
+                quotaClient.fetchQuota(new AntigravityQuotaClient.QuotaCallback() {
+                    @Override
+                    public void onQuotaLoaded(QuotaSummary summary) {
+                        runOnUiThread(() -> {
+                            if (summary == null) return;
+                            int weeklyPct = Math.round(summary.geminiWeeklyFraction * 100f);
+                            if (quotaWeeklyProgress != null) quotaWeeklyProgress.setProgress(weeklyPct);
+                            if (tvQuotaWeekly != null) tvQuotaWeekly.setText(weeklyPct + "%");
+
+                            int h5Pct = Math.round(summary.gemini5hFraction * 100f);
+                            if (quota5hProgress != null) quota5hProgress.setProgress(h5Pct);
+                            if (tvQuota5h != null) tvQuota5h.setText(h5Pct + "%");
+                        });
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        // Keep current
+                    }
+                });
+
+                // Fetch dynamic models
+                quotaClient.fetchModels(new AntigravityQuotaClient.ModelDiscoveryCallback() {
+                    @Override
+                    public void onModelsLoaded(List<AntigravityModel> models) {
+                        runOnUiThread(() -> {
+                            if (models == null || models.isEmpty() || spinnerAiModel == null) return;
+                            availableAiModels = models;
+                            List<String> names = new ArrayList<>();
+                            String savedModel = prefs.getString("pref_ai_model", "gemini-2.5-flash");
+                            int selectedIdx = 0;
+                            for (int i = 0; i < models.size(); i++) {
+                                AntigravityModel m = models.get(i);
+                                names.add(m.displayName != null ? m.displayName : m.id);
+                                if (m.id.equalsIgnoreCase(savedModel)) {
+                                    selectedIdx = i;
+                                }
+                            }
+                            ArrayAdapter<String> modelAdapter = new ArrayAdapter<>(
+                                    MainActivity.this, R.layout.item_spinner_lang, names);
+                            modelAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
+                            spinnerAiModel.setAdapter(modelAdapter);
+                            spinnerAiModel.setSelection(selectedIdx);
+
+                            spinnerAiModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                                @Override
+                                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                                    if (position >= 0 && position < availableAiModels.size()) {
+                                        prefs.edit().putString("pref_ai_model", availableAiModels.get(position).id).apply();
+                                    }
+                                }
+
+                                @Override
+                                public void onNothingSelected(AdapterView<?> parent) {}
+                            });
+                        });
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        runOnUiThread(() -> {
+                            if (spinnerAiModel == null) return;
+                            String[] fallbackModels = {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"};
+                            ArrayAdapter<String> modelAdapter = new ArrayAdapter<>(
+                                    MainActivity.this, R.layout.item_spinner_lang, fallbackModels);
+                            modelAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
+                            spinnerAiModel.setAdapter(modelAdapter);
+                        });
+                    }
+                });
+            }
+
+            if (tvAiTokens != null) {
+                int tokens = prefs.getInt("pref_ai_total_tokens", 0);
+                if (tokens > 0) {
+                    tvAiTokens.setText("Total Token Terpakai: " + tokens);
+                    tvAiTokens.setVisibility(View.VISIBLE);
+                } else {
+                    tvAiTokens.setVisibility(View.GONE);
+                }
+            }
+        }
+    }
+
+    private void showManualTokenDialog() {
+        final EditText input = new EditText(this);
+        input.setHint(R.string.ai_manual_token_hint);
+        input.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+        input.setTextColor(getResources().getColor(R.color.text_primary));
+        input.setHintTextColor(getResources().getColor(R.color.text_dim));
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.ai_manual_token_title)
+                .setView(input)
+                .setPositiveButton("Simpan", (dialog, which) -> {
+                    String token = input.getText().toString().trim();
+                    if (!token.isEmpty()) {
+                        authManager.manualTokenLogin(token, new AntigravityAuthManager.AuthCallback() {
+                            @Override
+                            public void onSuccess(String email) {
+                                runOnUiThread(() -> {
+                                    Toast.makeText(MainActivity.this, "Berhasil terhubung: " + email, Toast.LENGTH_SHORT).show();
+                                    updateAiAccountState();
+                                });
+                            }
+
+                            @Override
+                            public void onError(String message) {
+                                runOnUiThread(() -> {
+                                    Toast.makeText(MainActivity.this, "Gagal: " + message, Toast.LENGTH_LONG).show();
+                                });
+                            }
+                        });
+                    }
+                })
+                .setNegativeButton("Batal", null)
+                .show();
     }
 
     // ── Developer section ──────────────────────────────────────────────────
