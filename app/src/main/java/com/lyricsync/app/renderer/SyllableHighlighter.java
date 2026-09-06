@@ -120,12 +120,12 @@ public class SyllableHighlighter {
             if (lv.romajiWordViews != null && wordsRomanji != null) {
                 for (int i = 0; i < Math.min(wordsRomanji.size(), lv.romajiWordViews.size()); i++) {
                     String r = wordsRomanji.get(i);
-                    if (r != null && !r.trim().isEmpty()) {
+                    if (r != null) {
                         GradientWordView wv = lv.romajiWordViews.get(i);
-                        wv.setText(r);
+                        wv.setText(r.trim());
                         if (lv.line.words != null && i < lv.line.words.size()) {
                             LyricsData.Word w = lv.line.words.get(i);
-                            wv.initLetterEmphasis(r, w.startTime, w.endTime);
+                            wv.initLetterEmphasis(r.trim(), w.startTime, w.endTime);
                         }
                     }
                 }

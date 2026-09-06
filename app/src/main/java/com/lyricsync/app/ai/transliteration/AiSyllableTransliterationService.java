@@ -99,7 +99,8 @@ public class AiSyllableTransliterationService {
 
         for (int i = 0; i < expectedCount; i++) {
             if (i < tokens.size()) {
-                line.words.get(i).romanji = tokens.get(i).trim();
+                String tok = tokens.get(i);
+                line.words.get(i).romanji = tok != null ? tok.trim() : "";
             } else {
                 line.words.get(i).romanji = "";
             }
@@ -144,8 +145,8 @@ public class AiSyllableTransliterationService {
 
                 if (obj.has("wordsRomanji") && obj.get("wordsRomanji").isJsonArray()) {
                     JsonArray wr = obj.getAsJsonArray("wordsRomanji");
-                    for (JsonElement w : wr) {
-                        item.wordsRomanji.add(w.getAsString());
+                    for (JsonElement elWord : wr) {
+                        item.wordsRomanji.add(elWord != null && !elWord.isJsonNull() ? elWord.getAsString() : "");
                     }
                 }
                 list.add(item);
@@ -159,10 +160,11 @@ public class AiSyllableTransliterationService {
     }
 
     public static String buildPromptPayload(String title, String artist, List<LyricsData.LyricsLine> batchLines, String targetLang) {
+        String safeTargetLang = (targetLang != null && !targetLang.trim().isEmpty()) ? targetLang.trim() : "id";
         JsonObject promptObj = new JsonObject();
         promptObj.addProperty("title", title != null ? title : "");
         promptObj.addProperty("artist", artist != null ? artist : "");
-        promptObj.addProperty("targetLanguage", targetLang != null ? targetLang : "id");
+        promptObj.addProperty("targetLanguage", safeTargetLang);
 
         JsonArray linesArr = new JsonArray();
         if (batchLines != null) {
@@ -188,7 +190,7 @@ public class AiSyllableTransliterationService {
                 "Given song lines with syllable segmentation, output a strict JSON object with a \"lines\" array.\n" +
                 "Rules:\n" +
                 "1. Transliterate non-Latin scripts (Japanese Kanji/Kana to Hepburn Romaji, Chinese to Pinyin, Korean to Revised Romanization, Russian to Latin).\n" +
-                "2. For each line, translate the meaning accurately into targetLanguage (" + targetLang + ").\n" +
+                "2. For each line, translate the meaning accurately into targetLanguage (" + safeTargetLang + ").\n" +
                 "3. CRITICAL: For \"wordsRomanji\", provide an array of strings of EXACTLY THE SAME LENGTH as input \"syllables\".\n" +
                 "Output ONLY valid JSON with schema:\n" +
                 "{\n" +

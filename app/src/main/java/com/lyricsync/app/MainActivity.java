@@ -220,6 +220,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private SongChatManager songChatManager;
     private AntigravityApiClient.Cancellable activeMeaningCall;
     private AntigravityApiClient.Cancellable activeChatCall;
+    private AntigravityApiClient.Cancellable activeTransliterationCall;
     private AiStreamingAnimator activeStudioAnimator;
     private boolean aiWebSearchEnabled = false;
     private String currentTrackTitle;
@@ -306,6 +307,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
+        }
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
         }
         if (activeStudioAnimator != null) {
             activeStudioAnimator.stopAll();
@@ -1599,6 +1604,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     activeChatCall.cancel();
                     activeChatCall = null;
                 }
+                if (activeTransliterationCall != null) {
+                    activeTransliterationCall.cancel();
+                    activeTransliterationCall = null;
+                }
                 if (songChatManager != null) {
                     songChatManager.setCurrentSong(null, null, null, null);
                 }
@@ -1654,6 +1663,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
+        }
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
         }
 
         if (songChatManager != null) {
@@ -1718,16 +1731,23 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     }
 
     private void performTransliteration() {
-        if (lyricsData == null || aiTransliterationService == null) return;
+        if (lyricsData == null || aiTransliterationService == null || currentTrack == null) return;
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
+        }
+        final TrackInfo track = currentTrack;
         Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
         String title = currentTrackTitle != null ? currentTrackTitle : "";
         String artist = currentTrackArtist != null ? currentTrackArtist : "";
         String targetLang = LocaleHelper.getLanguage(this);
-        aiTransliterationService.transliterateSyllablesAsync(
+        activeTransliterationCall = aiTransliterationService.transliterateSyllablesAsync(
                 lyricsData, title, artist, targetLang,
                 new AiSyllableTransliterationService.Callback() {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
+                        activeTransliterationCall = null;
+                        if (currentTrack != null && currentTrack.title != null && !currentTrack.title.equals(track.title)) return;
                         lyricsData = enrichedData;
                         if (lyricsCacheManager != null && currentTrack != null) {
                             lyricsCacheManager.cache(currentTrack, enrichedData);
@@ -1738,12 +1758,17 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
                     @Override
                     public void onError(String message) {
+                        activeTransliterationCall = null;
                         Toast.makeText(MainActivity.this, message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
                     }
                 });
     }
 
     public void onNowPlayingChanged(NowPlaying track) {
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
+        }
         onNowPlayingChanged(NowPlaying.current());
     }
 

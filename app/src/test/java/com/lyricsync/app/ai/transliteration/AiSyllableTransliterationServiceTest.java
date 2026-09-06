@@ -67,6 +67,22 @@ public class AiSyllableTransliterationServiceTest {
     }
 
     @Test
+    public void testAlignSyllablesFallbackWithNullInTokens() {
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "前世");
+        line.words.add(new LyricsData.Word(0, 1500, "前"));
+        line.words.add(new LyricsData.Word(1500, 3000, "世"));
+
+        List<String> aiTokensFallback = new ArrayList<>();
+        aiTokensFallback.add(null);
+        aiTokensFallback.add("se");
+        aiTokensFallback.add("extra");
+        AiSyllableTransliterationService.alignSyllables(line, aiTokensFallback, "zen se");
+
+        assertEquals("", line.words.get(0).romanji);
+        assertEquals("se", line.words.get(1).romanji);
+    }
+
+    @Test
     public void testParseJsonResponse() {
         String json = "{\n" +
                 "  \"lines\": [\n" +
@@ -129,6 +145,28 @@ public class AiSyllableTransliterationServiceTest {
     }
 
     @Test
+    public void testParseJsonResponseWithJsonNullElements() {
+        String json = "{\n" +
+                "  \"lines\": [\n" +
+                "    {\n" +
+                "      \"index\": 0,\n" +
+                "      \"romanji\": \"zen se\",\n" +
+                "      \"translation\": \"masa lalu\",\n" +
+                "      \"wordsRomanji\": [null, \"se\"]\n" +
+                "    }\n" +
+                "  ]\n" +
+                "}";
+
+        List<AiSyllableTransliterationService.LineTransliterationResult> results =
+                AiSyllableTransliterationService.parseJsonResponse(json);
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals("", results.get(0).wordsRomanji.get(0));
+        assertEquals("se", results.get(0).wordsRomanji.get(1));
+    }
+
+    @Test
     public void testBuildPromptPayload() {
         List<LyricsData.LyricsLine> lines = new ArrayList<>();
         LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "スパークル");
@@ -141,6 +179,18 @@ public class AiSyllableTransliterationServiceTest {
         assertTrue(prompt.contains("RADWIMPS"));
         assertTrue(prompt.contains("スパー"));
         assertTrue(prompt.contains("wordsRomanji"));
+    }
+
+    @Test
+    public void testBuildPromptPayloadSanitizeNullTargetLang() {
+        List<LyricsData.LyricsLine> lines = new ArrayList<>();
+        String promptNull = AiSyllableTransliterationService.buildPromptPayload("Title", "Artist", lines, null);
+        assertFalse(promptNull.contains("targetLanguage (null)"));
+        assertTrue(promptNull.contains("targetLanguage (id)"));
+
+        String promptEmpty = AiSyllableTransliterationService.buildPromptPayload("Title", "Artist", lines, "   ");
+        assertFalse(promptEmpty.contains("targetLanguage (null)"));
+        assertTrue(promptEmpty.contains("targetLanguage (id)"));
     }
 
     @Test

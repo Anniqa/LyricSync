@@ -212,6 +212,7 @@ public class FloatingOverlayService extends Service {
     private AntigravityQuotaClient quotaClient;
     private AntigravityApiClient.Cancellable activeMeaningCall;
     private AntigravityApiClient.Cancellable activeChatCall;
+    private AntigravityApiClient.Cancellable activeTransliterationCall;
     private AiStreamingAnimator activeAiBubbleAnimator;
     private boolean aiWebSearchEnabled = false;
 
@@ -1572,16 +1573,23 @@ public class FloatingOverlayService extends Service {
     }
 
     private void performTransliteration() {
-        if (currentLyrics == null || aiTransliterationService == null) return;
+        if (currentLyrics == null || aiTransliterationService == null || currentTrack == null) return;
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
+        }
+        final TrackInfo track = currentTrack;
         Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
-        String title = currentTrack != null ? currentTrack.title : "";
-        String artist = currentTrack != null ? currentTrack.artist : "";
+        String title = currentTrack.title != null ? currentTrack.title : "";
+        String artist = currentTrack.artist != null ? currentTrack.artist : "";
         String targetLang = LocaleHelper.getLanguage(this);
-        aiTransliterationService.transliterateSyllablesAsync(
+        activeTransliterationCall = aiTransliterationService.transliterateSyllablesAsync(
                 currentLyrics, title, artist, targetLang,
                 new AiSyllableTransliterationService.Callback() {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
+                        activeTransliterationCall = null;
+                        if (currentTrack == null || !track.title.equals(currentTrack.title)) return;
                         currentLyrics = enrichedData;
                         if (highlighter != null) {
                             highlighter.setTransliterationEnabled(true);
@@ -1599,6 +1607,7 @@ public class FloatingOverlayService extends Service {
 
                     @Override
                     public void onError(String message) {
+                        activeTransliterationCall = null;
                         Toast.makeText(FloatingOverlayService.this, message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
                     }
                 });
@@ -2727,6 +2736,10 @@ public class FloatingOverlayService extends Service {
             activeChatCall.cancel();
             activeChatCall = null;
         }
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
+        }
         if (songChatManager != null && track != null) {
             songChatManager.setCurrentSong(track.title, track.artist, "", null);
         }
@@ -2997,6 +3010,10 @@ public class FloatingOverlayService extends Service {
 
     private void clearOverlay() {
         if (isDestroyed) return;
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
+        }
         pendingFetchKey = null;
         currentTrack = null;
         lyricsStatusText = null;
@@ -3087,6 +3104,10 @@ public class FloatingOverlayService extends Service {
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
+        }
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
         }
         if (activeAiBubbleAnimator != null) {
             activeAiBubbleAnimator.stopAll();

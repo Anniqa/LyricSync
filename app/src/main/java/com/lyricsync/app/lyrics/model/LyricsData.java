@@ -13,6 +13,12 @@ public class LyricsData {
     public boolean hasTransliteration;
     public String sourceScript;
 
+    public LyricsData() {}
+
+    public LyricsData(Type type) {
+        this.type = type;
+    }
+
     public static class LyricsLine {
         public long startTime;
         public long endTime;

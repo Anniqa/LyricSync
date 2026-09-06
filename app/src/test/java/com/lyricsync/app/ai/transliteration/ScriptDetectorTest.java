@@ -43,6 +43,21 @@ public class ScriptDetectorTest {
     }
 
     @Test
+    public void testDetectOtherNonLatin() {
+        // Arabic
+        assertEquals(ScriptDetector.ScriptType.OTHER_NON_LATIN, ScriptDetector.detectScript("مرحبا بالعالم"));
+        assertTrue(ScriptDetector.isNonLatin("مرحبا بالعالم"));
+
+        // Thai
+        assertEquals(ScriptDetector.ScriptType.OTHER_NON_LATIN, ScriptDetector.detectScript("สวัสดีชาวโลก"));
+        assertTrue(ScriptDetector.isNonLatin("สวัสดีชาวโลก"));
+
+        // Greek
+        assertEquals(ScriptDetector.ScriptType.OTHER_NON_LATIN, ScriptDetector.detectScript("Γειά σου Κόσμε"));
+        assertTrue(ScriptDetector.isNonLatin("Γειά σου Κόσμε"));
+    }
+
+    @Test
     public void testEmptyOrNull() {
         assertEquals(ScriptDetector.ScriptType.LATIN, ScriptDetector.detectScript(null));
         assertEquals(ScriptDetector.ScriptType.LATIN, ScriptDetector.detectScript("   "));
