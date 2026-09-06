@@ -128,7 +128,7 @@ public class FloatingOverlayService extends Service {
     private ImageView overlayPrev;
     private ImageView overlayPlayPause;
     private ImageView overlayNext;
-    private View overlaySettingsPanel;
+    private LinearLayout overlaySettingsPanel;
     private SeekBar overlaySyncOffsetSlider;
     private TextView overlaySyncOffsetLabel;
     private LinearLayout overlayFontChips;
@@ -2104,6 +2104,7 @@ public class FloatingOverlayService extends Service {
                 dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
             }
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         }
 
         TextView textLineIndex = dialogView.findViewById(R.id.dialog_line_index);

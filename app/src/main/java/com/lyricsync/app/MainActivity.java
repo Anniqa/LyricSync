@@ -55,7 +55,6 @@ import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
-import com.lyricsync.app.renderer.SyllableHighlighter;
 import android.text.method.LinkMovementMethod;
 
 import java.util.Arrays;
@@ -230,7 +229,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private LyricsCacheManager lyricsCacheManager;
     private LyricsData lyricsData;
     private TrackInfo currentTrack;
-    private SyllableHighlighter syllableHighlighter;
 
     private ObjectAnimator[] eqAnimators;
     private ValueAnimator heroTintAnimator;
@@ -1731,9 +1729,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
                         lyricsData = enrichedData;
-                        if (syllableHighlighter != null) {
-                            syllableHighlighter.setTransliterationEnabled(true);
-                        }
                         if (lyricsCacheManager != null && currentTrack != null) {
                             lyricsCacheManager.cache(currentTrack, enrichedData);
                         }
@@ -1746,161 +1741,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         Toast.makeText(MainActivity.this, message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
                     }
                 });
-    }
-
-    public void showEditSyllablesDialog(int lineIndex, LyricsData.LyricsLine line) {
-        if (line == null) return;
-        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_syllables, null);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(dialogView)
-                .create();
-
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-        }
-
-        TextView textLineIndex = dialogView.findViewById(R.id.dialog_line_index);
-        TextView textLineOriginal = dialogView.findViewById(R.id.text_line_original);
-        LinearLayout containerSyllables = dialogView.findViewById(R.id.container_syllables);
-        EditText editLineTranslation = dialogView.findViewById(R.id.edit_line_translation);
-        TextView btnAiRegenerate = dialogView.findViewById(R.id.btn_ai_regenerate);
-        TextView btnCancel = dialogView.findViewById(R.id.btn_cancel);
-        TextView btnSave = dialogView.findViewById(R.id.btn_save);
-
-        if (textLineIndex != null) {
-            textLineIndex.setText(String.format(java.util.Locale.getDefault(), "#%d", lineIndex + 1));
-        }
-        if (textLineOriginal != null) {
-            textLineOriginal.setText(line.text != null ? line.text : "");
-        }
-        if (editLineTranslation != null) {
-            editLineTranslation.setText(line.translation != null ? line.translation : "");
-        }
-
-        List<EditText> syllableEditList = new ArrayList<>();
-        Runnable populateChips = () -> {
-            if (containerSyllables == null) return;
-            containerSyllables.removeAllViews();
-            syllableEditList.clear();
-            if (line.words != null && !line.words.isEmpty()) {
-                for (LyricsData.Word word : line.words) {
-                    View chipView = LayoutInflater.from(this).inflate(R.layout.item_edit_syllable_chip, containerSyllables, false);
-                    TextView textSyllable = chipView.findViewById(R.id.text_syllable_original);
-                    EditText editSyllable = chipView.findViewById(R.id.edit_syllable_romanji);
-                    textSyllable.setText(word.text != null ? word.text : "");
-                    editSyllable.setText(word.romanji != null ? word.romanji : "");
-                    syllableEditList.add(editSyllable);
-                    containerSyllables.addView(chipView);
-                }
-            } else {
-                View chipView = LayoutInflater.from(this).inflate(R.layout.item_edit_syllable_chip, containerSyllables, false);
-                TextView textSyllable = chipView.findViewById(R.id.text_syllable_original);
-                EditText editSyllable = chipView.findViewById(R.id.edit_syllable_romanji);
-                textSyllable.setText(line.text != null ? line.text : "");
-                editSyllable.setText(line.romanji != null ? line.romanji : "");
-                syllableEditList.add(editSyllable);
-                containerSyllables.addView(chipView);
-            }
-        };
-        populateChips.run();
-
-        if (btnCancel != null) {
-            btnCancel.setOnClickListener(v -> dialog.dismiss());
-        }
-
-        if (btnAiRegenerate != null) {
-            btnAiRegenerate.setOnClickListener(v -> {
-                if (aiTransliterationService == null) return;
-                Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
-                btnAiRegenerate.setEnabled(false);
-                LyricsData singleData = new LyricsData(LyricsData.Type.SYLLABLE);
-                LyricsData.LyricsLine testLine = new LyricsData.LyricsLine();
-                testLine.text = line.text;
-                testLine.startTime = line.startTime;
-                testLine.endTime = line.endTime;
-                if (line.words != null) {
-                    for (LyricsData.Word w : line.words) {
-                        LyricsData.Word nw = new LyricsData.Word();
-                        nw.text = w.text;
-                        nw.startTime = w.startTime;
-                        nw.endTime = w.endTime;
-                        testLine.words.add(nw);
-                    }
-                }
-                singleData.lines.add(testLine);
-
-                String title = currentTrackTitle != null ? currentTrackTitle : "";
-                String artist = currentTrackArtist != null ? currentTrackArtist : "";
-                String targetLang = LocaleHelper.getLanguage(this);
-                aiTransliterationService.transliterateSyllablesAsync(
-                        singleData, title, artist, targetLang,
-                        new AiSyllableTransliterationService.Callback() {
-                            @Override
-                            public void onSuccess(LyricsData enrichedData) {
-                                btnAiRegenerate.setEnabled(true);
-                                if (enrichedData.lines != null && !enrichedData.lines.isEmpty()) {
-                                    LyricsData.LyricsLine resLine = enrichedData.lines.get(0);
-                                    if (resLine.translation != null && editLineTranslation != null) {
-                                        editLineTranslation.setText(resLine.translation);
-                                    }
-                                    if (resLine.words != null && resLine.words.size() == syllableEditList.size()) {
-                                        for (int i = 0; i < syllableEditList.size(); i++) {
-                                            syllableEditList.get(i).setText(resLine.words.get(i).romanji);
-                                        }
-                                    } else if (!syllableEditList.isEmpty() && resLine.romanji != null) {
-                                        syllableEditList.get(0).setText(resLine.romanji);
-                                    }
-                                }
-                                Toast.makeText(MainActivity.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
-                            }
-
-                            @Override
-                            public void onError(String message) {
-                                btnAiRegenerate.setEnabled(true);
-                                Toast.makeText(MainActivity.this, message != null ? message : "Error", Toast.LENGTH_SHORT).show();
-                            }
-                        });
-            });
-        }
-
-        if (btnSave != null) {
-            btnSave.setOnClickListener(v -> {
-                if (editLineTranslation != null) {
-                    line.translation = editLineTranslation.getText().toString().trim();
-                }
-                List<String> wordsRomanji = new ArrayList<>();
-                StringBuilder sbRomaji = new StringBuilder();
-                if (line.words != null && !line.words.isEmpty()) {
-                    for (int i = 0; i < line.words.size() && i < syllableEditList.size(); i++) {
-                        String r = syllableEditList.get(i).getText().toString().trim();
-                        line.words.get(i).romanji = r;
-                        wordsRomanji.add(r);
-                        if (!r.isEmpty()) {
-                            if (sbRomaji.length() > 0) sbRomaji.append(" ");
-                            sbRomaji.append(r);
-                        }
-                    }
-                    line.romanji = sbRomaji.toString();
-                } else if (!syllableEditList.isEmpty()) {
-                    String r = syllableEditList.get(0).getText().toString().trim();
-                    line.romanji = r;
-                    wordsRomanji.add(r);
-                }
-
-                if (syllableHighlighter != null) {
-                    syllableHighlighter.updateLineTransliteration(lineIndex, wordsRomanji, line.romanji);
-                    syllableHighlighter.updateLineTranslation(lineIndex, line.translation);
-                }
-
-                if (lyricsCacheManager != null && currentTrack != null && lyricsData != null) {
-                    lyricsCacheManager.cache(currentTrack, lyricsData);
-                }
-
-                dialog.dismiss();
-            });
-        }
-
-        dialog.show();
     }
 
     public void onNowPlayingChanged(NowPlaying track) {
