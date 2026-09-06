@@ -18,10 +18,13 @@ import java.util.regex.Pattern;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.Interceptor;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import okio.Buffer;
+import okio.BufferedSource;
 
 /**
  * Autonomous AI Agent Tool Executor for LyricSync.
@@ -31,8 +34,30 @@ import okhttp3.ResponseBody;
 public class AntigravityToolExecutor {
 
     public static final int MAX_CONTENT_LENGTH = 8000;
+    public static final long MAX_RESPONSE_BYTES = 1024 * 1024L; // 1 MB buffer limit
     public static final String DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36";
+
+    // --- Pre-compiled Regex Patterns ---
+
+    private static final Pattern HOST_ALLOWED_PATTERN = Pattern.compile("^[a-zA-Z0-9.:%_-]+$");
+    private static final Pattern IP_LITERAL_PATTERN = Pattern.compile("^\\d+(\\.\\d+){1,3}$");
+    private static final Pattern DOMAIN_SYNTAX_PATTERN =
+            Pattern.compile("^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$");
+
+    private static final Pattern TITLE_PATTERN = Pattern.compile("(?is)<title[^>]*>(.*?)</title>");
+    private static final Pattern SCRIPT_PATTERN = Pattern.compile("(?is)<script[^>]*>.*?</script>");
+    private static final Pattern STYLE_PATTERN = Pattern.compile("(?is)<style[^>]*>.*?</style>");
+    private static final Pattern NOSCRIPT_PATTERN = Pattern.compile("(?is)<noscript[^>]*>.*?</noscript>");
+    private static final Pattern COMMENT_PATTERN = Pattern.compile("(?is)<!--.*?-->");
+    private static final Pattern BR_PATTERN = Pattern.compile("(?i)<br\\s*/?>");
+    private static final Pattern BLOCK_TAG_PATTERN =
+            Pattern.compile("(?i)</?(?:p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|nav|aside)[^>]*>");
+    private static final Pattern ALL_TAGS_PATTERN = Pattern.compile("<[^>]+>");
+    private static final Pattern HORIZONTAL_WHITESPACE_PATTERN = Pattern.compile("[ \\t\\x0B\\f\\r]+");
+
+    private static final Pattern DECIMAL_ENTITY_PATTERN = Pattern.compile("&#(\\d+);");
+    private static final Pattern HEX_ENTITY_PATTERN = Pattern.compile("&#[xX]([0-9a-fA-F]+);");
 
     // --- Data Models ---
 
@@ -181,7 +206,7 @@ public class AntigravityToolExecutor {
         }
 
         // Check for disallowed characters in host
-        if (!cleanHost.matches("^[a-zA-Z0-9.:%_-]+$")) {
+        if (!HOST_ALLOWED_PATTERN.matcher(cleanHost).matches()) {
             return false;
         }
 
@@ -276,11 +301,11 @@ public class AntigravityToolExecutor {
     }
 
     private static boolean isIpLiteral(String host) {
-        return host.matches("^\\d+(\\.\\d+){1,3}$") || host.contains(":");
+        return IP_LITERAL_PATTERN.matcher(host).matches() || host.contains(":");
     }
 
     private static boolean isValidDomainSyntax(String domain) {
-        return domain.matches("^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$");
+        return DOMAIN_SYNTAX_PATTERN.matcher(domain).matches();
     }
 
     /**
@@ -322,20 +347,20 @@ public class AntigravityToolExecutor {
         }
 
         // 1. Strip script tags
-        String clean = html.replaceAll("(?is)<script[^>]*>.*?</script>", " ");
+        String clean = SCRIPT_PATTERN.matcher(html).replaceAll(" ");
         // 2. Strip style tags
-        clean = clean.replaceAll("(?is)<style[^>]*>.*?</style>", " ");
+        clean = STYLE_PATTERN.matcher(clean).replaceAll(" ");
         // 3. Strip noscript tags
-        clean = clean.replaceAll("(?is)<noscript[^>]*>.*?</noscript>", " ");
+        clean = NOSCRIPT_PATTERN.matcher(clean).replaceAll(" ");
         // 4. Strip HTML comments
-        clean = clean.replaceAll("(?is)<!--.*?-->", " ");
+        clean = COMMENT_PATTERN.matcher(clean).replaceAll(" ");
 
         // 5. Replace line breaking tags with newlines
-        clean = clean.replaceAll("(?i)<br\\s*/?>", "\n");
-        clean = clean.replaceAll("(?i)</?(?:p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|nav|aside)[^>]*>", "\n");
+        clean = BR_PATTERN.matcher(clean).replaceAll("\n");
+        clean = BLOCK_TAG_PATTERN.matcher(clean).replaceAll("\n");
 
         // 6. Strip all other tags
-        clean = clean.replaceAll("<[^>]+>", " ");
+        clean = ALL_TAGS_PATTERN.matcher(clean).replaceAll(" ");
 
         // 7. Unescape HTML entities
         clean = unescapeHtml(clean);
@@ -345,7 +370,7 @@ public class AntigravityToolExecutor {
         StringBuilder sb = new StringBuilder();
         boolean prevEmpty = false;
         for (String line : lines) {
-            String trimmed = line.replaceAll("[ \\t\\x0B\\f\\r]+", " ").trim();
+            String trimmed = HORIZONTAL_WHITESPACE_PATTERN.matcher(line).replaceAll(" ").trim();
             if (!trimmed.isEmpty()) {
                 if (sb.length() > 0) {
                     if (prevEmpty) {
@@ -375,12 +400,12 @@ public class AntigravityToolExecutor {
         if (html == null || html.isEmpty()) {
             return "";
         }
-        Matcher matcher = Pattern.compile("(?is)<title[^>]*>(.*?)</title>").matcher(html);
+        Matcher matcher = TITLE_PATTERN.matcher(html);
         if (matcher.find()) {
             String raw = matcher.group(1);
-            raw = raw.replaceAll("<[^>]+>", " ");
+            raw = ALL_TAGS_PATTERN.matcher(raw).replaceAll(" ");
             raw = unescapeHtml(raw);
-            return raw.replaceAll("\\s+", " ").trim();
+            return HORIZONTAL_WHITESPACE_PATTERN.matcher(raw).replaceAll(" ").trim();
         }
         return "";
     }
@@ -399,13 +424,17 @@ public class AntigravityToolExecutor {
                 .replace("&apos;", "'");
 
         if (text.contains("&#")) {
-            // Decimal entities
-            Matcher decMatcher = Pattern.compile("&#(\\d+);").matcher(text);
+            // Decimal entities (including SMP code points > 0xFFFF)
+            Matcher decMatcher = DECIMAL_ENTITY_PATTERN.matcher(text);
             StringBuffer sb = new StringBuffer();
             while (decMatcher.find()) {
                 try {
                     int code = Integer.parseInt(decMatcher.group(1));
-                    decMatcher.appendReplacement(sb, Matcher.quoteReplacement(Character.toString((char) code)));
+                    if (Character.isValidCodePoint(code)) {
+                        decMatcher.appendReplacement(sb, Matcher.quoteReplacement(new String(Character.toChars(code))));
+                    } else {
+                        decMatcher.appendReplacement(sb, "");
+                    }
                 } catch (Exception e) {
                     decMatcher.appendReplacement(sb, decMatcher.group(0));
                 }
@@ -413,13 +442,17 @@ public class AntigravityToolExecutor {
             decMatcher.appendTail(sb);
             text = sb.toString();
 
-            // Hex entities
-            Matcher hexMatcher = Pattern.compile("&#[xX]([0-9a-fA-F]+);").matcher(text);
+            // Hex entities (including SMP code points > 0xFFFF)
+            Matcher hexMatcher = HEX_ENTITY_PATTERN.matcher(text);
             StringBuffer sbHex = new StringBuffer();
             while (hexMatcher.find()) {
                 try {
                     int code = Integer.parseInt(hexMatcher.group(1), 16);
-                    hexMatcher.appendReplacement(sbHex, Matcher.quoteReplacement(Character.toString((char) code)));
+                    if (Character.isValidCodePoint(code)) {
+                        hexMatcher.appendReplacement(sbHex, Matcher.quoteReplacement(new String(Character.toChars(code))));
+                    } else {
+                        hexMatcher.appendReplacement(sbHex, "");
+                    }
                 } catch (Exception e) {
                     hexMatcher.appendReplacement(sbHex, hexMatcher.group(0));
                 }
@@ -434,7 +467,7 @@ public class AntigravityToolExecutor {
 
     /**
      * Executes web fetch for an external public web page with anti-SSRF verification,
-     * 10s timeouts, clean text extraction, and truncation to 8,000 characters.
+     * safe 1MB memory buffer bounds, clean text extraction, and truncation to 8,000 characters.
      */
     public Cancellable executeWebFetch(final String urlString, final ToolCallback callback) {
         final ToolCancellable handle = new ToolCancellable();
@@ -507,7 +540,48 @@ public class AntigravityToolExecutor {
                     }
 
                     ResponseBody body = response.body();
-                    String rawHtml = body != null ? body.string() : "";
+                    if (body != null) {
+                        MediaType mediaType = body.contentType();
+                        if (mediaType != null) {
+                            String type = mediaType.type();
+                            String subtype = mediaType.subtype();
+                            boolean isTextual = "text".equalsIgnoreCase(type)
+                                    || "html".equalsIgnoreCase(subtype)
+                                    || "json".equalsIgnoreCase(subtype)
+                                    || "xml".equalsIgnoreCase(subtype)
+                                    || subtype.toLowerCase(Locale.ROOT).contains("html")
+                                    || subtype.toLowerCase(Locale.ROOT).contains("xml")
+                                    || subtype.toLowerCase(Locale.ROOT).contains("json");
+                            if (!isTextual) {
+                                JsonObject err = new JsonObject();
+                                err.addProperty("status", "error");
+                                err.addProperty("message", "Unsupported content type: " + mediaType);
+                                err.addProperty("url", urlString);
+                                if (callback != null) {
+                                    callback.onResult(new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList()));
+                                }
+                                return;
+                            }
+                        }
+                    }
+
+                    // Safe bounded read up to MAX_RESPONSE_BYTES (1MB) to prevent OOM
+                    String rawHtml = "";
+                    if (body != null) {
+                        BufferedSource source = body.source();
+                        Buffer buffer = new Buffer();
+                        long totalRead = 0;
+                        while (totalRead < MAX_RESPONSE_BYTES) {
+                            long toRead = Math.min(8192L, MAX_RESPONSE_BYTES - totalRead);
+                            long bytesRead = source.read(buffer, toRead);
+                            if (bytesRead <= 0) {
+                                break;
+                            }
+                            totalRead += bytesRead;
+                        }
+                        rawHtml = buffer.readUtf8();
+                    }
+
                     String title = extractTitle(rawHtml);
                     if (title.isEmpty()) {
                         title = urlString;

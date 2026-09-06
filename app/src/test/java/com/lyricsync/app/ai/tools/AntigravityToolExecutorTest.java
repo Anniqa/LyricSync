@@ -153,6 +153,14 @@ public class AntigravityToolExecutorTest {
     }
 
     @Test
+    public void testExtractReadableTextUnescapesSmpEmojiEntities() {
+        // &#127925; = U+1F3B5 (musical note), &#x1F3B6; = U+1F3B6 (multiple musical notes)
+        String html = "<p>Melody &#127925; and Harmony &#x1F3B6; in concert</p>";
+        String text = AntigravityToolExecutor.extractReadableText(html);
+        assertEquals("Melody \uD83C\uDFB5 and Harmony \uD83C\uDFB6 in concert", text.trim());
+    }
+
+    @Test
     public void testExtractReadableTextTruncatesAt8000Chars() {
         StringBuilder largeContent = new StringBuilder("<html><body><p>");
         for (int i = 0; i < 1200; i++) {
@@ -311,6 +319,29 @@ public class AntigravityToolExecutorTest {
     }
 
     @Test
+    public void testExecuteWebFetchRejectsBinaryContentType() throws InterruptedException {
+        mockInterceptor.contentType = "image/png";
+        mockInterceptor.responseBody = "\u0089PNG\r\n\u001a\n";
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<AntigravityToolExecutor.ToolResult> resultRef = new AtomicReference<>();
+
+        executor.executeWebFetch("https://example.com/cover.png", new AntigravityToolExecutor.ToolCallback() {
+            @Override
+            public void onResult(AntigravityToolExecutor.ToolResult result) {
+                resultRef.set(result);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        AntigravityToolExecutor.ToolResult result = resultRef.get();
+        assertNotNull(result);
+        assertTrue(result.isError);
+        assertTrue(result.content.contains("Unsupported content type"));
+    }
+
+    @Test
     public void testExecuteWebFetchCancellation() {
         mockInterceptor.responseBody = "<html><body>Delayed</body></html>";
 
@@ -330,6 +361,7 @@ public class AntigravityToolExecutorTest {
     static class MockHttpInterceptor implements Interceptor {
         volatile int requestCount = 0;
         volatile int responseCode = 200;
+        volatile String contentType = "text/html; charset=utf-8";
         volatile String responseBody = "<html><body>Sample</body></html>";
         volatile String lastUrl;
 
@@ -354,7 +386,7 @@ public class AntigravityToolExecutorTest {
                     .protocol(Protocol.HTTP_1_1)
                     .code(200)
                     .message("OK")
-                    .body(ResponseBody.create(MediaType.parse("text/html; charset=utf-8"), responseBody))
+                    .body(ResponseBody.create(MediaType.parse(contentType), responseBody))
                     .build();
         }
     }
