@@ -92,10 +92,24 @@ public class AntigravityApiClient {
     public static class FunctionCall {
         public final String name;
         public final JsonObject args;
+        public final String id;
+        public final String thoughtSignature;
+        public final JsonObject rawPart;
 
         public FunctionCall(String name, JsonObject args) {
+            this(name, args, null, null, null);
+        }
+
+        public FunctionCall(String name, JsonObject args, String id, String thoughtSignature) {
+            this(name, args, id, thoughtSignature, null);
+        }
+
+        public FunctionCall(String name, JsonObject args, String id, String thoughtSignature, JsonObject rawPart) {
             this.name = name != null ? name : "";
             this.args = args != null ? args : new JsonObject();
+            this.id = id;
+            this.thoughtSignature = thoughtSignature;
+            this.rawPart = rawPart;
         }
 
         public String getName() {
@@ -105,6 +119,18 @@ public class AntigravityApiClient {
         public JsonObject getArgs() {
             return args;
         }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getThoughtSignature() {
+            return thoughtSignature;
+        }
+
+        public JsonObject getRawPart() {
+            return rawPart;
+        }
     }
 
     /**
@@ -112,6 +138,7 @@ public class AntigravityApiClient {
      */
     public static class SseChunkResult {
         public String textDelta;
+        public String thoughtSignature;
         public final List<String> webSearchQueries = new ArrayList<>();
         public FunctionCall functionCall;
         public final List<FunctionCall> functionCalls = new ArrayList<>();
@@ -401,6 +428,10 @@ public class AntigravityApiClient {
                                     hasMeaningfulData = true;
                                 }
 
+                                if (part.has("thoughtSignature") && !part.get("thoughtSignature").isJsonNull() && part.get("thoughtSignature").isJsonPrimitive()) {
+                                    result.thoughtSignature = part.get("thoughtSignature").getAsString();
+                                }
+
                                 if (part.has("functionCall") && part.get("functionCall").isJsonObject()) {
                                     JsonObject fcObj = part.getAsJsonObject("functionCall");
                                     String name = fcObj.has("name") && !fcObj.get("name").isJsonNull() && fcObj.get("name").isJsonPrimitive()
@@ -409,8 +440,14 @@ public class AntigravityApiClient {
                                     JsonObject args = fcObj.has("args") && fcObj.get("args").isJsonObject()
                                             ? fcObj.getAsJsonObject("args")
                                             : new JsonObject();
+                                    String callId = fcObj.has("id") && !fcObj.get("id").isJsonNull() && fcObj.get("id").isJsonPrimitive()
+                                            ? fcObj.get("id").getAsString()
+                                            : null;
+                                    String thoughtSig = part.has("thoughtSignature") && !part.get("thoughtSignature").isJsonNull() && part.get("thoughtSignature").isJsonPrimitive()
+                                            ? part.get("thoughtSignature").getAsString()
+                                            : result.thoughtSignature;
                                     if (name != null && !name.trim().isEmpty()) {
-                                        FunctionCall fc = new FunctionCall(name.trim(), args);
+                                        FunctionCall fc = new FunctionCall(name.trim(), args, callId, thoughtSig, part);
                                         result.functionCalls.add(fc);
                                         if (result.functionCall == null) {
                                             result.functionCall = fc;
@@ -654,6 +691,7 @@ public class AntigravityApiClient {
                         }
 
                         FunctionCall detectedFunctionCall = null;
+                        String streamThoughtSig = null;
                         int promptTokens = lastPromptTokens;
                         int candidateTokens = lastCandidateTokens;
 
@@ -690,6 +728,10 @@ public class AntigravityApiClient {
                                         return;
                                     }
 
+                                    if (chunk.thoughtSignature != null) {
+                                        streamThoughtSig = chunk.thoughtSignature;
+                                    }
+
                                     if (chunk.functionCall != null) {
                                         detectedFunctionCall = chunk.functionCall;
                                     }
@@ -723,6 +765,17 @@ public class AntigravityApiClient {
                         if (call.isCanceled() || handle.isCancelled()) {
                             activeHandles.remove(handle);
                             return;
+                        }
+
+                        // Attach stream-level thoughtSignature if not attached directly to functionCall
+                        if (detectedFunctionCall != null && detectedFunctionCall.getThoughtSignature() == null && streamThoughtSig != null) {
+                            detectedFunctionCall = new FunctionCall(
+                                    detectedFunctionCall.name,
+                                    detectedFunctionCall.args,
+                                    detectedFunctionCall.id,
+                                    streamThoughtSig,
+                                    detectedFunctionCall.rawPart
+                            );
                         }
 
                         // Check if model invoked a tool functionCall
@@ -827,25 +880,38 @@ public class AntigravityApiClient {
                 JsonObject modelTurn = new JsonObject();
                 modelTurn.addProperty("role", "model");
                 JsonArray modelParts = new JsonArray();
-                JsonObject fcPart = new JsonObject();
-                JsonObject fcObj = new JsonObject();
-                fcObj.addProperty("name", toolName);
-                fcObj.add("args", toolArgs != null ? toolArgs : new JsonObject());
-                fcPart.add("functionCall", fcObj);
-                modelParts.add(fcPart);
+                if (functionCall.getRawPart() != null) {
+                    modelParts.add(functionCall.getRawPart());
+                } else {
+                    JsonObject fcPart = new JsonObject();
+                    if (functionCall.getThoughtSignature() != null && !functionCall.getThoughtSignature().trim().isEmpty()) {
+                        fcPart.addProperty("thoughtSignature", functionCall.getThoughtSignature().trim());
+                    }
+                    JsonObject fcObj = new JsonObject();
+                    fcObj.addProperty("name", toolName);
+                    if (functionCall.getId() != null && !functionCall.getId().trim().isEmpty()) {
+                        fcObj.addProperty("id", functionCall.getId().trim());
+                    }
+                    fcObj.add("args", toolArgs != null ? toolArgs : new JsonObject());
+                    fcPart.add("functionCall", fcObj);
+                    modelParts.add(fcPart);
+                }
                 modelTurn.add("parts", modelParts);
                 contents.add(modelTurn);
 
                 // Append functionResponse turn to contents
+                // CRITICAL FOR CLOUDCODE PA / GEMINI: role MUST be "user", NOT "function" or "tool"
                 JsonObject fnTurn = new JsonObject();
-                fnTurn.addProperty("role", "function");
+                fnTurn.addProperty("role", "user");
                 JsonArray fnParts = new JsonArray();
                 JsonObject fnPart = new JsonObject();
                 JsonObject frObj = new JsonObject();
                 frObj.addProperty("name", toolName);
+                if (functionCall.getId() != null && !functionCall.getId().trim().isEmpty()) {
+                    frObj.addProperty("id", functionCall.getId().trim());
+                }
 
                 JsonObject respWrapper = new JsonObject();
-                respWrapper.addProperty("name", toolName);
                 String rawContent = (result != null && result.content != null) ? result.content : "";
                 try {
                     JsonElement parsed = JsonParser.parseString(rawContent);

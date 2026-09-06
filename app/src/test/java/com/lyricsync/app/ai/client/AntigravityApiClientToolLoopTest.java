@@ -164,8 +164,8 @@ public class AntigravityApiClientToolLoopTest {
     // -------------------------------------------------------------
     @Test
     public void testMultiTurnFlowWebSearchSuccess() throws InterruptedException {
-        // Turn 1: model returns functionCall for web_search
-        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"functionCall\": {\"name\": \"web_search\",\"args\": {\"query\": \"Coldplay Fix You origin\"}}}]}}]}}\n\n";
+        // Turn 1: model returns functionCall with thoughtSignature and id
+        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thoughtSignature\": \"sig-coldplay-123\",\"functionCall\": {\"name\": \"web_search\",\"id\": \"call_coldplay_456\",\"args\": {\"query\": \"Coldplay Fix You origin\"}}}]}}]}}\n\n";
 
         // Turn 2: model receives functionResponse and returns final completion
         String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Fix You was written by Chris Martin for Gwyneth Paltrow.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 50,\"candidatesTokenCount\": 18}}}\n\n";
@@ -245,14 +245,18 @@ public class AntigravityApiClientToolLoopTest {
         JsonObject fcPart = modelTurn.getAsJsonArray("parts").get(0).getAsJsonObject();
         assertTrue(fcPart.has("functionCall"));
         assertEquals("web_search", fcPart.getAsJsonObject("functionCall").get("name").getAsString());
+        assertEquals("call_coldplay_456", fcPart.getAsJsonObject("functionCall").get("id").getAsString());
+        assertTrue(fcPart.has("thoughtSignature"));
+        assertEquals("sig-coldplay-123", fcPart.get("thoughtSignature").getAsString());
 
-        // Check functionResponse turn
+        // Check functionResponse turn (Cloudcode PA requires role: "user")
         JsonObject fnTurn = contents.get(2).getAsJsonObject();
-        assertEquals("function", fnTurn.get("role").getAsString());
+        assertEquals("user", fnTurn.get("role").getAsString());
         JsonObject frPart = fnTurn.getAsJsonArray("parts").get(0).getAsJsonObject();
         assertTrue(frPart.has("functionResponse"));
         JsonObject fr = frPart.getAsJsonObject("functionResponse");
         assertEquals("web_search", fr.get("name").getAsString());
+        assertEquals("call_coldplay_456", fr.get("id").getAsString());
         assertTrue("function response must contain response object", fr.has("response"));
 
         // Verify completion outputs
