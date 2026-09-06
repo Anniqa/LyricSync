@@ -32,7 +32,7 @@
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end"
-                android:text="✨ AI Insights" />
+                android:text="@string/ai_insights_title" />
 
             <TextView
                 android:id="@+id/ai_sheet_artist"

@@ -17,17 +17,59 @@ import java.util.List;
  */
 public class SongChatManager {
 
+    public static class PromptTemplate {
+        public final String id;
+        public final String title;
+        public final String description;
+        public final String promptText;
+        public final String iconName;
+
+        public PromptTemplate(String id, String title, String description, String promptText, String iconName) {
+            this.id = id;
+            this.title = title;
+            this.description = description;
+            this.promptText = promptText;
+            this.iconName = iconName;
+        }
+    }
+
     public static final String DEFAULT_MODEL = "gemini-2.5-flash";
 
     public static final List<String> QUICK_PROMPTS = Collections.unmodifiableList(Arrays.asList(
-            "Kisah di balik lagu ini",
-            "Makna reff / chorus",
-            "Simbolisme tersembunyi",
-            "Pesan moral bagi pendengar"
+            "Song Meaning & Story",
+            "Line-by-Line Breakdown",
+            "Songwriter's Intent",
+            "Emotional Tone & Mood",
+            "Trivia & Context",
+            "Musical Composition"
     ));
+
+    public static List<PromptTemplate> getPromptTemplates(String langCode) {
+        boolean isIndo = "id".equalsIgnoreCase(langCode) || "in".equalsIgnoreCase(langCode);
+        if (isIndo) {
+            return Collections.unmodifiableList(Arrays.asList(
+                    new PromptTemplate("meaning", "Makna & Kisah Lagu", "Eksplorasi cerita, tema utama, dan narasi lagu", "Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.", "ic_sparkles"),
+                    new PromptTemplate("breakdown", "Bedah Lirik & Metafora", "Analisis baris lirik penting dan bahasa kiasan", "Bedah baris-baris lirik penting dan metafora yang digunakan dalam lagu ini.", "ic_lyrics_lines"),
+                    new PromptTemplate("intent", "Tujuan & Inspirasi Penulis", "Inspirasi artis dan pesan yang ingin disampaikan", "Apa yang menginspirasi pencipta lagu ini dan apa pesan yang ingin disampaikan?", "ic_person_artist"),
+                    new PromptTemplate("mood", "Nuansa Emosi & Mood", "Suasana emosional, vibe, dan resonansi perasaan", "Analisis nuansa emosional, mood, dan suasana dalam lagu ini.", "ic_heart_mood"),
+                    new PromptTemplate("trivia", "Trivia & Konteks Budaya", "Fakta menarik, proses rekaman, dan pengaruh budaya", "Ceritakan fakta menarik, latar belakang pembuatan, dan dampak budaya lagu ini.", "ic_bulb_info"),
+                    new PromptTemplate("composition", "Komposisi Musik", "Akord, melodi, aransemen, dan gaya produksi", "Analisis struktur melodi, tempo, instrumen, dan aransemen musiknya.", "ic_music_note")
+            ));
+        } else {
+            return Collections.unmodifiableList(Arrays.asList(
+                    new PromptTemplate("meaning", "Song Meaning & Story", "Deep dive into themes and narrative", "Explain the story, themes, and deeper meaning behind this song.", "ic_sparkles"),
+                    new PromptTemplate("breakdown", "Line-by-Line Breakdown", "Analyze metaphors and poetic lyrics", "Break down the key lines and metaphors in these lyrics.", "ic_lyrics_lines"),
+                    new PromptTemplate("intent", "Songwriter's Intent", "Artist inspiration and backstory", "What inspired the artist to write this song and what was their intent?", "ic_person_artist"),
+                    new PromptTemplate("mood", "Emotional Tone & Mood", "Mood, vibe, and emotional resonance", "Analyze the emotional mood, tone, and feel of this song.", "ic_heart_mood"),
+                    new PromptTemplate("trivia", "Trivia & Context", "Behind-the-scenes facts and impact", "Tell me interesting trivia, background facts, and cultural context about this song.", "ic_bulb_info"),
+                    new PromptTemplate("composition", "Musical Composition", "Chords, melody, and arrangement", "Analyze the musical structure, tempo, instrumentation, and composition of this song.", "ic_music_note")
+            ));
+        }
+    }
 
     private final AntigravityApiClient apiClient;
     private volatile String modelId;
+    private volatile String appLanguage = "en";
     private volatile String title;
     private volatile String artist;
     private volatile String fullLyrics;
@@ -121,29 +163,45 @@ public class SongChatManager {
         return buildSongContext(false);
     }
 
+    public String getAppLanguage() {
+        return appLanguage;
+    }
+
+    public void setAppLanguage(String lang) {
+        this.appLanguage = (lang != null && (lang.equalsIgnoreCase("id") || lang.equalsIgnoreCase("in"))) ? "id" : "en";
+    }
+
     /**
      * Constructs the contextual system information summarizing the active song,
      * adding factual Google Search directives when enableWebSearch is true.
      */
     public String buildSongContext(boolean enableWebSearch) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are an insightful and helpful music analyst assistant in the LyricSync app.\n");
-        sb.append("You are in an interactive conversation with the user about the currently playing song:\n");
+        boolean isIndo = "id".equalsIgnoreCase(appLanguage);
+
+        if (isIndo) {
+            sb.append("Anda adalah asisten analis musik yang berwawasan luas dan membantu di aplikasi LyricSync.\n");
+            sb.append("Anda sedang berdiskusi interaktif dengan pengguna mengenai lagu yang sedang diputar:\n");
+        } else {
+            sb.append("You are an insightful and helpful music analyst assistant in the LyricSync app.\n");
+            sb.append("You are in an interactive conversation with the user about the currently playing song:\n");
+        }
+
         if (title != null && !title.trim().isEmpty()) {
-            sb.append("Title: ").append(title.trim()).append("\n");
+            sb.append(isIndo ? "Judul: " : "Title: ").append(title.trim()).append("\n");
         }
         if (artist != null && !artist.trim().isEmpty()) {
-            sb.append("Artist: ").append(artist.trim()).append("\n");
+            sb.append(isIndo ? "Artis: " : "Artist: ").append(artist.trim()).append("\n");
         }
         if (meaning != null) {
             if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
-                sb.append("Mood: ").append(meaning.mood.trim()).append("\n");
+                sb.append(isIndo ? "Nuansa / Mood: " : "Mood: ").append(meaning.mood.trim()).append("\n");
             }
             if (meaning.summary != null && !meaning.summary.trim().isEmpty()) {
-                sb.append("Meaning Summary: ").append(meaning.summary.trim()).append("\n");
+                sb.append(isIndo ? "Ringkasan Makna: " : "Meaning Summary: ").append(meaning.summary.trim()).append("\n");
             }
             if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
-                sb.append("Grounding Sources: ");
+                sb.append(isIndo ? "Sumber Rujukan: " : "Grounding Sources: ");
                 for (int i = 0; i < meaning.webSources.size(); i++) {
                     if (i > 0) sb.append(", ");
                     sb.append(meaning.webSources.get(i));
@@ -152,12 +210,20 @@ public class SongChatManager {
             }
         }
         if (fullLyrics != null && !fullLyrics.trim().isEmpty()) {
-            sb.append("Lyrics:\n").append(fullLyrics.trim()).append("\n");
+            sb.append(isIndo ? "Lirik:\n" : "Lyrics:\n").append(fullLyrics.trim()).append("\n");
         }
         if (enableWebSearch) {
-            sb.append("\n[PENTING] Lakukan penelusuran Google Search secara aktif untuk menemukan fakta riil, latar belakang resmi, wawancara pencipta lagu/musisi, dan konteks album. Berikan jawaban yang akurat dan berbasis fakta, bukan spekulasi atau asumsi.\n");
+            if (isIndo) {
+                sb.append("\n[PENTING] Lakukan penelusuran Google Search secara aktif untuk menemukan fakta riil, latar belakang resmi, wawancara pencipta lagu/musisi, dan konteks album. Berikan jawaban yang akurat dan berbasis fakta, bukan spekulasi atau asumsi.\n");
+            } else {
+                sb.append("\n[IMPORTANT] Actively perform Google Search queries to discover verified facts, official background stories, artist interviews, and album context. Ground your answers in real facts rather than speculation.\n");
+            }
         }
-        sb.append("\nAnswer user questions about the song's meaning, backstory, emotional themes, and lyrics warmly and clearly in the language used by the user.");
+        if (isIndo) {
+            sb.append("\nJawab pertanyaan pengguna mengenai makna lagu, kisah di balik lagu, tema emosi, dan lirik secara ramah, mendalam, dan terstruktur dalam Bahasa Indonesia.");
+        } else {
+            sb.append("\nAnswer user questions about the song's meaning, backstory, emotional themes, and lyrics warmly, insightfully, and clearly in English.");
+        }
         return sb.toString();
     }
 

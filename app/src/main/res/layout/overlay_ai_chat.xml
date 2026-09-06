@@ -18,12 +18,12 @@
         android:layout_marginBottom="8dp">
 
         <ImageView
-            android:layout_width="26dp"
-            android:layout_height="26dp"
-            android:padding="3dp"
-            android:src="@drawable/ic_sparkles"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:padding="2dp"
+            android:src="@drawable/ic_ai_sparkle"
             app:tint="@color/accent"
-            android:contentDescription="AI Insights" />
+            android:contentDescription="@string/ai_insights_title" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -42,13 +42,14 @@
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end"
-                android:text="✨ AI Insights" />
+                android:text="@string/ai_insights_title" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:layout_marginTop="1dp">
 
                 <TextView
                     android:id="@+id/ai_chat_artist"
@@ -92,7 +93,7 @@
             android:padding="6dp"
             android:background="@drawable/bg_icon_button"
             android:src="@drawable/ic_chevron_down"
-            android:contentDescription="Minimize to Bubble" />
+            android:contentDescription="@string/cd_collapse" />
 
         <ImageView
             android:id="@+id/ai_close_button"
@@ -102,88 +103,74 @@
             android:layout_marginStart="4dp"
             android:background="@drawable/bg_icon_button"
             android:src="@drawable/ic_close"
-            android:contentDescription="Close AI" />
+            android:contentDescription="@string/cd_close" />
     </LinearLayout>
-
-    <!-- ── Meaning Summary ─────────────────────────────────────── -->
-    <ScrollView
-        android:id="@+id/ai_summary_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:maxHeight="80dp"
-        android:layout_marginTop="2dp"
-        android:scrollbars="vertical"
-        android:fadeScrollbars="true">
-
-        <TextView
-            android:id="@+id/ai_summary_text"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp"
-            android:lineSpacingExtra="2dp"
-            android:text="Tap ✨ untuk analisis makna lagu." />
-    </ScrollView>
-
-    <!-- ── Web Sources List ────────────────────────────────────── -->
-    <HorizontalScrollView
-        android:id="@+id/ai_web_sources_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none"
-        android:overScrollMode="never"
-        android:layout_marginTop="6dp"
-        android:visibility="gone">
-
-        <LinearLayout
-            android:id="@+id/ai_web_sources_container"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal" />
-    </HorizontalScrollView>
-
-    <!-- ── Quick Prompt Chips ──────────────────────────────────── -->
-    <HorizontalScrollView
-        android:id="@+id/ai_quick_chips_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none"
-        android:overScrollMode="never"
-        android:layout_marginTop="6dp">
-
-        <LinearLayout
-            android:id="@+id/ai_quick_chips_container"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal" />
-    </HorizontalScrollView>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="@color/divider"
-        android:layout_marginTop="8dp"
         android:layout_marginBottom="8dp" />
 
-    <!-- ── Chat Messages Scroll ────────────────────────────────── -->
-    <ScrollView
-        android:id="@+id/ai_chat_scroll"
+    <!-- ── Center Canvas Area ──────────────────────────────────── -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:scrollbars="vertical"
-        android:fadeScrollbars="true"
-        android:fillViewport="true">
+        android:layout_weight="1">
 
-        <LinearLayout
-            android:id="@+id/ai_chat_messages"
+        <!-- ── Empty State Canvas: Prompt Templates ─────────────── -->
+        <ScrollView
+            android:id="@+id/ai_chat_empty_state"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </ScrollView>
+            android:layout_height="match_parent"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="true"
+            android:fillViewport="true">
 
-    <!-- ── AI Tool Status Pill ─────────────────────────────────── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:id="@+id/ai_empty_hint_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ai_empty_hint"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="10dp" />
+
+                <LinearLayout
+                    android:id="@+id/ai_prompt_templates_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ── Chat Messages Scroll ────────────────────────────── -->
+        <ScrollView
+            android:id="@+id/ai_chat_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="true"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/ai_chat_messages"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="6dp" />
+        </ScrollView>
+    </FrameLayout>
+
+    <!-- ── Live AI Tool Status Pill ────────────────────────────── -->
     <LinearLayout
         android:id="@+id/ai_tool_status_container"
         android:layout_width="wrap_content"
@@ -196,14 +183,17 @@
         android:paddingTop="5dp"
         android:paddingBottom="5dp"
         android:layout_marginTop="6dp"
+        android:layout_marginBottom="4dp"
         android:layout_gravity="center_horizontal"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/ai_tool_status_icon"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textSize="14sp" />
+        <ImageView
+            android:id="@+id/ai_tool_status_icon_view"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_search_globe"
+            app:tint="#64B5F6"
+            android:contentDescription="@null" />
 
         <TextView
             android:id="@+id/ai_tool_status_text"
@@ -218,37 +208,63 @@
             android:maxWidth="240dp" />
     </LinearLayout>
 
-    <!-- ── Chat Input Bar ──────────────────────────────────────── -->
+    <!-- ── Web Sources List ────────────────────────────────────── -->
+    <HorizontalScrollView
+        android:id="@+id/ai_web_sources_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:overScrollMode="never"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="4dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/ai_web_sources_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <!-- ── Claude/Gemini Style Chat Input Bar ──────────────────── -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:layout_marginTop="8dp">
+        android:background="@drawable/bg_chat_input_pill"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp"
+        android:layout_marginTop="4dp">
 
         <ImageView
             android:id="@+id/ai_web_search_chip"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:padding="7dp"
             android:background="@drawable/bg_icon_button"
-            android:src="@drawable/ic_search"
-            android:contentDescription="Toggle Web Search"
-            android:alpha="0.5" />
+            android:src="@drawable/ic_search_globe"
+            app:tint="@color/text_secondary"
+            android:contentDescription="@string/ai_toggle_web_search"
+            android:alpha="0.55" />
 
         <EditText
             android:id="@+id/ai_chat_input"
             android:layout_width="0dp"
-            android:layout_height="38dp"
+            android:layout_height="36dp"
             android:layout_weight="1"
             android:layout_marginStart="6dp"
-            android:hint="Ask about this song…"
+            android:layout_marginEnd="6dp"
+            android:hint="@string/ai_chat_input_hint"
             android:textColorHint="@color/text_dim"
             android:textColor="@color/text_primary"
             android:textSize="12sp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:background="@drawable/bg_tip_box"
+            android:background="@null"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
             android:inputType="text"
             android:imeOptions="actionSend"
             android:maxLines="1"
@@ -256,13 +272,13 @@
 
         <ImageView
             android:id="@+id/ai_chat_send"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:padding="7dp"
-            android:layout_marginStart="6dp"
             android:background="@drawable/bg_icon_button"
-            android:src="@drawable/ic_chevron_right"
-            android:contentDescription="Send" />
+            android:src="@drawable/ic_send_arrow"
+            app:tint="@color/accent"
+            android:contentDescription="@string/ai_send" />
     </LinearLayout>
 
 </LinearLayout>

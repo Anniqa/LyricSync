@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LyricSync</string>
+    <string name="app_tagline">Lirik tersinkronisasi indah untuk musikmu</string>
+
+    <!-- Permissions -->
+    <string name="permissions_title">Izin Akses</string>
+    <string name="notification_access">Akses Notifikasi</string>
+    <string name="notification_access_desc">Izinkan LyricSync mendeteksi lagu yang sedang diputar</string>
+    <string name="overlay_permission">Tampilkan di Atas Aplikasi Lain</string>
+    <string name="overlay_permission_desc">Izinkan lirik melayang di atas pemutar musik</string>
+    <string name="enabled">Diizinkan</string>
+    <string name="disabled">Ketuk untuk izinkan</string>
+    <string name="permissions_all_set">Semua siap — aplikasi siap digunakan</string>
+    <string name="permissions_needed">Berikan kedua izin untuk memulai</string>
+
+    <!-- Actions -->
+    <string name="start">Mulai Overlay</string>
+    <string name="stop">Hentikan Overlay</string>
+    <string name="grant_permissions_first">Berikan kedua izin terlebih dahulu</string>
+    <string name="overlay_started">Overlay lirik dimulai</string>
+    <string name="overlay_stopped">Overlay lirik dihentikan</string>
+
+    <!-- Now playing -->
+    <string name="now_playing">Sedang Diputar</string>
+    <string name="nothing_playing">Tidak ada lagu yang diputar</string>
+    <string name="nothing_playing_desc">Putar lagu di aplikasi musik apa pun</string>
+
+    <!-- Appearance -->
+    <string name="appearance_title">Tipografi &amp; Efek</string>
+    <string name="font_size">Ukuran font</string>
+    <string name="font_family_label">Font lirik</string>
+    <string name="anim_style_label">Animasi lirik</string>
+    <string name="anim_motion_label">Gerakan</string>
+    <string name="anim_effect_label">Efek Visual</string>
+    <string name="overlay_dimensions_title">Dimensi Overlay</string>
+    <string name="overlay_size">Ukuran overlay</string>
+    <string name="overlay_width">Lebar</string>
+    <string name="overlay_height">Tinggi</string>
+    <string name="overlay_resize_tip">Tarik pegangan di sudut kanan bawah overlay untuk mengubah ukuran bebas.</string>
+
+    <!-- Overlay settings sections -->
+    <string name="section_playback">PEMUTARAN</string>
+    <string name="section_font">FONT</string>
+    <string name="section_animation">ANIMASI</string>
+
+    <!-- Sync -->
+    <string name="sync_title">Offset Sinkronisasi Lirik</string>
+    <string name="sync_hint">Jika lirik terlalu cepat mendahului lagu, tambah nilai ini. Jika tertinggal, kurangi.</string>
+    <string name="sync_hint_short">Lirik mendahului? Tambah. Tertinggal? Kurang.</string>
+    <string name="sync_reset">Reset</string>
+    <string name="lyrics_later">lirik terlambat</string>
+    <string name="lyrics_earlier">lirik lebih awal</string>
+    <string name="in_sync">sinkron</string>
+
+    <!-- Translation -->
+    <string name="lyrics_translation_title">Terjemahan Lirik</string>
+    <string name="lyrics_translation_desc">Tampilkan teks terjemahan di bawah lirik sinkron</string>
+    <string name="lyrics_translation_target">Bahasa Tujuan</string>
+
+    <!-- Developer -->
+    <string name="developer_title">Pengembang</string>
+    <string name="logs">Log</string>
+    <string name="clear_logs">Hapus log</string>
+    <string name="share_logs">Bagikan log</string>
+    <string name="logs_cleared">Log dibersihkan</string>
+    <string name="share_logs_failed">Gagal membagikan log</string>
+
+    <!-- Overlay -->
+    <string name="lyrics_loading">Mencari lirik…</string>
+    <string name="lyrics_none">Lirik tidak ditemukan</string>
+    <string name="lyrics_none_desc">Lagu ini belum ada di database lirik mana pun</string>
+    <string name="no_music">Tidak ada musik</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_album_art">Sampul album</string>
+    <string name="cd_open">Buka</string>
+    <string name="cd_collapse">Tutup lirik</string>
+    <string name="cd_settings">Pengaturan overlay</string>
+    <string name="cd_close">Tutup overlay</string>
+    <string name="cd_previous">Lagu sebelumnya</string>
+    <string name="cd_play_pause">Putar atau jeda</string>
+    <string name="cd_next">Lagu berikutnya</string>
+    <string name="cd_expand_section">Perluas bagian</string>
+    <string name="cd_resize">Ubah ukuran overlay</string>
+    <string name="overlay_resize_title">Pegangan Ukuran</string>
+
+    <!-- Notification -->
+    <string name="notif_active">Overlay lirik aktif</string>
+    <string name="notif_hide">Sembunyikan</string>
+    <string name="notif_show">Tampilkan</string>
+    <string name="notif_stop">Berhenti</string>
+
+    <!-- Google Antigravity AI -->
+    <string name="ai_account_title">Google Antigravity AI</string>
+    <string name="ai_account_desc">Dukung terjemahan puitis dan analisis lagu dengan Gemini AI</string>
+    <string name="ai_connect_google">Hubungkan Google (Antigravity)</string>
+    <string name="ai_manual_token">Atau masukkan token penyegar secara manual</string>
+    <string name="ai_disconnect">Keluar</string>
+    <string name="ai_model_label">Model AI</string>
+    <string name="ai_effort_label">Tingkat Penalaran</string>
+    <string name="ai_quota_weekly">Kuota Mingguan</string>
+    <string name="ai_quota_5h">Kuota 5-Jam</string>
+    <string name="ai_web_search_label">Google Web Search Grounding</string>
+    <string name="ai_translation_label">Gunakan Gemini AI untuk terjemahan puitis</string>
+
+    <!-- App Language -->
+    <string name="app_language_title">Bahasa Aplikasi</string>
+    <string name="app_language_desc">Pilih bahasa antarmuka aplikasi dan respon AI</string>
+    <string name="lang_en">English</string>
+    <string name="lang_id">Bahasa Indonesia</string>
+
+    <!-- AI Chat & Insights -->
+    <string name="ai_insights_title">AI Insights</string>
+    <string name="ai_studio_title">AI Song Studio</string>
+    <string name="ai_empty_hint">Pilih topik untuk dieksplorasi atau ajukan pertanyaan tentang lagu ini:</string>
+    <string name="ai_chat_input_hint">Tanyakan apa saja tentang lagu ini…</string>
+    <string name="ai_send">Kirim</string>
+    <string name="ai_toggle_web_search">Alihkan Pencarian Web</string>
+    <string name="ai_tool_searching">Mencari di Google…</string>
+    <string name="ai_tool_fetching">Membaca artikel…</string>
+    <string name="ai_tool_search_done">Ditemukan %1$d sumber</string>
+    <string name="ai_tool_fetch_done">Artikel terbaca</string>
+    <string name="ai_web_sources_label">Sumber Web</string>
+    <string name="ai_no_track">Putar lagu untuk berdiskusi dengan AI.</string>
+    <string name="ai_prompt_meaning_title">Makna &amp; Kisah Lagu</string>
+    <string name="ai_prompt_meaning_desc">Eksplorasi cerita, tema utama, dan narasi lagu</string>
+    <string name="ai_prompt_meaning_prompt">Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.</string>
+    <string name="ai_prompt_breakdown_title">Bedah Lirik &amp; Metafora</string>
+    <string name="ai_prompt_breakdown_desc">Analisis baris lirik penting dan bahasa kiasan</string>
+    <string name="ai_prompt_breakdown_prompt">Bedah baris-baris lirik penting dan metafora yang digunakan dalam lagu ini.</string>
+    <string name="ai_prompt_intent_title">Tujuan &amp; Inspirasi Penulis</string>
+    <string name="ai_prompt_intent_desc">Inspirasi artis dan pesan yang ingin disampaikan</string>
+    <string name="ai_prompt_intent_prompt">Apa yang menginspirasi pencipta lagu ini dan apa pesan yang ingin disampaikan?</string>
+    <string name="ai_prompt_mood_title">Nuansa Emosi &amp; Mood</string>
+    <string name="ai_prompt_mood_desc">Suasana emosional, vibe, dan resonansi perasaan</string>
+    <string name="ai_prompt_mood_prompt">Analisis nuansa emosional, mood, dan suasana dalam lagu ini.</string>
+    <string name="ai_prompt_trivia_title">Trivia &amp; Konteks Budaya</string>
+    <string name="ai_prompt_trivia_desc">Fakta menarik, proses rekaman, dan pengaruh budaya</string>
+    <string name="ai_prompt_trivia_prompt">Ceritakan fakta menarik, latar belakang pembuatan, dan dampak budaya lagu ini.</string>
+    <string name="ai_prompt_composition_title">Komposisi Musik</string>
+    <string name="ai_prompt_composition_desc">Akord, melodi, aransemen, dan gaya produksi</string>
+    <string name="ai_prompt_composition_prompt">Analisis struktur melodi, tempo, instrumen, dan aransemen musiknya.</string>
+    <string name="ai_thinking">Berpikir…</string>
+    <string name="ai_login_required">Silakan hubungkan akun Google di pengaturan AI.</string>
+    <string name="ai_web_search_active">AI Web Search aktif</string>
+    <string name="ai_web_search_inactive">AI Web Search nonaktif</string>
+    <string name="ai_link_error">Tidak dapat membuka tautan: %1$s</string>
+    <string name="ai_total_tokens">Total Token Terpakai: %1$d</string>
+    <string name="ai_select_model">Pilih Model AI</string>
+    <string name="ai_model_selector_desc">Pilih kecerdasan AI untuk analisis lagu dan percakapan</string>
+    <string name="ai_model_gemini_flash_desc">Cepat, serbaguna &amp; pencarian Google</string>
+    <string name="ai_model_gemini_pro_desc">Penalaran mendalam &amp; analisis lirik kompleks</string>
+    <string name="ai_model_claude_desc">Model Anthropic, pemahaman puitis bernuansa</string>
+</resources>

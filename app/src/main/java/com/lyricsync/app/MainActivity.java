@@ -16,6 +16,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.HapticFeedbackConstants;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.app.AlertDialog;
@@ -66,6 +67,7 @@ import com.lyricsync.app.ui.FontChips;
 import com.lyricsync.app.util.AppFont;
 import com.lyricsync.app.util.AppLog;
 import com.lyricsync.app.util.Haptics;
+import com.lyricsync.app.util.LocaleHelper;
 import com.lyricsync.app.util.NowPlaying;
 import com.lyricsync.app.util.Permissions;
 import com.lyricsync.app.util.SeekBars;
@@ -81,6 +83,11 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity implements NowPlaying.Listener {
     private static final String TAG = "MainActivity";
     private static final int REQ_POST_NOTIFICATIONS = 42;
+
+    @Override
+    protected void attachBaseContext(android.content.Context newBase) {
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase));
+    }
 
     /** Sync slider is 0..SYNC_RANGE with the midpoint meaning "no offset". */
     private static final int SYNC_LIMIT_MS = 1500;
@@ -120,6 +127,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private android.widget.LinearLayout animEffectChips;
     private TextView animComboLabel;
 
+    private TextView btnLangEn;
+    private TextView btnLangId;
+
     // ── AI Account Views & Subsystems ──────────────────────────────────────
     private View layoutAiDisconnected;
     private View layoutAiConnected;
@@ -152,9 +162,13 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private EditText aiStudioChatInput;
     private ImageView aiStudioChatSend;
     private LinearLayout aiStudioToolStatusContainer;
-    private TextView aiStudioToolStatusIcon;
+    private ImageView aiStudioToolStatusIcon;
     private TextView aiStudioToolStatusText;
     private Runnable pendingToolStatusHide;
+    private View aiStudioModelSelectorPill;
+    private ImageView aiStudioModelPillIcon;
+    private TextView aiStudioModelPillName;
+    private TextView aiStudioModelDescBadge;
 
     private AntigravityAuthManager authManager;
     private AntigravityApiClient apiClient;
@@ -195,6 +209,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setupListeners();
         setupSliders();
         setupAppearanceChips();
+        setupLanguageUi();
         setupTranslationUi();
         setupAiAccountUi();
         setupAiStudioUi();
@@ -708,12 +723,16 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             modelAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
                             spinnerAiModel.setAdapter(modelAdapter);
                             spinnerAiModel.setSelection(selectedIdx);
+                            updateAiStudioModelUi(savedModel);
 
                             spinnerAiModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                                 @Override
                                 public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                                     if (position >= 0 && position < availableAiModels.size()) {
-                                        prefs.edit().putString("pref_ai_model", availableAiModels.get(position).id).apply();
+                                        String mId = availableAiModels.get(position).id;
+                                        prefs.edit().putString("pref_ai_model", mId).apply();
+                                        if (songChatManager != null) songChatManager.setModelId(mId);
+                                        updateAiStudioModelUi(mId);
                                     }
                                 }
 
@@ -740,15 +759,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             if (tvAiTokens != null) {
                 int tokens = prefs.getInt("pref_ai_total_tokens", 0);
                 if (tokens > 0) {
-                    tvAiTokens.setText("Total Token Terpakai: " + tokens);
+                    tvAiTokens.setText(getString(R.string.ai_total_tokens, tokens));
                     tvAiTokens.setVisibility(View.VISIBLE);
                 } else {
                     tvAiTokens.setVisibility(View.GONE);
                 }
-            }
-
-            if (currentTrackTitle != null && (songChatManager == null || songChatManager.getMeaning() == null) && activeMeaningCall == null) {
-                fetchSongMeaning(currentTrackTitle, currentTrackArtist);
             }
         } else {
             if (aiStudioQuotaBadge != null) {
@@ -1026,6 +1041,47 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         onNowPlayingChanged(snapshot);
     }
 
+    // ── App Language ────────────────────────────────────────────────────────
+
+    private void setupLanguageUi() {
+        btnLangEn = findViewById(R.id.btn_lang_en);
+        btnLangId = findViewById(R.id.btn_lang_id);
+        if (btnLangEn == null || btnLangId == null) return;
+
+        String currentLang = LocaleHelper.getLanguage(this);
+        updateLanguageSelectionUi(currentLang);
+
+        btnLangEn.setOnClickListener(v -> {
+            Haptics.tick(v);
+            if (LocaleHelper.LANG_EN.equalsIgnoreCase(LocaleHelper.getLanguage(MainActivity.this))) {
+                return;
+            }
+            LocaleHelper.setLanguage(MainActivity.this, LocaleHelper.LANG_EN);
+            recreate();
+        });
+
+        btnLangId.setOnClickListener(v -> {
+            Haptics.tick(v);
+            if (LocaleHelper.LANG_ID.equalsIgnoreCase(LocaleHelper.getLanguage(MainActivity.this))) {
+                return;
+            }
+            LocaleHelper.setLanguage(MainActivity.this, LocaleHelper.LANG_ID);
+            recreate();
+        });
+    }
+
+    private void updateLanguageSelectionUi(String langCode) {
+        boolean isId = LocaleHelper.LANG_ID.equalsIgnoreCase(langCode);
+        if (btnLangEn != null) {
+            btnLangEn.setBackgroundResource(isId ? R.drawable.bg_icon_button : R.drawable.bg_pill_ok);
+            btnLangEn.setTextColor(ContextCompat.getColor(this, isId ? R.color.text_secondary : R.color.text_primary));
+        }
+        if (btnLangId != null) {
+            btnLangId.setBackgroundResource(isId ? R.drawable.bg_pill_ok : R.drawable.bg_icon_button);
+            btnLangId.setTextColor(ContextCompat.getColor(this, isId ? R.color.text_primary : R.color.text_secondary));
+        }
+    }
+
     // ── AI Song Studio ─────────────────────────────────────────────────────
 
     private void setupAiStudioUi() {
@@ -1041,6 +1097,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (songChatManager == null) {
             songChatManager = new SongChatManager(apiClient);
         }
+        songChatManager.setAppLanguage(LocaleHelper.getLanguage(this));
 
         cardAiStudio = findViewById(R.id.card_ai_studio);
         aiStudioHeader = findViewById(R.id.ai_studio_header);
@@ -1062,6 +1119,21 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         aiStudioToolStatusContainer = findViewById(R.id.ai_tool_status_container);
         aiStudioToolStatusIcon = findViewById(R.id.ai_tool_status_icon);
         aiStudioToolStatusText = findViewById(R.id.ai_tool_status_text);
+
+        aiStudioModelSelectorPill = findViewById(R.id.ai_studio_model_selector_pill);
+        aiStudioModelPillIcon = findViewById(R.id.ai_studio_model_pill_icon);
+        aiStudioModelPillName = findViewById(R.id.ai_studio_model_pill_name);
+        aiStudioModelDescBadge = findViewById(R.id.ai_studio_model_desc_badge);
+
+        String savedModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
+        updateAiStudioModelUi(savedModel);
+
+        if (aiStudioModelSelectorPill != null) {
+            aiStudioModelSelectorPill.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showModelSelectorDialog();
+            });
+        }
 
         boolean studioExpanded = prefs.getBoolean("ai_studio_expanded", true);
         if (aiStudioContent != null) {
@@ -1099,7 +1171,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     switchAiWebSearch.setChecked(aiWebSearchEnabled);
                 }
                 Toast.makeText(MainActivity.this,
-                        aiWebSearchEnabled ? "AI Web Search aktif" : "AI Web Search nonaktif",
+                        getString(aiWebSearchEnabled ? R.string.ai_web_search_active : R.string.ai_web_search_inactive),
                         Toast.LENGTH_SHORT).show();
             });
         }
@@ -1127,25 +1199,181 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private void setupAiQuickChips() {
         if (aiStudioQuickChipsContainer == null) return;
         aiStudioQuickChipsContainer.removeAllViews();
-        for (final String prompt : SongChatManager.QUICK_PROMPTS) {
-            TextView chip = new TextView(this);
-            chip.setText(prompt);
-            chip.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-            chip.setTextSize(11f);
-            chip.setBackgroundResource(R.drawable.bg_tip_box);
+        String lang = LocaleHelper.getLanguage(this);
+        List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
+        for (final SongChatManager.PromptTemplate template : templates) {
+            LinearLayout chip = new LinearLayout(this);
+            chip.setOrientation(LinearLayout.HORIZONTAL);
+            chip.setGravity(Gravity.CENTER_VERTICAL);
+            chip.setBackgroundResource(R.drawable.bg_prompt_card);
             int padH = dpToPx(10);
-            int padV = dpToPx(5);
+            int padV = dpToPx(6);
             chip.setPadding(padH, padV, padH, padV);
+
+            ImageView iconView = new ImageView(this);
+            int iconRes = getResources().getIdentifier(template.iconName, "drawable", getPackageName());
+            if (iconRes != 0) {
+                iconView.setImageResource(iconRes);
+            } else {
+                iconView.setImageResource(R.drawable.ic_sparkles);
+            }
+            iconView.setColorFilter(ContextCompat.getColor(this, R.color.accent));
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
+            iconLp.setMarginEnd(dpToPx(6));
+            chip.addView(iconView, iconLp);
+
+            TextView titleView = new TextView(this);
+            titleView.setText(template.title);
+            titleView.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+            titleView.setTextSize(11f);
+            titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+            chip.addView(titleView);
+
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMarginEnd(dpToPx(6));
+            lp.setMarginEnd(dpToPx(8));
             chip.setLayoutParams(lp);
+
             chip.setOnClickListener(v -> {
                 Haptics.tick(v);
-                sendAiChatMessage(prompt);
+                sendAiChatMessage(template.promptText);
             });
             aiStudioQuickChipsContainer.addView(chip);
         }
+    }
+
+    private void updateAiStudioModelUi(String modelId) {
+        if (modelId == null) modelId = SongChatManager.DEFAULT_MODEL;
+        String mId = modelId.toLowerCase(Locale.ROOT);
+
+        int iconRes = R.drawable.ic_model_gemini;
+        String name = "Gemini 2.5 Flash";
+        int descRes = R.string.ai_model_gemini_flash_desc;
+
+        if (mId.contains("claude")) {
+            iconRes = R.drawable.ic_model_claude;
+            name = "Claude 3.5 Sonnet";
+            descRes = R.string.ai_model_claude_desc;
+        } else if (mId.contains("pro")) {
+            iconRes = R.drawable.ic_model_gemini;
+            name = "Gemini 2.5 Pro";
+            descRes = R.string.ai_model_gemini_pro_desc;
+        } else if (mId.contains("flash")) {
+            iconRes = R.drawable.ic_model_gemini;
+            name = "Gemini 2.5 Flash";
+            descRes = R.string.ai_model_gemini_flash_desc;
+        } else {
+            name = modelId;
+        }
+
+        if (availableAiModels != null) {
+            for (AntigravityModel am : availableAiModels) {
+                if (am.id != null && am.id.equalsIgnoreCase(modelId)) {
+                    if (am.displayName != null && !am.displayName.trim().isEmpty()) {
+                        name = am.displayName.trim();
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (aiStudioModelPillIcon != null) {
+            aiStudioModelPillIcon.setImageResource(iconRes);
+        }
+        if (aiStudioModelPillName != null) {
+            aiStudioModelPillName.setText(name);
+        }
+        if (aiStudioModelDescBadge != null) {
+            aiStudioModelDescBadge.setText(descRes);
+        }
+    }
+
+    private void showModelSelectorDialog() {
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_model_selector, null);
+        LinearLayout container = dialogView.findViewById(R.id.model_options_container);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .create();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        String currentModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
+
+        class ModelOption {
+            final String id;
+            final String name;
+            final int descRes;
+            final int iconRes;
+            ModelOption(String id, String name, int descRes, int iconRes) {
+                this.id = id;
+                this.name = name;
+                this.descRes = descRes;
+                this.iconRes = iconRes;
+            }
+        }
+
+        List<ModelOption> options = new ArrayList<>();
+        if (availableAiModels != null && !availableAiModels.isEmpty()) {
+            for (AntigravityModel m : availableAiModels) {
+                String mLower = m.id != null ? m.id.toLowerCase(Locale.ROOT) : "";
+                int icon = mLower.contains("claude") ? R.drawable.ic_model_claude : R.drawable.ic_model_gemini;
+                int desc = mLower.contains("claude") ? R.string.ai_model_claude_desc :
+                        (mLower.contains("pro") ? R.string.ai_model_gemini_pro_desc : R.string.ai_model_gemini_flash_desc);
+                String displayName = (m.displayName != null && !m.displayName.trim().isEmpty()) ? m.displayName : m.id;
+                options.add(new ModelOption(m.id, displayName, desc, icon));
+            }
+        } else {
+            options.add(new ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", R.string.ai_model_gemini_flash_desc, R.drawable.ic_model_gemini));
+            options.add(new ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", R.string.ai_model_gemini_pro_desc, R.drawable.ic_model_gemini));
+            options.add(new ModelOption("claude-3-5-sonnet", "Claude 3.5 Sonnet", R.string.ai_model_claude_desc, R.drawable.ic_model_claude));
+        }
+
+        for (final ModelOption opt : options) {
+            View itemView = LayoutInflater.from(this).inflate(R.layout.item_model_option, container, false);
+            ImageView iconView = itemView.findViewById(R.id.model_option_icon);
+            TextView titleView = itemView.findViewById(R.id.model_option_title);
+            TextView descView = itemView.findViewById(R.id.model_option_desc);
+            ImageView checkView = itemView.findViewById(R.id.model_option_check);
+
+            iconView.setImageResource(opt.iconRes);
+            titleView.setText(opt.name);
+            descView.setText(opt.descRes);
+
+            boolean isSelected = opt.id.equalsIgnoreCase(currentModel);
+            checkView.setVisibility(isSelected ? View.VISIBLE : View.GONE);
+            if (isSelected) {
+                itemView.setBackgroundResource(R.drawable.bg_tip_box);
+            } else {
+                itemView.setBackgroundResource(R.drawable.bg_prompt_card);
+            }
+
+            itemView.setOnClickListener(v -> {
+                Haptics.tick(v);
+                prefs.edit().putString("pref_ai_model", opt.id).apply();
+                if (songChatManager != null) {
+                    songChatManager.setModelId(opt.id);
+                }
+                updateAiStudioModelUi(opt.id);
+
+                if (spinnerAiModel != null && availableAiModels != null) {
+                    for (int i = 0; i < availableAiModels.size(); i++) {
+                        if (availableAiModels.get(i).id.equalsIgnoreCase(opt.id)) {
+                            spinnerAiModel.setSelection(i);
+                            break;
+                        }
+                    }
+                }
+
+                dialog.dismiss();
+            });
+
+            container.addView(itemView);
+        }
+
+        dialog.show();
     }
 
     public void onNowPlayingChanged(NowPlaying.Snapshot track) {
@@ -1165,7 +1393,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     songChatManager.setCurrentSong(null, null, null, null);
                 }
                 if (aiStudioSummary != null) {
-                    aiStudioSummary.setText("Putar lagu untuk menganalisis makna dan berdiskusi dengan AI.");
+                    aiStudioSummary.setText(R.string.ai_no_track);
                 }
                 if (aiStudioMoodBadge != null) {
                     aiStudioMoodBadge.setVisibility(View.GONE);
@@ -1216,6 +1444,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         }
 
         if (songChatManager != null) {
+            songChatManager.setAppLanguage(LocaleHelper.getLanguage(this));
             songChatManager.setCurrentSong(currentTrackTitle, currentTrackArtist, "", null);
         }
 
@@ -1232,7 +1461,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             aiStudioWebSourcesScroll.setVisibility(View.GONE);
         }
 
-        fetchSongMeaning(currentTrackTitle, currentTrackArtist);
+        if (aiStudioSummary != null) {
+            aiStudioSummary.setText(R.string.ai_empty_hint);
+        }
+        setupAiQuickChips();
     }
 
     public void onNowPlayingChanged(NowPlaying track) {
@@ -1245,7 +1477,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         }
         if (!authManager.isAuthenticated()) {
             if (aiStudioSummary != null) {
-                aiStudioSummary.setText("Hubungkan akun Google di bagian AI untuk melihat analisis makna lagu.");
+                aiStudioSummary.setText(R.string.ai_login_required);
             }
             if (aiStudioMoodBadge != null) {
                 aiStudioMoodBadge.setVisibility(View.GONE);
@@ -1256,7 +1488,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (songMeaningService == null) return;
 
         if (aiStudioSummary != null) {
-            aiStudioSummary.setText(CleanMarkdownFormatter.formatClean("Menganalisis makna lagu " + title + "…"));
+            aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(getString(R.string.ai_thinking)));
         }
         if (aiStudioMoodBadge != null) {
             aiStudioMoodBadge.setVisibility(View.GONE);
@@ -1278,7 +1510,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
                             if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
                                 if (aiStudioMoodBadge != null) {
-                                    aiStudioMoodBadge.setText("✨ " + meaning.mood.trim());
+                                    aiStudioMoodBadge.setText(meaning.mood.trim());
                                     aiStudioMoodBadge.setVisibility(View.VISIBLE);
                                 }
                             }
@@ -1302,7 +1534,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             if (title == null || !title.equals(currentTrackTitle)) return;
                             if (aiStudioSummary != null) {
                                 aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(
-                                        "Gagal menganalisis makna lagu: " + (e != null ? e.getMessage() : "Error")));
+                                        "Error: " + (e != null ? e.getMessage() : "Failed to analyze")));
                             }
                         });
                     }
@@ -1319,7 +1551,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         aiStudioWebSourcesScroll.setVisibility(View.VISIBLE);
 
         TextView label = new TextView(this);
-        label.setText("🔍 Sumber Web: ");
+        label.setText(getString(R.string.ai_web_sources_label) + ": ");
         label.setTextColor(ContextCompat.getColor(this, R.color.text_dim));
         label.setTextSize(10f);
         label.setPadding(0, 0, dpToPx(4), 0);
@@ -1357,7 +1589,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     startActivity(intent);
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Tidak dapat membuka link: " + url, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
                 }
             });
             aiStudioWebSourcesContainer.addView(chip);
@@ -1376,7 +1608,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (songChatManager == null || userQuery == null || userQuery.trim().isEmpty()) return;
 
         if (authManager == null || !authManager.isAuthenticated()) {
-            Toast.makeText(this, "Silakan hubungkan akun Google di bagian AI", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.ai_login_required), Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -1386,7 +1618,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
         addUserChatBubble(userQuery);
 
-        final TextView aiBubble = addAiChatBubble("Berpikir…");
+        final TextView aiBubble = addAiChatBubble(getString(R.string.ai_thinking));
 
         if (activeChatCall != null) {
             activeChatCall.cancel();
@@ -1405,21 +1637,25 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             if (isFinishing() || isDestroyed() || aiStudioToolStatusContainer == null) return;
                             cancelPendingToolStatusHide();
                             if ("web_fetch".equals(toolName)) {
-                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setText("🌐");
+                                if (aiStudioToolStatusIcon != null) {
+                                    aiStudioToolStatusIcon.setImageResource(R.drawable.ic_search_globe);
+                                }
                                 String host = queryOrUrl;
                                 try {
                                     Uri uri = Uri.parse(queryOrUrl);
                                     if (uri.getHost() != null) host = uri.getHost();
                                 } catch (Exception ignored) {}
                                 if (aiStudioToolStatusText != null) {
-                                    aiStudioToolStatusText.setText("Membaca artikel: " + (host != null ? host : ""));
+                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_fetching) + (host != null ? " (" + host + ")" : ""));
                                 }
                             } else {
-                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setText("🔍");
+                                if (aiStudioToolStatusIcon != null) {
+                                    aiStudioToolStatusIcon.setImageResource(R.drawable.ic_search);
+                                }
                                 String query = queryOrUrl != null ? queryOrUrl : "";
-                                if (query.length() > 60) query = query.substring(0, 60) + "…";
+                                if (query.length() > 50) query = query.substring(0, 50) + "…";
                                 if (aiStudioToolStatusText != null) {
-                                    aiStudioToolStatusText.setText("Mencari di Google: \"" + query + "\"");
+                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_searching) + " \"" + query + "\"");
                                 }
                             }
                             aiStudioToolStatusContainer.setVisibility(View.VISIBLE);
@@ -1430,11 +1666,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     public void onToolCompleted(String toolName, int resultsCount) {
                         runOnUiThread(() -> {
                             if (isFinishing() || isDestroyed() || aiStudioToolStatusContainer == null) return;
+                            if (aiStudioToolStatusIcon != null) {
+                                aiStudioToolStatusIcon.setImageResource(R.drawable.ic_check);
+                            }
                             if (aiStudioToolStatusText != null) {
                                 if ("web_fetch".equals(toolName)) {
-                                    aiStudioToolStatusText.setText("✓ Artikel dibaca");
+                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_fetch_done));
                                 } else {
-                                    aiStudioToolStatusText.setText("✓ Ditemukan " + resultsCount + " sumber");
+                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_search_done, resultsCount));
                                 }
                             }
                             scheduleToolStatusHide();
@@ -1523,14 +1762,28 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             if (source == null) continue;
             final String url = source.trim();
             if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
-            TextView chip = new TextView(this);
-            chip.setText(url);
-            chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
-            chip.setTextSize(10f);
-            chip.setBackgroundResource(R.drawable.bg_tip_box);
+
+            LinearLayout chip = new LinearLayout(this);
+            chip.setOrientation(LinearLayout.HORIZONTAL);
+            chip.setGravity(Gravity.CENTER_VERTICAL);
+            chip.setBackgroundResource(R.drawable.bg_prompt_card);
             chip.setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3));
-            chip.setMaxLines(1);
-            chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+
+            ImageView linkIcon = new ImageView(this);
+            linkIcon.setImageResource(R.drawable.ic_link_source);
+            linkIcon.setColorFilter(ContextCompat.getColor(this, R.color.accent));
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(11), dpToPx(11));
+            iconLp.setMarginEnd(dpToPx(4));
+            chip.addView(linkIcon, iconLp);
+
+            TextView text = new TextView(this);
+            text.setText(url);
+            text.setTextColor(ContextCompat.getColor(this, R.color.accent));
+            text.setTextSize(10f);
+            text.setMaxLines(1);
+            text.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            chip.addView(text);
+
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             lp.gravity = Gravity.START;
@@ -1542,7 +1795,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     startActivity(intent);
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Tidak dapat membuka link: " + url, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
                 }
             });
             aiStudioChatContainer.addView(chip);
@@ -1556,13 +1809,13 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         bubble.setText(CleanMarkdownFormatter.formatClean(text));
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
         bubble.setTextSize(12f);
-        bubble.setBackgroundResource(R.drawable.bg_pill_ok);
-        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+        bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
+        bubble.setPadding(dpToPx(12), dpToPx(7), dpToPx(12), dpToPx(7));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.END;
-        lp.setMargins(dpToPx(32), dpToPx(4), 0, dpToPx(4));
+        lp.setMargins(dpToPx(36), dpToPx(4), 0, dpToPx(4));
         bubble.setLayoutParams(lp);
 
         aiStudioChatContainer.addView(bubble);
@@ -1577,13 +1830,13 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         bubble.setText(CleanMarkdownFormatter.formatClean(initialText));
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
         bubble.setTextSize(12f);
-        bubble.setBackgroundResource(R.drawable.bg_tip_box);
-        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+        bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
+        bubble.setPadding(dpToPx(12), dpToPx(7), dpToPx(12), dpToPx(7));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.START;
-        lp.setMargins(0, dpToPx(4), dpToPx(32), dpToPx(4));
+        lp.setMargins(0, dpToPx(4), dpToPx(36), dpToPx(4));
         bubble.setLayoutParams(lp);
 
         aiStudioChatContainer.addView(bubble);

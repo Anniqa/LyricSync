@@ -223,7 +223,7 @@
                                 android:id="@+id/ai_studio_title"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="AI Song Studio"
+                                android:text="@string/ai_studio_title"
                                 android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
 
                             <LinearLayout
@@ -286,6 +286,70 @@
                         android:orientation="vertical"
                         android:layout_marginTop="10dp">
 
+                        <!-- Model Selector & Control Row -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:layout_marginBottom="10dp">
+
+                            <LinearLayout
+                                android:id="@+id/ai_studio_model_selector_pill"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:background="@drawable/bg_prompt_card"
+                                android:paddingStart="10dp"
+                                android:paddingEnd="10dp"
+                                android:paddingTop="5dp"
+                                android:paddingBottom="5dp"
+                                android:clickable="true"
+                                android:focusable="true">
+
+                                <ImageView
+                                    android:id="@+id/ai_studio_model_pill_icon"
+                                    android:layout_width="15dp"
+                                    android:layout_height="15dp"
+                                    android:src="@drawable/ic_model_gemini"
+                                    android:contentDescription="@null" />
+
+                                <TextView
+                                    android:id="@+id/ai_studio_model_pill_name"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginStart="6dp"
+                                    android:text="Gemini 2.5 Flash"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold" />
+
+                                <ImageView
+                                    android:layout_width="12dp"
+                                    android:layout_height="12dp"
+                                    android:layout_marginStart="4dp"
+                                    android:src="@drawable/ic_chevron_down"
+                                    app:tint="@color/text_secondary"
+                                    android:contentDescription="@null" />
+                            </LinearLayout>
+
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="1dp"
+                                android:layout_weight="1" />
+
+                            <TextView
+                                android:id="@+id/ai_studio_model_desc_badge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/ai_model_gemini_flash_desc"
+                                android:textColor="@color/text_dim"
+                                android:textSize="10sp"
+                                android:maxLines="1"
+                                android:ellipsize="end" />
+                        </LinearLayout>
+
                         <!-- Song meaning summary -->
                         <TextView
                             android:id="@+id/ai_studio_summary"
@@ -294,7 +358,7 @@
                             android:textColor="@color/text_secondary"
                             android:textSize="13sp"
                             android:lineSpacingExtra="3dp"
-                            android:text="Putar lagu untuk menganalisis makna dan berdiskusi dengan AI." />
+                            android:text="@string/ai_empty_hint" />
 
                         <!-- Web sources container -->
                         <HorizontalScrollView
@@ -372,11 +436,13 @@
                             android:layout_gravity="center_horizontal"
                             android:visibility="gone">
 
-                            <TextView
+                            <ImageView
                                 android:id="@+id/ai_tool_status_icon"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textSize="14sp" />
+                                android:layout_width="16dp"
+                                android:layout_height="16dp"
+                                android:src="@drawable/ic_search_globe"
+                                app:tint="#64B5F6"
+                                android:contentDescription="@null" />
 
                             <TextView
                                 android:id="@+id/ai_tool_status_text"
@@ -397,31 +463,38 @@
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:gravity="center_vertical"
+                            android:background="@drawable/bg_chat_input_pill"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:paddingTop="4dp"
+                            android:paddingBottom="4dp"
                             android:layout_marginTop="8dp">
 
                             <ImageView
                                 android:id="@+id/ai_studio_web_search_chip"
-                                android:layout_width="38dp"
-                                android:layout_height="38dp"
-                                android:padding="8dp"
+                                android:layout_width="36dp"
+                                android:layout_height="36dp"
+                                android:padding="7dp"
                                 android:background="@drawable/bg_icon_button"
-                                android:src="@drawable/ic_search"
-                                android:contentDescription="Toggle Web Search"
-                                android:alpha="0.5" />
+                                android:src="@drawable/ic_search_globe"
+                                app:tint="@color/text_secondary"
+                                android:contentDescription="@string/ai_toggle_web_search"
+                                android:alpha="0.55" />
 
                             <EditText
                                 android:id="@+id/ai_studio_chat_input"
                                 android:layout_width="0dp"
-                                android:layout_height="40dp"
+                                android:layout_height="38dp"
                                 android:layout_weight="1"
-                                android:layout_marginStart="8dp"
-                                android:hint="Tanya AI tentang lagu ini…"
+                                android:layout_marginStart="6dp"
+                                android:layout_marginEnd="6dp"
+                                android:hint="@string/ai_chat_input_hint"
                                 android:textColorHint="@color/text_dim"
                                 android:textColor="@color/text_primary"
                                 android:textSize="13sp"
-                                android:paddingStart="12dp"
-                                android:paddingEnd="12dp"
-                                android:background="@drawable/bg_tip_box"
+                                android:background="@null"
+                                android:paddingStart="6dp"
+                                android:paddingEnd="6dp"
                                 android:inputType="text"
                                 android:imeOptions="actionSend"
                                 android:maxLines="1"
@@ -429,13 +502,13 @@
 
                             <ImageView
                                 android:id="@+id/ai_studio_chat_send"
-                                android:layout_width="38dp"
-                                android:layout_height="38dp"
-                                android:padding="8dp"
-                                android:layout_marginStart="8dp"
+                                android:layout_width="36dp"
+                                android:layout_height="36dp"
+                                android:padding="7dp"
                                 android:background="@drawable/bg_icon_button"
-                                android:src="@drawable/ic_chevron_right"
-                                android:contentDescription="Send" />
+                                android:src="@drawable/ic_send_arrow"
+                                app:tint="@color/accent"
+                                android:contentDescription="@string/ai_send" />
                         </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
@@ -910,6 +983,75 @@
                             android:textAppearance="@style/TextAppearance.LyricSync.Hint"
                             android:textSize="12sp"
                             android:lineSpacingExtra="1dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── App Language Card ──────────────────────────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_language"
+                style="@style/Widget.LyricSync.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/card_padding">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/app_language_title"
+                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/app_language_desc"
+                        android:textAppearance="@style/TextAppearance.LyricSync.Hint"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginBottom="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/btn_lang_en"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:text="@string/lang_en"
+                            android:textColor="@color/text_primary"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:paddingTop="10dp"
+                            android:paddingBottom="10dp"
+                            android:background="@drawable/bg_pill_ok"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:layout_marginEnd="6dp" />
+
+                        <TextView
+                            android:id="@+id/btn_lang_id"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:text="@string/lang_id"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:paddingTop="10dp"
+                            android:paddingBottom="10dp"
+                            android:background="@drawable/bg_icon_button"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:layout_marginStart="6dp" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

@@ -9,9 +9,11 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import com.lyricsync.app.util.LocaleHelper;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
@@ -169,8 +171,9 @@ public class FloatingOverlayService extends Service {
     private ImageView aiCloseButton;
     private ImageView aiWebSearchChip;
     private TextView aiMoodBadge;
-    private TextView aiSummaryText;
-    private LinearLayout aiQuickChipsContainer;
+    private ScrollView aiChatEmptyState;
+    private TextView aiEmptyHintText;
+    private LinearLayout aiPromptTemplatesContainer;
     private HorizontalScrollView aiWebSourcesScroll;
     private LinearLayout aiWebSourcesContainer;
     private ScrollView aiChatScroll;
@@ -179,7 +182,7 @@ public class FloatingOverlayService extends Service {
     private ImageView aiChatSend;
     private TextView aiQuotaBadge;
     private LinearLayout aiToolStatusContainer;
-    private TextView aiToolStatusIcon;
+    private ImageView aiToolStatusIcon;
     private TextView aiToolStatusText;
     private Runnable pendingToolStatusHide;
 
@@ -275,6 +278,11 @@ public class FloatingOverlayService extends Service {
     private boolean renderRunning = false;
     private boolean renderActive = false;
     private long lastFrameNanos = 0;
+
+    @Override
+    protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase));
+    }
 
     @Override
     public void onCreate() {
@@ -953,23 +961,38 @@ public class FloatingOverlayService extends Service {
         }
 
         fetchQuotaIfAuthenticated();
+        if (aiChatTitle != null) {
+            aiChatTitle.setText(R.string.ai_insights_title);
+        }
+        if (currentTrack != null) {
+            if (aiChatArtist != null) {
+                aiChatArtist.setText(currentTrack.title + " • " + currentTrack.artist);
+            }
+            if (songChatManager != null) {
+                songChatManager.setAppLanguage(LocaleHelper.getLanguage(this));
+            }
+        }
         if (songChatManager != null && songChatManager.getMeaning() != null) {
             SongMeaning existing = songChatManager.getMeaning();
-            if (aiSummaryText != null && existing.summary != null) {
-                aiSummaryText.setText(CleanMarkdownFormatter.formatClean(existing.summary));
-            }
             if (existing.mood != null && !existing.mood.trim().isEmpty()) {
-                String moodText = "✨ " + existing.mood.trim();
                 if (aiMoodBadge != null) {
-                    aiMoodBadge.setText(moodText);
+                    aiMoodBadge.setText(existing.mood.trim());
                     aiMoodBadge.setVisibility(View.VISIBLE);
                 }
             }
             if (existing.webSources != null && !existing.webSources.isEmpty()) {
                 displayWebSources(existing.webSources);
             }
-        } else {
-            triggerSongMeaningAnalysis();
+        }
+        boolean hasHistory = songChatManager != null && !songChatManager.getHistory().isEmpty();
+        if (aiChatEmptyState != null) {
+            aiChatEmptyState.setVisibility(hasHistory ? View.GONE : View.VISIBLE);
+        }
+        if (aiChatScroll != null) {
+            aiChatScroll.setVisibility(hasHistory ? View.VISIBLE : View.GONE);
+        }
+        if (!hasHistory) {
+            setupAiPromptTemplates();
         }
     }
 
@@ -998,8 +1021,9 @@ public class FloatingOverlayService extends Service {
         aiCloseButton = aiChatView.findViewById(R.id.ai_close_button);
         aiWebSearchChip = aiChatView.findViewById(R.id.ai_web_search_chip);
         aiMoodBadge = aiChatView.findViewById(R.id.ai_mood_badge);
-        aiSummaryText = aiChatView.findViewById(R.id.ai_summary_text);
-        aiQuickChipsContainer = aiChatView.findViewById(R.id.ai_quick_chips_container);
+        aiChatEmptyState = aiChatView.findViewById(R.id.ai_chat_empty_state);
+        aiEmptyHintText = aiChatView.findViewById(R.id.ai_empty_hint_text);
+        aiPromptTemplatesContainer = aiChatView.findViewById(R.id.ai_prompt_templates_container);
         aiWebSourcesScroll = aiChatView.findViewById(R.id.ai_web_sources_scroll);
         aiWebSourcesContainer = aiChatView.findViewById(R.id.ai_web_sources_container);
         aiChatScroll = aiChatView.findViewById(R.id.ai_chat_scroll);
@@ -1008,7 +1032,7 @@ public class FloatingOverlayService extends Service {
         aiChatSend = aiChatView.findViewById(R.id.ai_chat_send);
         aiQuotaBadge = aiChatView.findViewById(R.id.ai_quota_badge);
         aiToolStatusContainer = aiChatView.findViewById(R.id.ai_tool_status_container);
-        aiToolStatusIcon = aiChatView.findViewById(R.id.ai_tool_status_icon);
+        aiToolStatusIcon = aiChatView.findViewById(R.id.ai_tool_status_icon_view);
         aiToolStatusText = aiChatView.findViewById(R.id.ai_tool_status_text);
 
         if (aiMinimizeButton != null) {
@@ -1028,10 +1052,12 @@ public class FloatingOverlayService extends Service {
                 Haptics.tick(v);
                 aiWebSearchEnabled = !aiWebSearchEnabled;
                 aiWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
-                Toast.makeText(this, aiWebSearchEnabled ? "AI Web Search aktif" : "AI Web Search nonaktif", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this,
+                        getString(aiWebSearchEnabled ? R.string.ai_web_search_active : R.string.ai_web_search_inactive),
+                        Toast.LENGTH_SHORT).show();
             });
         }
-        setupAiQuickChips();
+        setupAiPromptTemplates();
         if (aiChatSend != null) {
             aiChatSend.setOnClickListener(v -> {
                 Haptics.tick(v);
@@ -1271,9 +1297,9 @@ public class FloatingOverlayService extends Service {
 
         AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
         if (auth == null || !auth.isAuthenticated()) {
-            if (aiSummaryText != null) {
-                aiSummaryText.setText(CleanMarkdownFormatter.formatClean(
-                        "Buka aplikasi LyricSync dan login dengan akun Google untuk menggunakan fitur AI Insights & Chat."));
+            if (aiEmptyHintText != null) {
+                aiEmptyHintText.setText(CleanMarkdownFormatter.formatClean(
+                        "Please login to Google Antigravity in LyricSync to use AI features."));
             }
             return;
         }
@@ -1283,8 +1309,8 @@ public class FloatingOverlayService extends Service {
             activeMeaningCall = null;
         }
 
-        if (aiSummaryText != null) {
-            aiSummaryText.setText(CleanMarkdownFormatter.formatClean("Menganalisis makna lagu " + currentTrack.title + "…"));
+        if (aiEmptyHintText != null) {
+            aiEmptyHintText.setText(CleanMarkdownFormatter.formatClean(getString(R.string.ai_empty_hint)));
         }
         if (aiMoodBadge != null) {
             aiMoodBadge.setVisibility(View.GONE);
@@ -1314,7 +1340,7 @@ public class FloatingOverlayService extends Service {
                         handler.post(() -> {
                             if (meaning == null) return;
                             if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
-                                String moodText = "✨ " + meaning.mood.trim();
+                                String moodText = meaning.mood.trim();
                                 if (aiMoodBadge != null) {
                                     aiMoodBadge.setText(moodText);
                                     aiMoodBadge.setVisibility(View.VISIBLE);
@@ -1323,9 +1349,6 @@ public class FloatingOverlayService extends Service {
                                     overlayMoodBadge.setText(moodText);
                                     overlayMoodBadge.setVisibility(View.VISIBLE);
                                 }
-                            }
-                            if (aiSummaryText != null && meaning.summary != null) {
-                                aiSummaryText.setText(CleanMarkdownFormatter.formatClean(meaning.summary));
                             }
                             if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
                                 displayWebSources(meaning.webSources);
@@ -1339,8 +1362,9 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onError(Exception e) {
                         handler.post(() -> {
-                            if (aiSummaryText != null) {
-                                aiSummaryText.setText(CleanMarkdownFormatter.formatClean("Gagal menganalisis makna lagu: " + (e != null ? e.getMessage() : "Error")));
+                            if (aiEmptyHintText != null) {
+                                aiEmptyHintText.setText(CleanMarkdownFormatter.formatClean(
+                                        "Error: " + (e != null ? e.getMessage() : "Unknown error")));
                             }
                         });
                     }
@@ -1357,7 +1381,7 @@ public class FloatingOverlayService extends Service {
         aiWebSourcesScroll.setVisibility(View.VISIBLE);
 
         TextView label = new TextView(this);
-        label.setText("🔍 Sumber Web: ");
+        label.setText(getString(R.string.ai_web_sources_label) + ": ");
         label.setTextColor(getResources().getColor(R.color.text_dim));
         label.setTextSize(10f);
         label.setPadding(0, 0, dpToPx(4), 0);
@@ -1396,32 +1420,39 @@ public class FloatingOverlayService extends Service {
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
                 } catch (Exception e) {
-                    Toast.makeText(FloatingOverlayService.this, "Tidak dapat membuka link: " + url, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(FloatingOverlayService.this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
                 }
             });
             aiWebSourcesContainer.addView(chip);
         }
     }
 
-    private void setupAiQuickChips() {
-        if (aiQuickChipsContainer == null) return;
-        aiQuickChipsContainer.removeAllViews();
-        for (final String prompt : SongChatManager.QUICK_PROMPTS) {
-            TextView chip = new TextView(this);
-            chip.setText(prompt);
-            chip.setTextColor(getResources().getColor(R.color.text_primary));
-            chip.setTextSize(11f);
-            chip.setBackgroundResource(R.drawable.bg_tip_box);
-            chip.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMarginEnd(dpToPx(6));
-            chip.setLayoutParams(lp);
-            chip.setOnClickListener(v -> {
+    private void setupAiPromptTemplates() {
+        if (aiPromptTemplatesContainer == null) return;
+        aiPromptTemplatesContainer.removeAllViews();
+        String lang = LocaleHelper.getLanguage(this);
+        List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
+        for (final SongChatManager.PromptTemplate template : templates) {
+            View itemView = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
+            ImageView iconView = itemView.findViewById(R.id.prompt_icon);
+            TextView titleView = itemView.findViewById(R.id.prompt_title);
+            TextView descView = itemView.findViewById(R.id.prompt_desc);
+
+            titleView.setText(template.title);
+            descView.setText(template.description);
+
+            int iconRes = getResources().getIdentifier(template.iconName, "drawable", getPackageName());
+            if (iconRes != 0) {
+                iconView.setImageResource(iconRes);
+            } else {
+                iconView.setImageResource(R.drawable.ic_sparkles);
+            }
+
+            itemView.setOnClickListener(v -> {
                 Haptics.tick(v);
-                sendAiChatMessage(prompt);
+                sendAiChatMessage(template.promptText);
             });
-            aiQuickChipsContainer.addView(chip);
+            aiPromptTemplatesContainer.addView(itemView);
         }
     }
 
@@ -1438,22 +1469,28 @@ public class FloatingOverlayService extends Service {
 
         AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
         if (auth == null || !auth.isAuthenticated()) {
-            Toast.makeText(this, "Silakan login Google di LyricSync", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.ai_login_required), Toast.LENGTH_SHORT).show();
             return;
         }
 
+        if (aiChatEmptyState != null) {
+            aiChatEmptyState.setVisibility(View.GONE);
+        }
         if (aiChatScroll != null) {
             aiChatScroll.setVisibility(View.VISIBLE);
         }
 
         addUserChatBubble(userQuery);
 
-        final TextView aiBubble = addAiChatBubble("Berpikir…");
+        final TextView aiBubble = addAiChatBubble(getString(R.string.ai_thinking));
 
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
         }
+
+        String currentModel = sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
+        songChatManager.setModelId(currentModel);
 
         final StringBuilder responseAcc = new StringBuilder();
         activeChatCall = songChatManager.sendMessage(userQuery, aiWebSearchEnabled,
@@ -1464,21 +1501,25 @@ public class FloatingOverlayService extends Service {
                             if (isDestroyed || aiToolStatusContainer == null) return;
                             cancelPendingToolStatusHide();
                             if ("web_fetch".equals(toolName)) {
-                                if (aiToolStatusIcon != null) aiToolStatusIcon.setText("🌐");
+                                if (aiToolStatusIcon != null) {
+                                    aiToolStatusIcon.setImageResource(R.drawable.ic_search_globe);
+                                }
                                 String host = queryOrUrl;
                                 try {
                                     android.net.Uri uri = android.net.Uri.parse(queryOrUrl);
                                     if (uri.getHost() != null) host = uri.getHost();
                                 } catch (Exception ignored) {}
                                 if (aiToolStatusText != null) {
-                                    aiToolStatusText.setText("Membaca artikel: " + (host != null ? host : ""));
+                                    aiToolStatusText.setText(getString(R.string.ai_tool_fetching) + (host != null ? " (" + host + ")" : ""));
                                 }
                             } else {
-                                if (aiToolStatusIcon != null) aiToolStatusIcon.setText("🔍");
+                                if (aiToolStatusIcon != null) {
+                                    aiToolStatusIcon.setImageResource(R.drawable.ic_search);
+                                }
                                 String query = queryOrUrl != null ? queryOrUrl : "";
-                                if (query.length() > 60) query = query.substring(0, 60) + "…";
+                                if (query.length() > 50) query = query.substring(0, 50) + "…";
                                 if (aiToolStatusText != null) {
-                                    aiToolStatusText.setText("Mencari di Google: \"" + query + "\"");
+                                    aiToolStatusText.setText(getString(R.string.ai_tool_searching) + " \"" + query + "\"");
                                 }
                             }
                             aiToolStatusContainer.setVisibility(View.VISIBLE);
@@ -1489,11 +1530,14 @@ public class FloatingOverlayService extends Service {
                     public void onToolCompleted(String toolName, int resultsCount) {
                         handler.post(() -> {
                             if (isDestroyed || aiToolStatusContainer == null) return;
+                            if (aiToolStatusIcon != null) {
+                                aiToolStatusIcon.setImageResource(R.drawable.ic_check);
+                            }
                             if (aiToolStatusText != null) {
                                 if ("web_fetch".equals(toolName)) {
-                                    aiToolStatusText.setText("✓ Artikel dibaca");
+                                    aiToolStatusText.setText(getString(R.string.ai_tool_fetch_done));
                                 } else {
-                                    aiToolStatusText.setText("✓ Ditemukan " + resultsCount + " sumber");
+                                    aiToolStatusText.setText(getString(R.string.ai_tool_search_done, resultsCount));
                                 }
                             }
                             scheduleToolStatusHide();
@@ -1576,12 +1620,22 @@ public class FloatingOverlayService extends Service {
             if (source == null) continue;
             final String url = source.trim();
             if (!url.startsWith("http://") && !url.startsWith("https://")) continue;
+
+            String domain = url;
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                String host = uri.getHost();
+                if (host != null) {
+                    domain = host.startsWith("www.") ? host.substring(4) : host;
+                }
+            } catch (Exception ignored) {}
+
             TextView chip = new TextView(this);
-            chip.setText(url);
+            chip.setText(domain);
             chip.setTextColor(getResources().getColor(R.color.accent));
             chip.setTextSize(10f);
-            chip.setBackgroundResource(R.drawable.bg_tip_box);
-            chip.setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3));
+            chip.setBackgroundResource(R.drawable.bg_prompt_card);
+            chip.setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4));
             chip.setMaxLines(1);
             chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -1596,7 +1650,7 @@ public class FloatingOverlayService extends Service {
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
                 } catch (Exception e) {
-                    Toast.makeText(FloatingOverlayService.this, "Tidak dapat membuka link: " + url, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(FloatingOverlayService.this, "Cannot open: " + url, Toast.LENGTH_SHORT).show();
                 }
             });
             aiChatMessages.addView(chip);
@@ -1610,8 +1664,8 @@ public class FloatingOverlayService extends Service {
         bubble.setText(CleanMarkdownFormatter.formatClean(text));
         bubble.setTextColor(getResources().getColor(R.color.text_primary));
         bubble.setTextSize(12f);
-        bubble.setBackgroundResource(R.drawable.bg_tip_box);
-        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+        bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
+        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -1631,8 +1685,8 @@ public class FloatingOverlayService extends Service {
         bubble.setText(CleanMarkdownFormatter.formatClean(initialText));
         bubble.setTextColor(getResources().getColor(R.color.text_secondary));
         bubble.setTextSize(12f);
-        bubble.setBackgroundResource(R.drawable.bg_tip_box);
-        bubble.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+        bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
+        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -2141,15 +2195,19 @@ public class FloatingOverlayService extends Service {
         if (aiWebSourcesScroll != null) {
             aiWebSourcesScroll.setVisibility(View.GONE);
         }
-        if (aiChatTitle != null && track != null) {
-            aiChatTitle.setText(track.title);
+        if (aiChatTitle != null) {
+            aiChatTitle.setText(R.string.ai_insights_title);
         }
         if (aiChatArtist != null && track != null) {
-            aiChatArtist.setText(track.artist);
+            aiChatArtist.setText(track.title + " • " + track.artist);
         }
-        if (aiSummaryText != null) {
-            aiSummaryText.setText("Tap ✨ untuk analisis makna lagu.");
+        if (aiChatEmptyState != null) {
+            aiChatEmptyState.setVisibility(View.VISIBLE);
         }
+        if (aiChatScroll != null) {
+            aiChatScroll.setVisibility(View.GONE);
+        }
+        setupAiPromptTemplates();
         lyricsManager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
             @Override
             public void onLyricsLoaded(LyricsData lyrics) {
@@ -2393,12 +2451,14 @@ public class FloatingOverlayService extends Service {
         Anim.setTextAnimated(overlayArtist, "");
         if (overlayMoodBadge != null) overlayMoodBadge.setVisibility(View.GONE);
         if (aiMoodBadge != null) aiMoodBadge.setVisibility(View.GONE);
-        if (aiChatTitle != null) aiChatTitle.setText("✨ AI Insights");
+        if (aiChatTitle != null) aiChatTitle.setText(R.string.ai_insights_title);
         if (aiChatArtist != null) aiChatArtist.setText("");
         if (aiChatMessages != null) aiChatMessages.removeAllViews();
         if (aiWebSourcesContainer != null) aiWebSourcesContainer.removeAllViews();
         if (aiWebSourcesScroll != null) aiWebSourcesScroll.setVisibility(View.GONE);
-        if (aiSummaryText != null) aiSummaryText.setText("Tap ✨ untuk analisis makna lagu.");
+        if (aiChatEmptyState != null) aiChatEmptyState.setVisibility(View.VISIBLE);
+        if (aiChatScroll != null) aiChatScroll.setVisibility(View.GONE);
+        setupAiPromptTemplates();
         Glide.with(this).clear(overlayCover);
         overlayCover.setImageDrawable(null);
         showIdleState();

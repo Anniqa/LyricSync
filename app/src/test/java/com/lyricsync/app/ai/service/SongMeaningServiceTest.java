@@ -367,11 +367,21 @@ public class SongMeaningServiceTest {
     @Test
     public void testSongChatManagerQuickPrompts() {
         assertNotNull(SongChatManager.QUICK_PROMPTS);
-        assertEquals(4, SongChatManager.QUICK_PROMPTS.size());
-        assertEquals("Kisah di balik lagu ini", SongChatManager.QUICK_PROMPTS.get(0));
-        assertEquals("Makna reff / chorus", SongChatManager.QUICK_PROMPTS.get(1));
-        assertEquals("Simbolisme tersembunyi", SongChatManager.QUICK_PROMPTS.get(2));
-        assertEquals("Pesan moral bagi pendengar", SongChatManager.QUICK_PROMPTS.get(3));
+        assertEquals(6, SongChatManager.QUICK_PROMPTS.size());
+        assertEquals("Song Meaning & Story", SongChatManager.QUICK_PROMPTS.get(0));
+        assertEquals("Line-by-Line Breakdown", SongChatManager.QUICK_PROMPTS.get(1));
+        assertEquals("Songwriter's Intent", SongChatManager.QUICK_PROMPTS.get(2));
+        assertEquals("Emotional Tone & Mood", SongChatManager.QUICK_PROMPTS.get(3));
+        assertEquals("Trivia & Context", SongChatManager.QUICK_PROMPTS.get(4));
+        assertEquals("Musical Composition", SongChatManager.QUICK_PROMPTS.get(5));
+
+        List<SongChatManager.PromptTemplate> enTemplates = SongChatManager.getPromptTemplates("en");
+        assertEquals(6, enTemplates.size());
+        assertEquals("meaning", enTemplates.get(0).id);
+
+        List<SongChatManager.PromptTemplate> idTemplates = SongChatManager.getPromptTemplates("id");
+        assertEquals(6, idTemplates.size());
+        assertEquals("Makna & Kisah Lagu", idTemplates.get(0).title);
     }
 
     @Test

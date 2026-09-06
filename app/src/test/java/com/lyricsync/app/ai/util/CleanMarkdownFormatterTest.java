@@ -33,8 +33,30 @@ public class CleanMarkdownFormatterTest {
     }
 
     @Test
+    public void testMarkdownToHtml() {
+        String input = "### Title\nThis has **bold** and *italic* and `code`.\n* item 1\n* item 2";
+        String html = CleanMarkdownFormatter.markdownToHtml(input);
+        assertTrue("Should contain <b>Title</b>", html.contains("<b>Title</b>"));
+        assertTrue("Should contain <b>bold</b>", html.contains("<b>bold</b>"));
+        assertTrue("Should contain <i>italic</i>", html.contains("<i>italic</i>"));
+        assertTrue("Should contain <tt>code</tt>", html.contains("<tt>code</tt>"));
+        assertTrue("Should contain &bull; item 1", html.contains("&bull; item 1"));
+        assertFalse("Should not contain raw **", html.contains("**"));
+        assertFalse("Should not contain raw ###", html.contains("###"));
+    }
+
+    @Test
+    public void testFormatCleanNotNull() {
+        CharSequence result = CleanMarkdownFormatter.formatClean("**Bold text** and *italic*");
+        assertNotNull(result);
+        assertFalse("Should not contain **", result.toString().contains("**"));
+    }
+
+    @Test
     public void testNullOrEmpty() {
         assertEquals("", CleanMarkdownFormatter.stripMarkdown(null));
         assertEquals("", CleanMarkdownFormatter.stripMarkdown("   "));
+        assertEquals("", CleanMarkdownFormatter.formatClean(null).toString());
+        assertEquals("", CleanMarkdownFormatter.formatClean("   ").toString());
     }
 }
