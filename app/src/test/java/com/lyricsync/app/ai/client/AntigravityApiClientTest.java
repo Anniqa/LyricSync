@@ -522,6 +522,178 @@ public class AntigravityApiClientTest {
         assertTrue(errorRef.get().getMessage().contains("Refresh token expired"));
     }
 
+    @Test
+    public void testParseSseLineInBandError() {
+        String sseLine = "data: {\"error\": {\"code\": 429, \"message\": \"Resource has been exhausted (e.g. check quota).\", \"status\": \"RESOURCE_EXHAUSTED\"}}";
+
+        AntigravityApiClient.SseChunkResult chunk = AntigravityApiClient.parseSseLine(sseLine);
+        assertNotNull(chunk);
+        assertNotNull(chunk.errorMessage);
+        assertTrue(chunk.errorMessage.contains("Resource has been exhausted"));
+    }
+
+    @Test
+    public void testParseSseLineInBandErrorResponseWrapper() {
+        String sseLine = "data: {\"response\": {\"error\": {\"code\": 503, \"message\": \"Backend service unavailable\"}}}";
+
+        AntigravityApiClient.SseChunkResult chunk = AntigravityApiClient.parseSseLine(sseLine);
+        assertNotNull(chunk);
+        assertNotNull(chunk.errorMessage);
+        assertTrue(chunk.errorMessage.contains("Backend service unavailable"));
+    }
+
+    @Test
+    public void testParseSseLineGroundingChunksUriFallbackWhenTitleMissing() {
+        String sseLine = "data: {\"response\": {\"groundingMetadata\": {\"groundingChunks\": [{\"web\": {\"uri\": \"https://example.com/source\"}}]}}}";
+
+        AntigravityApiClient.SseChunkResult chunk = AntigravityApiClient.parseSseLine(sseLine);
+        assertNotNull(chunk);
+        assertTrue(chunk.webSearchQueries.contains("https://example.com/source"));
+    }
+
+    @Test
+    public void testGenerateContentStreamInBandErrorDispatchesOnError() throws InterruptedException {
+        fakeAuthManager.mockToken = "ya29.valid-token";
+        mockInterceptor.responseSseStream =
+                "data: {\"response\": {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Starting...\"}]}}]}}\n\n" +
+                "data: {\"error\": {\"code\": 429, \"message\": \"Rate limit reached\"}}\n\n";
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicBoolean completeTriggered = new AtomicBoolean(false);
+        final AtomicReference<Exception> errorRef = new AtomicReference<>();
+
+        List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user("Test"));
+        apiClient.generateContentStream("gemini-3-flash", messages, false, null, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {}
+
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                completeTriggered.set(true);
+                latch.countDown();
+            }
+
+            @Override
+            public void onError(Exception error) {
+                errorRef.set(error);
+                latch.countDown();
+            }
+        });
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertNotNull(errorRef.get());
+        assertTrue(errorRef.get().getMessage().contains("Rate limit reached"));
+        assertFalse("onComplete must NOT be called when an in-band error occurs", completeTriggered.get());
+    }
+
+    @Test
+    public void testCancellableHandleCancelBeforeToken() throws InterruptedException {
+        fakeAuthManager.mockToken = "ya29.valid-token";
+
+        final AtomicBoolean deltaTriggered = new AtomicBoolean(false);
+        final AtomicBoolean completeTriggered = new AtomicBoolean(false);
+        final AtomicBoolean errorTriggered = new AtomicBoolean(false);
+
+        List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user("Test"));
+        AntigravityApiClient.Cancellable handle = apiClient.generateContentStream("gemini-3-flash", messages, false, null, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {
+                deltaTriggered.set(true);
+            }
+
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                completeTriggered.set(true);
+            }
+
+            @Override
+            public void onError(Exception error) {
+                errorTriggered.set(true);
+            }
+        });
+
+        assertFalse(handle.isCancelled());
+        handle.cancel();
+        assertTrue(handle.isCancelled());
+
+        Thread.sleep(100);
+        assertFalse("onComplete must NOT be called when cancelled", completeTriggered.get());
+        assertFalse("onError must NOT be called when cancelled", errorTriggered.get());
+    }
+
+    @Test
+    public void testCancellableHandleCancelDuringStreaming() throws InterruptedException {
+        fakeAuthManager.mockToken = "ya29.valid-token";
+        mockInterceptor.responseSseStream =
+                "data: {\"response\": {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Chunk 1\"}]}}]}}\n\n" +
+                "data: {\"response\": {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Chunk 2\"}]}}]}}\n\n";
+
+        final CountDownLatch deltaLatch = new CountDownLatch(1);
+        final AtomicBoolean completeTriggered = new AtomicBoolean(false);
+        final AtomicBoolean errorTriggered = new AtomicBoolean(false);
+        final AtomicReference<AntigravityApiClient.Cancellable> handleRef = new AtomicReference<>();
+
+        List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user("Test"));
+        AntigravityApiClient.Cancellable handle = apiClient.generateContentStream("gemini-3-flash", messages, false, null, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {
+                deltaLatch.countDown();
+                if (handleRef.get() != null) {
+                    handleRef.get().cancel();
+                }
+            }
+
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                completeTriggered.set(true);
+            }
+
+            @Override
+            public void onError(Exception error) {
+                errorTriggered.set(true);
+            }
+        });
+        handleRef.set(handle);
+
+        assertTrue(deltaLatch.await(3, TimeUnit.SECONDS));
+        Thread.sleep(100);
+        assertTrue(handle.isCancelled());
+        assertFalse("onComplete must NOT be called after cancellation", completeTriggered.get());
+        assertFalse("onError must NOT be called after cancellation", errorTriggered.get());
+    }
+
+    @Test
+    public void testCancelAllAbortsActiveCalls() throws InterruptedException {
+        fakeAuthManager.mockToken = "ya29.valid-token";
+        mockInterceptor.responseSseStream =
+                "data: {\"response\": {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Part\"}]}}]}}\n\n";
+
+        final AtomicBoolean completeTriggered = new AtomicBoolean(false);
+        final AtomicBoolean errorTriggered = new AtomicBoolean(false);
+
+        List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user("Test"));
+        AntigravityApiClient.Cancellable handle = apiClient.generateContentStream("gemini-3-flash", messages, false, null, new AntigravityApiClient.StreamListener() {
+            @Override
+            public void onDelta(String textDelta) {}
+
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                completeTriggered.set(true);
+            }
+
+            @Override
+            public void onError(Exception error) {
+                errorTriggered.set(true);
+            }
+        });
+
+        apiClient.cancelAll();
+        Thread.sleep(100);
+        assertTrue(handle.isCancelled());
+        assertFalse("onComplete must NOT be called after cancelAll", completeTriggered.get());
+        assertFalse("onError must NOT be called after cancelAll", errorTriggered.get());
+    }
+
     // --- Test Helpers ---
 
     static class FakeAuthManager extends AntigravityAuthManager {

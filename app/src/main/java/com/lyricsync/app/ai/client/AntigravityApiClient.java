@@ -9,8 +9,11 @@ import com.lyricsync.app.ai.model.AiChatMessage;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -40,6 +43,14 @@ public class AntigravityApiClient {
 
     private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
 
+    /**
+     * Handle representing an active AI API call that can be cancelled.
+     */
+    public interface Cancellable {
+        void cancel();
+        boolean isCancelled();
+    }
+
     public interface StreamListener {
         void onDelta(String textDelta);
         void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens);
@@ -61,10 +72,12 @@ public class AntigravityApiClient {
         public int candidateTokens = 0;
         public int totalTokens = 0;
         public String finishReason;
+        public String errorMessage;
     }
 
     private final AntigravityAuthManager authManager;
     private final OkHttpClient httpClient;
+    private final Set<Call> activeCalls = Collections.newSetFromMap(new ConcurrentHashMap<Call, Boolean>());
 
     public AntigravityApiClient(AntigravityAuthManager authManager) {
         this(authManager, createDefaultHttpClient());
@@ -81,6 +94,18 @@ public class AntigravityApiClient {
                 .readTimeout(120, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .build();
+    }
+
+    /**
+     * Cancels all active in-flight calls managed by this client.
+     */
+    public void cancelAll() {
+        for (Call call : activeCalls) {
+            try {
+                call.cancel();
+            } catch (Exception ignored) {}
+        }
+        activeCalls.clear();
     }
 
     /**
@@ -161,7 +186,7 @@ public class AntigravityApiClient {
      * Parses an individual SSE data line or raw JSON chunk into an SseChunkResult.
      * Extracts text delta from candidates[0].content.parts[0].text,
      * grounding search queries from groundingMetadata.webSearchQueries,
-     * and token metrics from usageMetadata.
+     * in-band error frames, and token metrics from usageMetadata.
      *
      * Resilient against malformed, comment, or non-data lines.
      *
@@ -195,6 +220,20 @@ public class AntigravityApiClient {
                     ? root.getAsJsonObject("response")
                     : root;
 
+            // In-band SSE error detection
+            if (resp.has("error") || root.has("error")) {
+                JsonElement errorElem = resp.has("error") ? resp.get("error") : root.get("error");
+                SseChunkResult errResult = new SseChunkResult();
+                if (errorElem.isJsonObject()) {
+                    errResult.errorMessage = parseErrorMessage(errorElem.toString(), "In-band stream error");
+                } else if (errorElem.isJsonPrimitive()) {
+                    errResult.errorMessage = errorElem.getAsString();
+                } else {
+                    errResult.errorMessage = "In-band stream error";
+                }
+                return errResult;
+            }
+
             SseChunkResult result = new SseChunkResult();
             boolean hasMeaningfulData = false;
 
@@ -213,7 +252,7 @@ public class AntigravityApiClient {
                             for (JsonElement partElem : parts) {
                                 if (!partElem.isJsonObject()) continue;
                                 JsonObject part = partElem.getAsJsonObject();
-                                if (part.has("text") && !part.get("text").isJsonNull()) {
+                                if (part.has("text") && !part.get("text").isJsonNull() && part.get("text").isJsonPrimitive()) {
                                     String text = part.get("text").getAsString();
                                     if (result.textDelta == null) {
                                         result.textDelta = text;
@@ -227,7 +266,7 @@ public class AntigravityApiClient {
                     }
 
                     // Finish reason
-                    if (cand.has("finishReason") && !cand.get("finishReason").isJsonNull()) {
+                    if (cand.has("finishReason") && !cand.get("finishReason").isJsonNull() && cand.get("finishReason").isJsonPrimitive()) {
                         result.finishReason = cand.get("finishReason").getAsString();
                     }
 
@@ -261,30 +300,30 @@ public class AntigravityApiClient {
 
             if (usage != null) {
                 // Prompt tokens
-                if (usage.has("promptTokenCount") && !usage.get("promptTokenCount").isJsonNull()) {
+                if (usage.has("promptTokenCount") && !usage.get("promptTokenCount").isJsonNull() && usage.get("promptTokenCount").isJsonPrimitive()) {
                     result.promptTokens = usage.get("promptTokenCount").getAsInt();
                     hasMeaningfulData = true;
-                } else if (usage.has("promptTokens") && !usage.get("promptTokens").isJsonNull()) {
+                } else if (usage.has("promptTokens") && !usage.get("promptTokens").isJsonNull() && usage.get("promptTokens").isJsonPrimitive()) {
                     result.promptTokens = usage.get("promptTokens").getAsInt();
                     hasMeaningfulData = true;
                 }
 
                 // Candidate tokens
-                if (usage.has("candidatesTokenCount") && !usage.get("candidatesTokenCount").isJsonNull()) {
+                if (usage.has("candidatesTokenCount") && !usage.get("candidatesTokenCount").isJsonNull() && usage.get("candidatesTokenCount").isJsonPrimitive()) {
                     result.candidateTokens = usage.get("candidatesTokenCount").getAsInt();
                     hasMeaningfulData = true;
-                } else if (usage.has("candidatesTokens") && !usage.get("candidatesTokens").isJsonNull()) {
+                } else if (usage.has("candidatesTokens") && !usage.get("candidatesTokens").isJsonNull() && usage.get("candidatesTokens").isJsonPrimitive()) {
                     result.candidateTokens = usage.get("candidatesTokens").getAsInt();
                     hasMeaningfulData = true;
-                } else if (usage.has("candidateTokens") && !usage.get("candidateTokens").isJsonNull()) {
+                } else if (usage.has("candidateTokens") && !usage.get("candidateTokens").isJsonNull() && usage.get("candidateTokens").isJsonPrimitive()) {
                     result.candidateTokens = usage.get("candidateTokens").getAsInt();
                     hasMeaningfulData = true;
                 }
 
                 // Total tokens
-                if (usage.has("totalTokenCount") && !usage.get("totalTokenCount").isJsonNull()) {
+                if (usage.has("totalTokenCount") && !usage.get("totalTokenCount").isJsonNull() && usage.get("totalTokenCount").isJsonPrimitive()) {
                     result.totalTokens = usage.get("totalTokenCount").getAsInt();
-                } else if (usage.has("totalTokens") && !usage.get("totalTokens").isJsonNull()) {
+                } else if (usage.has("totalTokens") && !usage.get("totalTokens").isJsonNull() && usage.get("totalTokens").isJsonPrimitive()) {
                     result.totalTokens = usage.get("totalTokens").getAsInt();
                 }
             }
@@ -303,7 +342,7 @@ public class AntigravityApiClient {
         if (grounding.has("webSearchQueries") && grounding.get("webSearchQueries").isJsonArray()) {
             JsonArray queries = grounding.getAsJsonArray("webSearchQueries");
             for (JsonElement q : queries) {
-                if (!q.isJsonNull()) {
+                if (q != null && !q.isJsonNull() && q.isJsonPrimitive()) {
                     String queryText = q.getAsString();
                     if (queryText != null && !queryText.trim().isEmpty() && !result.webSearchQueries.contains(queryText.trim())) {
                         result.webSearchQueries.add(queryText.trim());
@@ -321,12 +360,22 @@ public class AntigravityApiClient {
                 JsonObject cObj = cElem.getAsJsonObject();
                 if (cObj.has("web") && cObj.get("web").isJsonObject()) {
                     JsonObject web = cObj.getAsJsonObject("web");
-                    if (web.has("title") && !web.get("title").isJsonNull()) {
+                    String source = null;
+                    if (web.has("title") && !web.get("title").isJsonNull() && web.get("title").isJsonPrimitive()) {
                         String title = web.get("title").getAsString();
-                        if (title != null && !title.trim().isEmpty() && !result.webSearchQueries.contains(title.trim())) {
-                            result.webSearchQueries.add(title.trim());
-                            found = true;
+                        if (title != null && !title.trim().isEmpty()) {
+                            source = title.trim();
                         }
+                    }
+                    if (source == null && web.has("uri") && !web.get("uri").isJsonNull() && web.get("uri").isJsonPrimitive()) {
+                        String uri = web.get("uri").getAsString();
+                        if (uri != null && !uri.trim().isEmpty()) {
+                            source = uri.trim();
+                        }
+                    }
+                    if (source != null && !result.webSearchQueries.contains(source)) {
+                        result.webSearchQueries.add(source);
+                        found = true;
                     }
                 }
             }
@@ -337,35 +386,53 @@ public class AntigravityApiClient {
 
     /**
      * Streams AI completions line-by-line via Server-Sent Events (SSE).
+     * Returns a Cancellable handle to abort generation.
      */
-    public void generateContentStream(final String modelId, final List<AiChatMessage> messages,
-                                      final boolean enableWebSearch, final String effortLevel,
-                                      final StreamListener listener) {
+    public Cancellable generateContentStream(final String modelId, final List<AiChatMessage> messages,
+                                            final boolean enableWebSearch, final String effortLevel,
+                                            final StreamListener listener) {
+        final ApiCallHandle handle = new ApiCallHandle();
+
         if (authManager == null) {
             dispatchOnError(listener, new IllegalStateException("AntigravityAuthManager is null"));
-            return;
+            return handle;
         }
 
         try {
             authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
                 @Override
                 public void onTokenReady(String accessToken) {
-                    executeStreamRequest(modelId, messages, enableWebSearch, effortLevel, accessToken, listener);
+                    if (handle.isCancelled()) {
+                        return;
+                    }
+                    executeStreamRequest(modelId, messages, enableWebSearch, effortLevel, accessToken, listener, handle);
                 }
 
                 @Override
                 public void onError(String message) {
+                    if (handle.isCancelled()) {
+                        return;
+                    }
                     dispatchOnError(listener, new IOException("Authentication failed: " + message));
                 }
             });
         } catch (Exception e) {
-            dispatchOnError(listener, new IOException("Failed to acquire access token: " + e.getMessage(), e));
+            if (!handle.isCancelled()) {
+                dispatchOnError(listener, new IOException("Failed to acquire access token: " + e.getMessage(), e));
+            }
         }
+
+        return handle;
     }
 
     private void executeStreamRequest(String modelId, List<AiChatMessage> messages,
                                       boolean enableWebSearch, String effortLevel,
-                                      String accessToken, final StreamListener listener) {
+                                      String accessToken, final StreamListener listener,
+                                      final ApiCallHandle handle) {
+        if (handle.isCancelled()) {
+            return;
+        }
+
         String payloadJson = buildRequestBody(modelId, messages, enableWebSearch, effortLevel);
         RequestBody body = RequestBody.create(JSON_MEDIA_TYPE, payloadJson);
 
@@ -379,77 +446,112 @@ public class AntigravityApiClient {
                 .build();
 
         try {
-            httpClient.newCall(request).enqueue(new Callback() {
+            final Call call = httpClient.newCall(request);
+            handle.setCall(call);
+            activeCalls.add(call);
+
+            call.enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
+                    activeCalls.remove(call);
+                    if (call.isCanceled() || handle.isCancelled()) {
+                        return;
+                    }
                     dispatchOnError(listener, e);
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
-                    StringBuilder fullText = new StringBuilder();
-                    List<String> webSources = new ArrayList<>();
-                    int promptTokens = 0;
-                    int candidateTokens = 0;
-
-                    try (ResponseBody responseBody = response.body()) {
-                        if (responseBody == null) {
-                            dispatchOnError(listener, new IOException("Empty response body from Antigravity API"));
+                    try {
+                        if (call.isCanceled() || handle.isCancelled()) {
                             return;
                         }
 
-                        if (!response.isSuccessful()) {
-                            String errString = responseBody.string();
-                            String parsedMsg = parseErrorMessage(errString, "HTTP " + response.code() + ": " + response.message());
-                            dispatchOnError(listener, new IOException("Antigravity API request failed: " + parsedMsg));
-                            return;
-                        }
+                        StringBuilder fullText = new StringBuilder();
+                        List<String> webSources = new ArrayList<>();
+                        int promptTokens = 0;
+                        int candidateTokens = 0;
 
-                        BufferedSource source = responseBody.source();
-                        while (!source.exhausted()) {
-                            String line = source.readUtf8Line();
-                            if (line == null) break;
+                        try (ResponseBody responseBody = response.body()) {
+                            if (responseBody == null) {
+                                if (call.isCanceled() || handle.isCancelled()) return;
+                                dispatchOnError(listener, new IOException("Empty response body from Antigravity API"));
+                                return;
+                            }
 
-                            SseChunkResult chunk = parseSseLine(line);
-                            if (chunk != null) {
-                                if (chunk.textDelta != null && !chunk.textDelta.isEmpty()) {
-                                    fullText.append(chunk.textDelta);
-                                    dispatchOnDelta(listener, chunk.textDelta);
-                                }
-                                for (String src : chunk.webSearchQueries) {
-                                    if (!webSources.contains(src)) {
-                                        webSources.add(src);
+                            if (!response.isSuccessful()) {
+                                if (call.isCanceled() || handle.isCancelled()) return;
+                                String errString = responseBody.string();
+                                String parsedMsg = parseErrorMessage(errString, "HTTP " + response.code() + ": " + response.message());
+                                dispatchOnError(listener, new IOException("Antigravity API request failed: " + parsedMsg));
+                                return;
+                            }
+
+                            BufferedSource source = responseBody.source();
+                            while (!source.exhausted()) {
+                                if (call.isCanceled() || handle.isCancelled()) return;
+                                String line = source.readUtf8Line();
+                                if (line == null) break;
+
+                                SseChunkResult chunk = parseSseLine(line);
+                                if (chunk != null) {
+                                    // Check for in-band error frame
+                                    if (chunk.errorMessage != null) {
+                                        if (call.isCanceled() || handle.isCancelled()) return;
+                                        dispatchOnError(listener, new IOException("Antigravity API stream error: " + chunk.errorMessage));
+                                        return;
+                                    }
+
+                                    if (chunk.textDelta != null && !chunk.textDelta.isEmpty()) {
+                                        fullText.append(chunk.textDelta);
+                                        dispatchOnDelta(listener, chunk.textDelta);
+                                    }
+                                    for (String src : chunk.webSearchQueries) {
+                                        if (!webSources.contains(src)) {
+                                            webSources.add(src);
+                                        }
+                                    }
+                                    if (chunk.promptTokens > 0) {
+                                        promptTokens = chunk.promptTokens;
+                                    }
+                                    if (chunk.candidateTokens > 0) {
+                                        candidateTokens = chunk.candidateTokens;
                                     }
                                 }
-                                if (chunk.promptTokens > 0) {
-                                    promptTokens = chunk.promptTokens;
-                                }
-                                if (chunk.candidateTokens > 0) {
-                                    candidateTokens = chunk.candidateTokens;
-                                }
                             }
+                        } catch (Exception e) {
+                            if (call.isCanceled() || handle.isCancelled()) {
+                                return;
+                            }
+                            dispatchOnError(listener, e);
+                            return;
                         }
-                    } catch (Exception e) {
-                        dispatchOnError(listener, e);
-                        return;
-                    }
 
-                    // Invoke onComplete outside stream reading block to prevent consumer exceptions from routing to onError
-                    dispatchOnComplete(listener, fullText.toString(), webSources, promptTokens, candidateTokens);
+                        if (call.isCanceled() || handle.isCancelled()) {
+                            return;
+                        }
+                        // Invoke onComplete outside stream reading block to prevent consumer exceptions from routing to onError
+                        dispatchOnComplete(listener, fullText.toString(), webSources, promptTokens, candidateTokens);
+                    } finally {
+                        activeCalls.remove(call);
+                    }
                 }
             });
         } catch (Exception e) {
-            dispatchOnError(listener, new IOException("Failed to initiate stream request: " + e.getMessage(), e));
+            if (!handle.isCancelled()) {
+                dispatchOnError(listener, new IOException("Failed to initiate stream request: " + e.getMessage(), e));
+            }
         }
     }
 
     /**
      * Executes a non-streaming AI completion (useful for batch operations like translation).
+     * Returns a Cancellable handle to abort generation.
      */
-    public void generateContent(String modelId, List<AiChatMessage> messages,
-                                boolean enableWebSearch, String effortLevel,
-                                final CompletionCallback callback) {
-        generateContentStream(modelId, messages, enableWebSearch, effortLevel, new StreamListener() {
+    public Cancellable generateContent(String modelId, List<AiChatMessage> messages,
+                                      boolean enableWebSearch, String effortLevel,
+                                      final CompletionCallback callback) {
+        return generateContentStream(modelId, messages, enableWebSearch, effortLevel, new StreamListener() {
             @Override
             public void onDelta(String textDelta) {
                 // Ignore chunk deltas for batch completions
@@ -524,5 +626,34 @@ public class AntigravityApiClient {
             }
         } catch (Exception ignored) {}
         return fallback;
+    }
+
+    /**
+     * Thread-safe Cancellable handle wrapping active OkHttp Call.
+     */
+    private static class ApiCallHandle implements Cancellable {
+        private volatile boolean cancelled = false;
+        private volatile Call activeCall;
+
+        void setCall(Call call) {
+            this.activeCall = call;
+            if (cancelled && call != null) {
+                call.cancel();
+            }
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+            Call call = activeCall;
+            if (call != null) {
+                call.cancel();
+            }
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled || (activeCall != null && activeCall.isCanceled());
+        }
     }
 }
