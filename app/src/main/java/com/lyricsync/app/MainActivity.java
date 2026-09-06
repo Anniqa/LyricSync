@@ -39,6 +39,8 @@ import com.google.android.material.card.MaterialCardView;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.client.AntigravityQuotaClient;
+import com.lyricsync.app.ai.history.AiChatHistoryManager;
+import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.AntigravityModel;
 import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
@@ -142,9 +144,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private View layoutAiDisconnected;
     private View layoutAiConnected;
     private TextView tvAiEmail;
-    private Spinner spinnerAiModel;
-    private Spinner spinnerAiEffort;
-    private androidx.appcompat.widget.SwitchCompat switchAiWebSearch;
 
     public static final List<String> BASE_ANTIGRAVITY_MODELS = Collections.unmodifiableList(Arrays.asList(
             "gemini-3.8-flash-high",
@@ -204,6 +203,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private ImageView aiStudioModelPillIcon;
     private TextView aiStudioModelPillName;
     private TextView aiStudioModelDescBadge;
+    private ImageView aiStudioBtnNewChat;
+    private ImageView aiStudioBtnHistory;
+    private AiChatHistoryManager aiChatHistoryManager;
 
     private AntigravityAuthManager authManager;
     private AntigravityApiClient apiClient;
@@ -606,9 +608,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         layoutAiDisconnected = findViewById(R.id.layout_ai_disconnected);
         layoutAiConnected = findViewById(R.id.layout_ai_connected);
         tvAiEmail = findViewById(R.id.tv_ai_email);
-        spinnerAiModel = findViewById(R.id.spinner_ai_model);
-        spinnerAiEffort = findViewById(R.id.spinner_ai_effort);
-        switchAiWebSearch = findViewById(R.id.switch_ai_web_search);
         quotaWeeklyProgress = findViewById(R.id.quota_weekly_progress);
         tvQuotaWeekly = findViewById(R.id.tv_quota_weekly);
         quota5hProgress = findViewById(R.id.quota_5h_progress);
@@ -657,88 +656,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
         }
 
-        // Setup Effort Selector
-        if (spinnerAiEffort != null) {
-            String[] effortLabels = {"Low (Cepat)", "Medium (Seimbang)", "High (Maksimal)"};
-            String[] effortValues = {"low", "medium", "high"};
-            ArrayAdapter<String> effortAdapter = new ArrayAdapter<>(this, R.layout.item_spinner_lang, effortLabels);
-            effortAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
-            spinnerAiEffort.setAdapter(effortAdapter);
-
-            String savedEffort = prefs.getString("pref_ai_effort", "low");
-            for (int i = 0; i < effortValues.length; i++) {
-                if (effortValues[i].equalsIgnoreCase(savedEffort)) {
-                    spinnerAiEffort.setSelection(i);
-                    break;
-                }
-            }
-
-            spinnerAiEffort.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-                @Override
-                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                    prefs.edit().putString("pref_ai_effort", effortValues[position]).apply();
-                }
-
-                @Override
-                public void onNothingSelected(AdapterView<?> parent) {}
-            });
-        }
-
-        // Setup Web Search toggle
-        if (switchAiWebSearch != null) {
-            switchAiWebSearch.setChecked(prefs.getBoolean("pref_ai_web_search", false));
-            switchAiWebSearch.setOnCheckedChangeListener((btn, isChecked) -> {
-                Haptics.tick(btn);
-                aiWebSearchEnabled = isChecked;
-                if (aiStudioWebSearchChip != null) {
-                    aiStudioWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
-                }
-                prefs.edit().putBoolean("pref_ai_web_search", isChecked).apply();
-            });
-        }
-
-        // Initialize model spinner immediately with rich curated base models
-        if (spinnerAiModel != null) {
-            populateModelSpinner(BASE_ANTIGRAVITY_MODELS);
-        }
-
         updateAiAccountState();
-    }
-
-    private void populateModelSpinner(List<String> modelIds) {
-        if (spinnerAiModel == null || modelIds == null || modelIds.isEmpty()) return;
-        List<String> names = new ArrayList<>();
-        String savedModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
-        int selectedIdx = 0;
-        for (int i = 0; i < modelIds.size(); i++) {
-            String mId = modelIds.get(i);
-            ModelMeta meta = resolveModelMeta(mId);
-            names.add(meta.displayName);
-            if (mId.equalsIgnoreCase(savedModel)) {
-                selectedIdx = i;
-            }
-        }
-        ArrayAdapter<String> modelAdapter = new ArrayAdapter<>(
-                MainActivity.this, R.layout.item_spinner_lang, names);
-        modelAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown);
-        spinnerAiModel.setAdapter(modelAdapter);
-        spinnerAiModel.setSelection(selectedIdx);
-        updateAiStudioModelUi(savedModel);
-
-        spinnerAiModel.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position >= 0 && position < modelIds.size()) {
-                    String mId = modelIds.get(position);
-                    prefs.edit().putString("pref_ai_model", mId).apply();
-                    if (songChatManager != null) songChatManager.setModelId(mId);
-                    updateAiStudioModelUi(mId);
-                }
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
     }
 
     private void updateAiAccountState() {
@@ -793,16 +711,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         runOnUiThread(() -> {
                             if (models == null || models.isEmpty()) return;
                             availableAiModels = models;
-                            List<String> combined = new ArrayList<>(BASE_ANTIGRAVITY_MODELS);
-                            Set<String> added = new HashSet<>();
-                            for (String b : BASE_ANTIGRAVITY_MODELS) added.add(b.toLowerCase(Locale.ROOT));
-                            for (AntigravityModel m : models) {
-                                if (m.id != null && !added.contains(m.id.toLowerCase(Locale.ROOT))) {
-                                    combined.add(m.id);
-                                    added.add(m.id.toLowerCase(Locale.ROOT));
-                                }
-                            }
-                            populateModelSpinner(combined);
                         });
                     }
 
@@ -1155,11 +1063,15 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             songChatManager = new SongChatManager(apiClient);
         }
         songChatManager.setAppLanguage(LocaleHelper.getLanguage(this));
+        aiChatHistoryManager = new AiChatHistoryManager(this);
+        songChatManager.setHistoryManager(aiChatHistoryManager);
 
         cardAiStudio = findViewById(R.id.card_ai_studio);
         aiStudioHeader = findViewById(R.id.ai_studio_header);
         aiStudioContent = findViewById(R.id.ai_studio_content);
         aiStudioChevron = findViewById(R.id.ai_studio_chevron);
+        aiStudioBtnNewChat = findViewById(R.id.ai_studio_btn_new_chat);
+        aiStudioBtnHistory = findViewById(R.id.ai_studio_btn_history);
         aiStudioTrackInfo = findViewById(R.id.ai_studio_track_info);
         aiStudioMoodBadge = findViewById(R.id.ai_studio_mood_badge);
         aiStudioQuotaBadge = findViewById(R.id.ai_studio_quota_badge);
@@ -1216,6 +1128,20 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
         }
 
+        if (aiStudioBtnNewChat != null) {
+            aiStudioBtnNewChat.setOnClickListener(v -> {
+                Haptics.tick(v);
+                handleAiNewChat();
+            });
+        }
+
+        if (aiStudioBtnHistory != null) {
+            aiStudioBtnHistory.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showAiHistoryDialog();
+            });
+        }
+
         aiWebSearchEnabled = prefs.getBoolean("pref_ai_web_search", false);
         if (aiStudioWebSearchChip != null) {
             aiStudioWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
@@ -1224,9 +1150,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 aiWebSearchEnabled = !aiWebSearchEnabled;
                 aiStudioWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
                 prefs.edit().putBoolean("pref_ai_web_search", aiWebSearchEnabled).apply();
-                if (switchAiWebSearch != null) {
-                    switchAiWebSearch.setChecked(aiWebSearchEnabled);
-                }
                 Toast.makeText(MainActivity.this,
                         getString(aiWebSearchEnabled ? R.string.ai_web_search_active : R.string.ai_web_search_inactive),
                         Toast.LENGTH_SHORT).show();
@@ -1502,7 +1425,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     songChatManager.setModelId(opt.id);
                 }
                 updateAiStudioModelUi(opt.id);
-                syncModelSpinnerSelection(opt.id);
                 dialog.dismiss();
             });
 
@@ -1605,24 +1527,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             songChatManager.setModelId(customId);
                         }
                         updateAiStudioModelUi(customId);
-                        syncModelSpinnerSelection(customId);
                         Toast.makeText(this, "Model AI diatur ke: " + customId, Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("Batal", null)
                 .show();
-    }
-
-    private void syncModelSpinnerSelection(String modelId) {
-        if (spinnerAiModel != null && modelId != null && spinnerAiModel.getAdapter() != null) {
-            for (int i = 0; i < spinnerAiModel.getAdapter().getCount(); i++) {
-                Object item = spinnerAiModel.getAdapter().getItem(i);
-                if (item != null && (modelId.equalsIgnoreCase(item.toString()) || resolveModelMeta(modelId).displayName.equalsIgnoreCase(item.toString()))) {
-                    spinnerAiModel.setSelection(i);
-                    break;
-                }
-            }
-        }
     }
 
     public void onNowPlayingChanged(NowPlaying.Snapshot track) {
@@ -2008,7 +1917,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
     /** Clickable web-source chips appended below the last AI chat bubble (max 5). */
     private void addSourceChipsBelowBubble(TextView aiBubble, List<String> webSources) {
-        if (aiBubble == null || aiStudioChatContainer == null || webSources == null) return;
+        if (aiStudioChatContainer == null || webSources == null) return;
         int added = 0;
         Set<String> seen = new HashSet<>();
         for (String source : webSources) {
@@ -2103,6 +2012,207 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
         }
         return bubble;
+    }
+
+    private void handleAiNewChat() {
+        if (activeChatCall != null) {
+            try {
+                activeChatCall.cancel();
+            } catch (Exception ignored) {}
+            activeChatCall = null;
+        }
+        if (activeStudioAnimator != null) {
+            activeStudioAnimator.stopAll();
+            activeStudioAnimator = null;
+        }
+        hideToolStatusNow();
+
+        if (songChatManager != null) {
+            songChatManager.startNewSession();
+        }
+
+        if (aiStudioChatContainer != null) {
+            aiStudioChatContainer.removeAllViews();
+        }
+        if (aiStudioChatScroll != null) {
+            aiStudioChatScroll.setVisibility(View.GONE);
+        }
+        if (aiStudioQuickChips != null) {
+            aiStudioQuickChips.setVisibility(View.VISIBLE);
+        }
+        if (aiStudioChatInput != null) {
+            aiStudioChatInput.setText("");
+        }
+        Toast.makeText(this, R.string.ai_new_chat_started, Toast.LENGTH_SHORT).show();
+    }
+
+    private void restoreChatSession(AiChatHistoryManager.ChatSession session) {
+        if (session == null || songChatManager == null) return;
+        if (activeChatCall != null) {
+            try {
+                activeChatCall.cancel();
+            } catch (Exception ignored) {}
+            activeChatCall = null;
+        }
+        if (activeStudioAnimator != null) {
+            activeStudioAnimator.stopAll();
+            activeStudioAnimator = null;
+        }
+        hideToolStatusNow();
+
+        songChatManager.loadSession(session);
+
+        if (aiStudioChatContainer != null) {
+            aiStudioChatContainer.removeAllViews();
+            if (aiStudioChatScroll != null) {
+                aiStudioChatScroll.setVisibility(View.VISIBLE);
+            }
+            if (aiStudioQuickChips != null) {
+                aiStudioQuickChips.setVisibility(View.GONE);
+            }
+
+            if (session.messages != null) {
+                for (AiChatMessage msg : session.messages) {
+                    if (msg == null || msg.content == null || msg.content.trim().isEmpty()) continue;
+                    boolean isUser = "user".equalsIgnoreCase(msg.role);
+                    if (isUser) {
+                        addUserChatBubble(msg.content);
+                    } else {
+                        TextView bubble = addAiChatBubble("");
+                        CleanMarkdownFormatter.formatClean(msg.content, false, bubble);
+                    }
+                }
+            }
+
+            if (session.webSources != null && !session.webSources.isEmpty()) {
+                addSourceChipsBelowBubble(null, session.webSources);
+            }
+
+            if (aiStudioChatScroll != null) {
+                aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+            }
+        }
+        Toast.makeText(this, R.string.ai_history_restore, Toast.LENGTH_SHORT).show();
+    }
+
+    private void showAiHistoryDialog() {
+        if (aiChatHistoryManager == null) {
+            aiChatHistoryManager = new AiChatHistoryManager(this);
+        }
+
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_ai_chat_history, null);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .create();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        TextView btnClearAll = dialogView.findViewById(R.id.btn_history_clear_all);
+        View btnClose = dialogView.findViewById(R.id.btn_history_close);
+        View emptyView = dialogView.findViewById(R.id.layout_history_empty);
+        ScrollView scrollView = dialogView.findViewById(R.id.scroll_history_sessions);
+        LinearLayout sessionsContainer = dialogView.findViewById(R.id.container_history_sessions);
+
+        Runnable refreshList = new Runnable() {
+            @Override
+            public void run() {
+                if (sessionsContainer == null) return;
+                sessionsContainer.removeAllViews();
+                List<AiChatHistoryManager.ChatSession> sessions = aiChatHistoryManager.getSessions();
+                if (sessions.isEmpty()) {
+                    if (emptyView != null) emptyView.setVisibility(View.VISIBLE);
+                    if (scrollView != null) scrollView.setVisibility(View.GONE);
+                    if (btnClearAll != null) btnClearAll.setVisibility(View.GONE);
+                } else {
+                    if (emptyView != null) emptyView.setVisibility(View.GONE);
+                    if (scrollView != null) scrollView.setVisibility(View.VISIBLE);
+                    if (btnClearAll != null) btnClearAll.setVisibility(View.VISIBLE);
+
+                    for (final AiChatHistoryManager.ChatSession session : sessions) {
+                        View itemView = LayoutInflater.from(MainActivity.this)
+                                .inflate(R.layout.item_ai_history_session, sessionsContainer, false);
+
+                        TextView tvTitle = itemView.findViewById(R.id.tv_history_song_title);
+                        TextView tvArtistDate = itemView.findViewById(R.id.tv_history_artist_date);
+                        TextView tvSnippet = itemView.findViewById(R.id.tv_history_snippet);
+                        TextView tvCount = itemView.findViewById(R.id.tv_history_message_count);
+                        ImageView btnDelete = itemView.findViewById(R.id.btn_delete_history_session);
+
+                        String titleText = (session.songTitle != null && !session.songTitle.trim().isEmpty())
+                                ? session.songTitle.trim() : getString(R.string.ai_studio_title);
+                        if (tvTitle != null) tvTitle.setText(titleText);
+
+                        StringBuilder sub = new StringBuilder();
+                        if (session.songArtist != null && !session.songArtist.trim().isEmpty()) {
+                            sub.append(session.songArtist.trim()).append(" · ");
+                        }
+                        sub.append(session.getFormattedDate());
+                        if (tvArtistDate != null) tvArtistDate.setText(sub.toString());
+
+                        String snip = session.getSnippet();
+                        if (tvSnippet != null) {
+                            if (!snip.isEmpty()) {
+                                tvSnippet.setText(snip);
+                                tvSnippet.setVisibility(View.VISIBLE);
+                            } else {
+                                tvSnippet.setVisibility(View.GONE);
+                            }
+                        }
+
+                        int count = session.getMessageCount();
+                        if (tvCount != null) {
+                            tvCount.setText(getString(R.string.ai_history_session_messages, count));
+                        }
+
+                        itemView.setOnClickListener(v -> {
+                            Haptics.tick(v);
+                            dialog.dismiss();
+                            restoreChatSession(session);
+                        });
+
+                        if (btnDelete != null) {
+                            btnDelete.setOnClickListener(v -> {
+                                Haptics.tick(v);
+                                aiChatHistoryManager.deleteSession(session.id);
+                                Toast.makeText(MainActivity.this, R.string.ai_history_deleted_one, Toast.LENGTH_SHORT).show();
+                                run();
+                            });
+                        }
+
+                        sessionsContainer.addView(itemView);
+                    }
+                }
+            }
+        };
+
+        refreshList.run();
+
+        if (btnClose != null) {
+            btnClose.setOnClickListener(v -> {
+                Haptics.tick(v);
+                dialog.dismiss();
+            });
+        }
+
+        if (btnClearAll != null) {
+            btnClearAll.setOnClickListener(v -> {
+                Haptics.tick(v);
+                new AlertDialog.Builder(this)
+                        .setTitle(R.string.ai_history_clear_confirm_title)
+                        .setMessage(R.string.ai_history_clear_confirm_msg)
+                        .setPositiveButton(R.string.ai_history_clear_all, (d, which) -> {
+                            aiChatHistoryManager.clearAllSessions();
+                            Toast.makeText(MainActivity.this, R.string.ai_history_clear_success, Toast.LENGTH_SHORT).show();
+                            refreshList.run();
+                        })
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show();
+            });
+        }
+
+        dialog.show();
     }
 
     /** Re-colour the ambient header wash. SRC_IN tinting keeps the gradient's alpha ramp. */

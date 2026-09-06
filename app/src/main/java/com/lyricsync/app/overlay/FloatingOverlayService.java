@@ -45,6 +45,8 @@ import android.widget.Toast;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.client.AntigravityQuotaClient;
+import com.lyricsync.app.ai.history.AiChatHistoryManager;
+import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.service.SongMeaningService;
@@ -196,6 +198,7 @@ public class FloatingOverlayService extends Service {
 
     private SongMeaningService songMeaningService;
     private SongChatManager songChatManager;
+    private AiChatHistoryManager aiChatHistoryManager;
     private AntigravityQuotaClient quotaClient;
     private AntigravityApiClient.Cancellable activeMeaningCall;
     private AntigravityApiClient.Cancellable activeChatCall;
@@ -303,6 +306,8 @@ public class FloatingOverlayService extends Service {
                 this, authManager, apiClient, translateService);
         songMeaningService = new SongMeaningService(sharedPrefs, apiClient);
         songChatManager = new SongChatManager(apiClient);
+        aiChatHistoryManager = new AiChatHistoryManager(this);
+        songChatManager.setHistoryManager(aiChatHistoryManager);
         quotaClient = new AntigravityQuotaClient(authManager);
         AntigravityToolExecutor.setChatModelSupplier(() ->
                 sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
@@ -1053,6 +1058,20 @@ public class FloatingOverlayService extends Service {
                 dismissAiChatOverlay();
             });
         }
+        View aiBtnNewChat = aiChatView.findViewById(R.id.ai_btn_new_chat);
+        if (aiBtnNewChat != null) {
+            aiBtnNewChat.setOnClickListener(v -> {
+                Haptics.tick(v);
+                handleAiNewChatOverlay();
+            });
+        }
+        View aiBtnHistory = aiChatView.findViewById(R.id.ai_btn_history);
+        if (aiBtnHistory != null) {
+            aiBtnHistory.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showAiHistoryDialogOverlay();
+            });
+        }
         if (aiWebSearchChip != null) {
             aiWebSearchChip.setOnClickListener(v -> {
                 Haptics.tick(v);
@@ -1630,7 +1649,7 @@ public class FloatingOverlayService extends Service {
 
     /** Clickable web-source chips appended below the last AI chat bubble (max 5). */
     private void addSourceChipsBelowBubble(TextView aiBubble, List<String> webSources) {
-        if (aiBubble == null || aiChatMessages == null || webSources == null) return;
+        if (aiChatMessages == null || webSources == null) return;
         int added = 0;
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String source : webSources) {
@@ -1713,6 +1732,226 @@ public class FloatingOverlayService extends Service {
             aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
         }
         return bubble;
+    }
+
+    private void handleAiNewChatOverlay() {
+        if (activeChatCall != null) {
+            try {
+                activeChatCall.cancel();
+            } catch (Exception ignored) {}
+            activeChatCall = null;
+        }
+        if (activeAiBubbleAnimator != null) {
+            activeAiBubbleAnimator.stopAll();
+            activeAiBubbleAnimator = null;
+        }
+        hideToolStatusNow();
+
+        if (songChatManager != null) {
+            songChatManager.startNewSession();
+        }
+        if (aiChatMessages != null) {
+            aiChatMessages.removeAllViews();
+        }
+        if (aiChatScroll != null) {
+            aiChatScroll.setVisibility(View.GONE);
+        }
+        if (aiChatEmptyState != null) {
+            aiChatEmptyState.setVisibility(View.VISIBLE);
+        }
+        if (aiPromptTemplatesContainer != null) {
+            aiPromptTemplatesContainer.setVisibility(View.VISIBLE);
+        }
+        if (aiChatInput != null) {
+            aiChatInput.setText("");
+        }
+        Toast.makeText(this, R.string.ai_new_chat_started, Toast.LENGTH_SHORT).show();
+    }
+
+    private void restoreChatSessionOverlay(AiChatHistoryManager.ChatSession session) {
+        if (session == null || songChatManager == null) return;
+        if (activeChatCall != null) {
+            try {
+                activeChatCall.cancel();
+            } catch (Exception ignored) {}
+            activeChatCall = null;
+        }
+        if (activeAiBubbleAnimator != null) {
+            activeAiBubbleAnimator.stopAll();
+            activeAiBubbleAnimator = null;
+        }
+        hideToolStatusNow();
+
+        songChatManager.loadSession(session);
+
+        if (aiChatMessages != null) {
+            aiChatMessages.removeAllViews();
+            if (aiChatScroll != null) {
+                aiChatScroll.setVisibility(View.VISIBLE);
+            }
+            if (aiChatEmptyState != null) {
+                aiChatEmptyState.setVisibility(View.GONE);
+            }
+            if (aiPromptTemplatesContainer != null) {
+                aiPromptTemplatesContainer.setVisibility(View.GONE);
+            }
+
+            if (session.messages != null) {
+                for (AiChatMessage msg : session.messages) {
+                    if (msg == null || msg.content == null || msg.content.trim().isEmpty()) continue;
+                    boolean isUser = "user".equalsIgnoreCase(msg.role);
+                    if (isUser) {
+                        addUserChatBubble(msg.content);
+                    } else {
+                        TextView bubble = addAiChatBubble("");
+                        CleanMarkdownFormatter.formatClean(msg.content, false, bubble);
+                    }
+                }
+            }
+
+            if (session.webSources != null && !session.webSources.isEmpty()) {
+                addSourceChipsBelowBubble(null, session.webSources);
+            }
+
+            if (aiChatScroll != null) {
+                aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
+            }
+        }
+        Toast.makeText(this, R.string.ai_history_restore, Toast.LENGTH_SHORT).show();
+    }
+
+    private void showAiHistoryDialogOverlay() {
+        if (aiChatHistoryManager == null) {
+            aiChatHistoryManager = new AiChatHistoryManager(this);
+        }
+
+        final Context themedContext = new ContextThemeWrapper(this, R.style.Theme_LyricSync);
+        View dialogView = LayoutInflater.from(themedContext).inflate(R.layout.dialog_ai_chat_history, null);
+        AlertDialog dialog = new AlertDialog.Builder(themedContext)
+                .setView(dialogView)
+                .create();
+
+        if (dialog.getWindow() != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+            } else {
+                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
+            }
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        TextView btnClearAll = dialogView.findViewById(R.id.btn_history_clear_all);
+        View btnClose = dialogView.findViewById(R.id.btn_history_close);
+        View emptyView = dialogView.findViewById(R.id.layout_history_empty);
+        ScrollView scrollView = dialogView.findViewById(R.id.scroll_history_sessions);
+        LinearLayout sessionsContainer = dialogView.findViewById(R.id.container_history_sessions);
+
+        Runnable refreshList = new Runnable() {
+            @Override
+            public void run() {
+                if (sessionsContainer == null) return;
+                sessionsContainer.removeAllViews();
+                List<AiChatHistoryManager.ChatSession> sessions = aiChatHistoryManager.getSessions();
+                if (sessions.isEmpty()) {
+                    if (emptyView != null) emptyView.setVisibility(View.VISIBLE);
+                    if (scrollView != null) scrollView.setVisibility(View.GONE);
+                    if (btnClearAll != null) btnClearAll.setVisibility(View.GONE);
+                } else {
+                    if (emptyView != null) emptyView.setVisibility(View.GONE);
+                    if (scrollView != null) scrollView.setVisibility(View.VISIBLE);
+                    if (btnClearAll != null) btnClearAll.setVisibility(View.VISIBLE);
+
+                    for (final AiChatHistoryManager.ChatSession session : sessions) {
+                        View itemView = LayoutInflater.from(themedContext)
+                                .inflate(R.layout.item_ai_history_session, sessionsContainer, false);
+
+                        TextView tvTitle = itemView.findViewById(R.id.tv_history_song_title);
+                        TextView tvArtistDate = itemView.findViewById(R.id.tv_history_artist_date);
+                        TextView tvSnippet = itemView.findViewById(R.id.tv_history_snippet);
+                        TextView tvCount = itemView.findViewById(R.id.tv_history_message_count);
+                        ImageView btnDelete = itemView.findViewById(R.id.btn_delete_history_session);
+
+                        String titleText = (session.songTitle != null && !session.songTitle.trim().isEmpty())
+                                ? session.songTitle.trim() : getString(R.string.ai_insights_title);
+                        if (tvTitle != null) tvTitle.setText(titleText);
+
+                        StringBuilder sub = new StringBuilder();
+                        if (session.songArtist != null && !session.songArtist.trim().isEmpty()) {
+                            sub.append(session.songArtist.trim()).append(" · ");
+                        }
+                        sub.append(session.getFormattedDate());
+                        if (tvArtistDate != null) tvArtistDate.setText(sub.toString());
+
+                        String snip = session.getSnippet();
+                        if (tvSnippet != null) {
+                            if (!snip.isEmpty()) {
+                                tvSnippet.setText(snip);
+                                tvSnippet.setVisibility(View.VISIBLE);
+                            } else {
+                                tvSnippet.setVisibility(View.GONE);
+                            }
+                        }
+
+                        int count = session.getMessageCount();
+                        if (tvCount != null) {
+                            tvCount.setText(getString(R.string.ai_history_session_messages, count));
+                        }
+
+                        itemView.setOnClickListener(v -> {
+                            Haptics.tick(v);
+                            dialog.dismiss();
+                            restoreChatSessionOverlay(session);
+                        });
+
+                        if (btnDelete != null) {
+                            btnDelete.setOnClickListener(v -> {
+                                Haptics.tick(v);
+                                aiChatHistoryManager.deleteSession(session.id);
+                                Toast.makeText(FloatingOverlayService.this, R.string.ai_history_deleted_one, Toast.LENGTH_SHORT).show();
+                                run();
+                            });
+                        }
+
+                        sessionsContainer.addView(itemView);
+                    }
+                }
+            }
+        };
+
+        refreshList.run();
+
+        if (btnClose != null) {
+            btnClose.setOnClickListener(v -> {
+                Haptics.tick(v);
+                dialog.dismiss();
+            });
+        }
+
+        if (btnClearAll != null) {
+            btnClearAll.setOnClickListener(v -> {
+                Haptics.tick(v);
+                AlertDialog confirmDialog = new AlertDialog.Builder(themedContext)
+                        .setTitle(R.string.ai_history_clear_confirm_title)
+                        .setMessage(R.string.ai_history_clear_confirm_msg)
+                        .setPositiveButton(R.string.ai_history_clear_all, (d, which) -> {
+                            aiChatHistoryManager.clearAllSessions();
+                            Toast.makeText(FloatingOverlayService.this, R.string.ai_history_clear_success, Toast.LENGTH_SHORT).show();
+                            refreshList.run();
+                        })
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .create();
+                if (confirmDialog.getWindow() != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        confirmDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+                    } else {
+                        confirmDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
+                    }
+                }
+                confirmDialog.show();
+            });
+        }
+
+        dialog.show();
     }
 
     /** Font + animation chips inside the settings panel; choices apply live via prefs. */

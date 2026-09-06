@@ -270,6 +270,28 @@
                             android:visibility="gone" />
 
                         <ImageView
+                            android:id="@+id/ai_studio_btn_new_chat"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:padding="5dp"
+                            android:layout_marginEnd="4dp"
+                            android:background="@drawable/bg_icon_button"
+                            android:src="@drawable/ic_chat_new"
+                            app:tint="@color/accent"
+                            android:contentDescription="@string/ai_btn_new_chat" />
+
+                        <ImageView
+                            android:id="@+id/ai_studio_btn_history"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:padding="5dp"
+                            android:layout_marginEnd="6dp"
+                            android:background="@drawable/bg_icon_button"
+                            android:src="@drawable/ic_history"
+                            app:tint="@color/text_secondary"
+                            android:contentDescription="@string/ai_btn_history" />
+
+                        <ImageView
                             android:id="@+id/ai_studio_chevron"
                             android:layout_width="20dp"
                             android:layout_height="20dp"

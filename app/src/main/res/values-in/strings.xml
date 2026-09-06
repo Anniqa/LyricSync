@@ -162,4 +162,18 @@
     <string name="ai_model_claude_desc">Model Anthropic, pemahaman puitis bernuansa</string>
     <string name="ai_source_web">Sumber Web</string>
     <string name="action_change">Ubah</string>
+    <string name="ai_btn_new_chat">Obrolan Baru</string>
+    <string name="ai_btn_history">Riwayat Obrolan</string>
+    <string name="ai_history_title">Riwayat Obrolan</string>
+    <string name="ai_history_empty">Belum ada riwayat obrolan.\nMulai percakapan baru dengan AI!</string>
+    <string name="ai_history_clear_all">Hapus Semua Riwayat</string>
+    <string name="ai_history_clear_confirm_title">Hapus Riwayat?</string>
+    <string name="ai_history_clear_confirm_msg">Apakah Anda yakin ingin menghapus semua riwayat percakapan AI? Tindakan ini tidak dapat dibatalkan.</string>
+    <string name="ai_history_clear_success">Riwayat obrolan berhasil dihapus</string>
+    <string name="ai_history_delete_session">Hapus</string>
+    <string name="ai_new_chat_started">Obrolan baru dimulai</string>
+    <string name="ai_new_chat_ready">Obrolan baru sudah siap</string>
+    <string name="ai_history_restore">Buka Obrolan</string>
+    <string name="ai_history_session_messages">%1$d pesan</string>
+    <string name="ai_history_deleted_one">Percakapan dihapus</string>
 </resources>

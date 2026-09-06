@@ -1,6 +1,7 @@
 package com.lyricsync.app.ai.service;
 
 import com.lyricsync.app.ai.client.AntigravityApiClient;
+import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 
@@ -8,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Manages interactive, multi-turn AI chat sessions discussing the active song.
@@ -77,6 +79,9 @@ public class SongChatManager {
     private volatile long currentSessionId = 0;
     private volatile AntigravityApiClient.Cancellable activeCall;
 
+    private volatile String activeSessionUuid = UUID.randomUUID().toString();
+    private volatile AiChatHistoryManager historyManager;
+
     private final List<AiChatMessage> history = new ArrayList<>();
     private final List<String> lastWebSources = new ArrayList<>();
 
@@ -87,6 +92,84 @@ public class SongChatManager {
     public SongChatManager(AntigravityApiClient apiClient, String modelId) {
         this.apiClient = apiClient;
         this.modelId = (modelId != null && !modelId.trim().isEmpty()) ? modelId.trim() : DEFAULT_MODEL;
+    }
+
+    public void setHistoryManager(AiChatHistoryManager historyManager) {
+        this.historyManager = historyManager;
+    }
+
+    public AiChatHistoryManager getHistoryManager() {
+        return this.historyManager;
+    }
+
+    public synchronized String getActiveSessionId() {
+        return activeSessionUuid;
+    }
+
+    public synchronized void setActiveSessionId(String id) {
+        if (id != null && !id.trim().isEmpty()) {
+            this.activeSessionUuid = id.trim();
+        }
+    }
+
+    /**
+     * Resets the conversation for a fresh multi-turn chat, aborting any active stream,
+     * allocating a new session UUID, and incrementing session ID.
+     */
+    public synchronized void startNewSession() {
+        if (activeCall != null) {
+            try {
+                activeCall.cancel();
+            } catch (Exception ignored) {}
+            activeCall = null;
+        }
+        this.activeSessionUuid = UUID.randomUUID().toString();
+        this.currentSessionId++;
+        clearHistory();
+    }
+
+    /**
+     * Restores a previously saved conversation session into the active chat manager.
+     */
+    public synchronized void loadSession(AiChatHistoryManager.ChatSession session) {
+        if (session == null) return;
+        if (activeCall != null) {
+            try {
+                activeCall.cancel();
+            } catch (Exception ignored) {}
+            activeCall = null;
+        }
+        if (session.songTitle != null && !session.songTitle.trim().isEmpty()) {
+            this.title = session.songTitle;
+        }
+        if (session.songArtist != null && !session.songArtist.trim().isEmpty()) {
+            this.artist = session.songArtist;
+        }
+        this.activeSessionUuid = (session.id != null && !session.id.trim().isEmpty())
+                ? session.id.trim() : UUID.randomUUID().toString();
+        this.history.clear();
+        if (session.messages != null) {
+            this.history.addAll(session.messages);
+        }
+        this.lastWebSources.clear();
+        if (session.webSources != null) {
+            this.lastWebSources.addAll(session.webSources);
+        }
+        this.currentSessionId++;
+    }
+
+    /**
+     * Creates a snapshot of the current conversational state for history persistence.
+     */
+    public synchronized AiChatHistoryManager.ChatSession createSessionSnapshot() {
+        return new AiChatHistoryManager.ChatSession(
+                this.activeSessionUuid,
+                this.title,
+                this.artist,
+                System.currentTimeMillis(),
+                new ArrayList<>(this.history),
+                new ArrayList<>(this.lastWebSources)
+        );
     }
 
     /**
@@ -104,6 +187,7 @@ public class SongChatManager {
         this.artist = artist;
         this.fullLyrics = fullLyrics;
         this.meaning = meaning;
+        this.activeSessionUuid = UUID.randomUUID().toString();
         this.currentSessionId++;
         clearHistory();
     }
@@ -362,6 +446,7 @@ public class SongChatManager {
                     return;
                 }
 
+                AiChatHistoryManager.ChatSession savedSnapshot = null;
                 synchronized (SongChatManager.this) {
                     if (sessionId == currentSessionId) {
                         history.add(AiChatMessage.model(fullText != null ? fullText : ""));
@@ -369,10 +454,19 @@ public class SongChatManager {
                         if (webSources != null) {
                             lastWebSources.addAll(webSources);
                         }
+                        if (historyManager != null) {
+                            savedSnapshot = createSessionSnapshot();
+                        }
                     } else {
                         rollbackUserTurnIfOrphaned(userTurn);
                         return;
                     }
+                }
+
+                if (historyManager != null && savedSnapshot != null) {
+                    try {
+                        historyManager.saveSession(savedSnapshot);
+                    } catch (Exception ignored) {}
                 }
 
                 if (listener != null) {

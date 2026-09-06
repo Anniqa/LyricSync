@@ -161,4 +161,18 @@
     <string name="ai_model_claude_desc">Anthropic model, nuanced poetic prose</string>
     <string name="ai_source_web">Web Source</string>
     <string name="action_change">Change</string>
+    <string name="ai_btn_new_chat">New Chat</string>
+    <string name="ai_btn_history">Chat History</string>
+    <string name="ai_history_title">Chat History</string>
+    <string name="ai_history_empty">No chat history yet.\nStart a conversation with AI!</string>
+    <string name="ai_history_clear_all">Clear All History</string>
+    <string name="ai_history_clear_confirm_title">Clear History?</string>
+    <string name="ai_history_clear_confirm_msg">Are you sure you want to delete all saved AI conversations? This cannot be undone.</string>
+    <string name="ai_history_clear_success">Chat history cleared</string>
+    <string name="ai_history_delete_session">Delete</string>
+    <string name="ai_new_chat_started">New chat started</string>
+    <string name="ai_new_chat_ready">New chat is ready</string>
+    <string name="ai_history_restore">Restore Chat</string>
+    <string name="ai_history_session_messages">%1$d messages</string>
+    <string name="ai_history_deleted_one">Conversation deleted</string>
 </resources>
