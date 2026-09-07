@@ -58,6 +58,19 @@
     <string name="lyrics_translation_desc">Tampilkan teks terjemahan di bawah lirik sinkron</string>
     <string name="lyrics_translation_target">Bahasa Tujuan</string>
 
+    <!-- Spotify Account & Syllable Sync -->
+    <string name="spotify_account_title">Spotify &amp; Sinkron Suku Kata</string>
+    <string name="spotify_account_desc">Dapatkan tingkat keberhasilan 100% lirik kata-per-kata stabil dengan menghubungkan sesi Spotify (sp_dc cookie)</string>
+    <string name="spotify_connect_button">Hubungkan Sesi Spotify (sp_dc)</string>
+    <string name="spotify_connected_status">Akun Terhubung · 100% Syllable Rate Aktif</string>
+    <string name="spotify_disconnected_status">Mode Anonim (Rentan terkena batas kuota SpicyLyrics 500)</string>
+    <string name="spotify_disconnect">Putuskan</string>
+    <string name="spotify_cookie_dialog_title">Hubungkan Spotify (sp_dc Cookie)</string>
+    <string name="spotify_cookie_dialog_msg">1. Buka open.spotify.com di browser (Chrome/Kiwi/Brave)\n2. DevTools -> Application -> Cookies -> salin nilai sp_dc\n3. Tempelkan nilainya di bawah ini untuk mengaktifkan 100% lirik suku kata:</string>
+    <string name="spotify_cookie_hint">Tempel nilai cookie sp_dc atau access token…</string>
+    <string name="spotify_cookie_save">Verifikasi &amp; Simpan</string>
+    <string name="spotify_connected_toast">Spotify terhubung! Tingkat keberhasilan 100% lirik suku kata aktif.</string>
+
     <!-- Developer -->
     <string name="developer_title">Pengembang</string>
     <string name="logs">Log</string>

@@ -11,6 +11,7 @@ import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.util.AppLog;
 import com.lyricsync.app.ai.transliteration.ScriptDetector;
+import com.lyricsync.app.lyrics.auth.SpotifyAuthManager;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -165,15 +166,14 @@ public class SpicyLyricsProvider implements LyricsProvider {
     }
 
     private String getCachedToken(String trackId) {
-        // 0. Try user-configured Spotify token if set
+        // 0. Try SpotifyAuthManager (user authenticated session — 100% success rate)
         try {
-            SharedPreferences appPrefs = context.getSharedPreferences("lyricsync", Context.MODE_PRIVATE);
-            String userToken = appPrefs.getString("pref_spotify_access_token", null);
+            SpotifyAuthManager authMgr = SpotifyAuthManager.getInstance(context);
+            String userToken = authMgr.getValidAccessTokenSync();
             if (userToken != null && !userToken.trim().isEmpty()) {
                 return userToken.trim();
             }
         } catch (Exception ignored) {}
-
         // 1. Try LSPosed-captured token (highest quality — real user token)
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);

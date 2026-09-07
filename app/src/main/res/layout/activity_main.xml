@@ -1253,6 +1253,103 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ── Spotify Account & Syllable Sync Card ──────────────── -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_spotify"
+                style="@style/Widget.LyricSync.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/card_padding">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/spotify_account_title"
+                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/spotify_account_desc"
+                        android:textAppearance="@style/TextAppearance.LyricSync.Hint"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginBottom="14dp" />
+
+                    <!-- Disconnected state -->
+                    <LinearLayout
+                        android:id="@+id/layout_spotify_disconnected"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_connect_spotify"
+                            android:layout_width="match_parent"
+                            android:layout_height="50dp"
+                            android:text="@string/spotify_connect_button"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:backgroundTint="#1DB954"
+                            android:textColor="@color/white"
+                            app:cornerRadius="14dp"
+                            app:icon="@drawable/ic_music_note"
+                            app:iconGravity="textStart"
+                            app:iconPadding="8dp"
+                            app:iconTint="@color/white" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center_horizontal"
+                            android:text="@string/spotify_disconnected_status"
+                            android:textColor="@color/text_dim"
+                            android:textSize="11sp"
+                            android:layout_marginTop="6dp" />
+                    </LinearLayout>
+
+                    <!-- Connected state -->
+                    <LinearLayout
+                        android:id="@+id/layout_spotify_connected"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/spotify_connected_status"
+                                android:textColor="#1DB954"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_disconnect_spotify"
+                                style="@style/Widget.MaterialComponents.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/spotify_disconnect"
+                                android:textColor="@color/accent"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ── Google Antigravity AI Card ────────────────────────── -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/card_ai_account"

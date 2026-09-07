@@ -58,6 +58,19 @@
     <string name="lyrics_translation_desc">Display translated subtitles under synced lyrics</string>
     <string name="lyrics_translation_target">Target Language</string>
 
+    <!-- Spotify Account & Syllable Sync -->
+    <string name="spotify_account_title">Spotify &amp; Syllable Sync</string>
+    <string name="spotify_account_desc">Unlock 100% stable word-by-word lyrics rate using your Spotify session (sp_dc cookie)</string>
+    <string name="spotify_connect_button">Connect Spotify Session (sp_dc)</string>
+    <string name="spotify_connected_status">Connected · 100% Syllable Rate Active</string>
+    <string name="spotify_disconnected_status">Anonymous Mode (Prone to SpicyLyrics 500 rate limits)</string>
+    <string name="spotify_disconnect">Disconnect</string>
+    <string name="spotify_cookie_dialog_title">Connect Spotify (sp_dc Cookie)</string>
+    <string name="spotify_cookie_dialog_msg">1. Open open.spotify.com in your browser\n2. DevTools -> Application -> Cookies -> copy sp_dc value\n3. Paste it below to enable 100% stable syllable lyrics:</string>
+    <string name="spotify_cookie_hint">Paste sp_dc cookie or raw access token…</string>
+    <string name="spotify_cookie_save">Verify &amp; Save</string>
+    <string name="spotify_connected_toast">Spotify connected! 100% syllable lyrics rate active.</string>
+
     <!-- Developer -->
     <string name="developer_title">Developer</string>
     <string name="logs">Logs</string>

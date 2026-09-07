@@ -9,6 +9,7 @@ import com.lyricsync.app.lyrics.provider.LRCLIBProvider;
 import com.lyricsync.app.lyrics.provider.LyricsProvider;
 import com.lyricsync.app.lyrics.provider.NeteaseLyricsProvider;
 import com.lyricsync.app.lyrics.provider.SpicyLyricsProvider;
+import com.lyricsync.app.lyrics.provider.SpotifyColorLyricsProvider;
 import com.lyricsync.app.util.AppLog;
 
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ public class LyricsProviderManager {
 
     public LyricsProviderManager(Context context) {
         cacheManager = new LyricsCacheManager(context);
+        providers.add(new SpotifyColorLyricsProvider(context));
         providers.add(new SpicyLyricsProvider(context));
         providers.add(new NeteaseLyricsProvider());
         providers.add(new LRCLIBProvider());

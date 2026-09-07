@@ -55,6 +55,7 @@ import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
+import com.lyricsync.app.lyrics.auth.SpotifyAuthManager;
 import android.text.method.LinkMovementMethod;
 
 import java.util.Arrays;
@@ -231,6 +232,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private LyricsData lyricsData;
     private TrackInfo currentTrack;
 
+    private View layoutSpotifyDisconnected;
+    private View layoutSpotifyConnected;
     private ObjectAnimator[] eqAnimators;
     private ValueAnimator heroTintAnimator;
     private ValueAnimator startTintAnimator;
@@ -264,6 +267,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setupAppearanceChips();
         setupLanguageUi();
         setupTranslationUi();
+        setupSpotifyAccountUi();
         setupAiAccountUi();
         setupAiStudioUi();
         setupDeveloperSection();
@@ -277,6 +281,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         super.onResume();
         updatePermissionStatus();
         updateStartButton();
+        updateSpotifyAccountState();
         updateAiAccountState();
         NowPlaying.addListener(this);
         if (!entrancePlayed) {
@@ -376,6 +381,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 findViewById(R.id.card_dimensions),
                 findViewById(R.id.card_sync),
                 findViewById(R.id.card_translation),
+                findViewById(R.id.card_spotify),
                 findViewById(R.id.card_ai_account),
                 findViewById(R.id.card_dev));
 
@@ -613,6 +619,88 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
         }
     }
+    // ── Spotify Syllable Sync Account ──────────────────────────────────────
+
+    private void setupSpotifyAccountUi() {
+        layoutSpotifyDisconnected = findViewById(R.id.layout_spotify_disconnected);
+        layoutSpotifyConnected = findViewById(R.id.layout_spotify_connected);
+
+        View btnConnect = findViewById(R.id.btn_connect_spotify);
+        if (btnConnect != null) {
+            btnConnect.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showSpotifyCookieDialog();
+            });
+        }
+
+        View btnDisconnect = findViewById(R.id.btn_disconnect_spotify);
+        if (btnDisconnect != null) {
+            btnDisconnect.setOnClickListener(v -> {
+                Haptics.tick(v);
+                SpotifyAuthManager.getInstance(this).logout();
+                Toast.makeText(this, R.string.spotify_disconnected_status, Toast.LENGTH_SHORT).show();
+                updateSpotifyAccountState();
+            });
+        }
+
+        updateSpotifyAccountState();
+    }
+
+    private void updateSpotifyAccountState() {
+        boolean authenticated = SpotifyAuthManager.getInstance(this).isAuthenticated();
+        if (layoutSpotifyDisconnected != null) {
+            layoutSpotifyDisconnected.setVisibility(authenticated ? View.GONE : View.VISIBLE);
+        }
+        if (layoutSpotifyConnected != null) {
+            layoutSpotifyConnected.setVisibility(authenticated ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void showSpotifyCookieDialog() {
+        final EditText input = new EditText(this);
+        input.setHint(R.string.spotify_cookie_hint);
+        input.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+        input.setTextColor(getResources().getColor(R.color.text_primary));
+        input.setHintTextColor(getResources().getColor(R.color.text_dim));
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.spotify_cookie_dialog_title)
+                .setMessage(R.string.spotify_cookie_dialog_msg)
+                .setView(input)
+                .setPositiveButton(R.string.spotify_cookie_save, (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    if (value.isEmpty()) return;
+
+                    Toast.makeText(this, "Memvalidasi sesi Spotify...", Toast.LENGTH_SHORT).show();
+                    if (value.startsWith("BQA") || value.startsWith("BQC") || (value.length() > 100 && !value.contains("="))) {
+                        // Direct access token
+                        SpotifyAuthManager.getInstance(this).loginWithRawToken(value);
+                        Toast.makeText(this, R.string.spotify_connected_toast, Toast.LENGTH_SHORT).show();
+                        updateSpotifyAccountState();
+                    } else {
+                        // sp_dc cookie
+                        SpotifyAuthManager.getInstance(this).loginWithSpDc(value, new SpotifyAuthManager.AuthCallback() {
+                            @Override
+                            public void onSuccess(String accessToken, boolean isAnonymous) {
+                                runOnUiThread(() -> {
+                                    Toast.makeText(MainActivity.this, R.string.spotify_connected_toast, Toast.LENGTH_SHORT).show();
+                                    updateSpotifyAccountState();
+                                });
+                            }
+
+                            @Override
+                            public void onError(String message) {
+                                runOnUiThread(() -> {
+                                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+                                });
+                            }
+                        });
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
 
     // ── AI Account & Subsystems ────────────────────────────────────────────
 

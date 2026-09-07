@@ -44,27 +44,27 @@ public class AppLog {
     }
 
     public static void d(String tag, String msg) {
-        Log.d(tag, msg);
+        try { Log.d(tag, msg); } catch (Throwable ignored) {}
         add("D", tag, msg);
     }
 
     public static void i(String tag, String msg) {
-        Log.i(tag, msg);
+        try { Log.i(tag, msg); } catch (Throwable ignored) {}
         add("I", tag, msg);
     }
 
     public static void w(String tag, String msg) {
-        Log.w(tag, msg);
+        try { Log.w(tag, msg); } catch (Throwable ignored) {}
         add("W", tag, msg);
     }
 
     public static void e(String tag, String msg) {
-        Log.e(tag, msg);
+        try { Log.e(tag, msg); } catch (Throwable ignored) {}
         add("E", tag, msg);
     }
 
     public static void e(String tag, String msg, Throwable t) {
-        Log.e(tag, msg, t);
+        try { Log.e(tag, msg, t); } catch (Throwable ignored) {}
         add("E", tag, msg + " | " + (t != null ? t.getMessage() : "null"));
     }
 
