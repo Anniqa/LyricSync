@@ -29,7 +29,7 @@
             android:orientation="vertical"
             android:paddingStart="@dimen/screen_padding"
             android:paddingEnd="@dimen/screen_padding"
-            android:paddingBottom="36dp">
+            android:paddingBottom="56dp">
 
             <!-- ── Header ────────────────────────────────────────────── -->
             <LinearLayout
@@ -38,7 +38,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:layout_marginTop="28dp"
-                android:layout_marginBottom="20dp">
+                android:layout_marginBottom="24dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -57,7 +57,7 @@
                     android:textColor="@color/accent"
                     android:textSize="14sp"
                     android:letterSpacing="0.01"
-                    android:layout_marginTop="4dp" />
+                    android:layout_marginTop="6dp" />
             </LinearLayout>
 
             <!-- ── Now playing ───────────────────────────────────────── -->
@@ -65,15 +65,14 @@
                 android:id="@+id/card_now_playing"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp">
+                android:layout_height="wrap_content">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:padding="16dp">
+                    android:padding="@dimen/card_padding">
 
                     <com.google.android.material.card.MaterialCardView
                         android:layout_width="60dp"
@@ -184,8 +183,7 @@
                 android:id="@+id/card_ai_studio"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="14dp">
+                android:layout_height="wrap_content">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -306,7 +304,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:layout_marginTop="10dp">
+                        android:layout_marginTop="12dp">
 
                         <!-- Model Selector & Control Row -->
                         <LinearLayout
@@ -544,8 +542,7 @@
                 android:id="@+id/card_permissions"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="14dp">
+                android:layout_height="wrap_content">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -597,7 +594,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:layout_marginTop="10dp">
+                        android:layout_marginTop="14dp">
 
                         <LinearLayout
                             android:id="@+id/btn_notification_access"
@@ -752,7 +749,7 @@
                 android:letterSpacing="0.02"
                 android:backgroundTint="@color/accent"
                 android:textColor="@color/black"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="@dimen/card_gap"
                 app:cornerRadius="20dp"
                 app:icon="@drawable/ic_play"
                 app:iconGravity="textStart"
@@ -1157,8 +1154,7 @@
                 android:id="@+id/card_translation"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="@color/card_bg">
+                android:layout_height="wrap_content">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -1261,9 +1257,7 @@
                 android:id="@+id/card_spotify"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/card_bg">
+                android:layout_height="wrap_content">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -1358,9 +1352,7 @@
                 android:id="@+id/card_ai_account"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/card_bg">
+                android:layout_height="wrap_content">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -1551,8 +1543,7 @@
                 android:id="@+id/card_dev"
                 style="@style/Widget.LyricSync.Card"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:cardBackgroundColor="@color/card_bg">
+                android:layout_height="wrap_content">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -1565,7 +1556,7 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:padding="18dp"
+                        android:padding="@dimen/card_padding"
                         android:background="@drawable/ripple_row"
                         android:clickable="true"
                         android:focusable="true">
@@ -1601,9 +1592,9 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:paddingStart="14dp"
-                        android:paddingEnd="14dp"
-                        android:paddingBottom="14dp"
+                        android:paddingStart="@dimen/card_padding"
+                        android:paddingEnd="@dimen/card_padding"
+                        android:paddingBottom="18dp"
                         android:visibility="gone">
 
                         <LinearLayout

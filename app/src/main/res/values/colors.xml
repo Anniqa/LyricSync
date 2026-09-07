@@ -11,7 +11,7 @@
     <color name="surface">#FF12131A</color>
     <color name="card_bg">#FF181A22</color>
     <color name="card_bg_elevated">#FF1F212B</color>
-    <color name="card_stroke">#14FFFFFF</color>
+    <color name="card_stroke">#0DFFFFFF</color>
     <color name="divider">#1AFFFFFF</color>
 
     <!-- Text -->
