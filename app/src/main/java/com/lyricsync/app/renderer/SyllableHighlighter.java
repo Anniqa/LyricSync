@@ -128,6 +128,29 @@ public class SyllableHighlighter {
 
     public void setAnimConfig(AnimConfig config) {
         this.animConfig = config;
+        for (LineView lv : lineViews) {
+            if (lv.wordViews != null) {
+                for (GradientWordView wv : lv.wordViews) {
+                    wv.setAnimConfig(config);
+                }
+            }
+            if (lv.romajiWordViews != null) {
+                for (GradientWordView rwv : lv.romajiWordViews) {
+                    rwv.setAnimConfig(config);
+                }
+            }
+            if (lv.backgroundWordViews != null) {
+                for (List<GradientWordView> bgList : lv.backgroundWordViews) {
+                    for (GradientWordView bwv : bgList) {
+                        bwv.setAnimConfig(config);
+                    }
+                }
+            }
+        }
+    }
+
+    private float getRomajiFontSize() {
+        return !originalScriptEnabled ? (fontSizeSp * 0.90f) : (fontSizeSp * 0.70f);
     }
 
     private boolean transliterationEnabled = true;
@@ -159,11 +182,11 @@ public class SyllableHighlighter {
     private void updateRomajiLayerStyle(LineView lv) {
         if (lv == null || lv.romajiWordFlowLayout == null || lv.romajiWordViews == null) return;
         boolean soloRomaji = !originalScriptEnabled;
-        int topPadding = soloRomaji ? dpToPx(6) : dpToPx(1);
-        lv.romajiWordFlowLayout.setPadding(0, topPadding, 0, dpToPx(2));
+        int topPadding = soloRomaji ? dpToPx(4) : dpToPx(1);
+        lv.romajiWordFlowLayout.setPadding(0, topPadding, 0, dpToPx(1));
 
-        float romajiFontSize = soloRomaji ? fontSizeSp : (fontSizeSp * 0.82f);
-        Typeface tf = (soloRomaji && lv.lastState == STATE_ACTIVE) ? fontBold : fontMedium;
+        float romajiFontSize = getRomajiFontSize();
+        Typeface tf = soloRomaji ? fontBold : fontMedium;
         int color = lv.lastState == STATE_ACTIVE ? ACTIVE_COLOR : (lv.lastState == STATE_PAST ? PAST_COLOR : INACTIVE_COLOR);
 
         for (GradientWordView rwv : lv.romajiWordViews) {
@@ -252,11 +275,12 @@ public class SyllableHighlighter {
     private TextView createTranslationTextView(LyricsData.LyricsLine line) {
         if (line.isInterlude) return null;
         TextView tv = new TextView(context);
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp * 0.72f);
+        float transFontSize = Math.max(9f, fontSizeSp * 0.62f);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, transFontSize);
         tv.setTypeface(fontMedium);
         tv.setTextColor(INACTIVE_COLOR);
-        tv.setLineSpacing(0, 1.15f);
-        tv.setPadding(0, dpToPx(2), 0, dpToPx(2));
+        tv.setLineSpacing(0, 1.08f);
+        tv.setPadding(0, dpToPx(1), 0, dpToPx(2));
         boolean hasText = line.translation != null && !line.translation.trim().isEmpty();
         if (hasText) {
             tv.setText(line.translation);
@@ -401,7 +425,6 @@ public class SyllableHighlighter {
 
         return container;
     }
-
     private void setupRomajiLayer(LyricsData.LyricsLine line, LineView lv, LinearLayout container) {
         if (line == null || line.words == null || line.words.isEmpty()) return;
         WordFlowLayout romajiFlow = new WordFlowLayout(context);
@@ -409,15 +432,15 @@ public class SyllableHighlighter {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         romajiFlow.setLayoutParams(romajiParams);
-        int topPadding = !originalScriptEnabled ? dpToPx(6) : dpToPx(1);
-        romajiFlow.setPadding(0, topPadding, 0, dpToPx(2));
+        int topPadding = !originalScriptEnabled ? dpToPx(4) : dpToPx(1);
+        romajiFlow.setPadding(0, topPadding, 0, dpToPx(1));
         romajiFlow.setClipChildren(false);
         romajiFlow.setClipToPadding(false);
 
         List<DisplayWord> displayWords = buildDisplayWords(line);
         List<GradientWordView> romajiWordViews = new ArrayList<>();
-        float romajiFontSize = !originalScriptEnabled ? fontSizeSp : (fontSizeSp * 0.82f);
-        Typeface tf = (!originalScriptEnabled && lv.lastState == STATE_ACTIVE) ? fontBold : fontMedium;
+        float romajiFontSize = getRomajiFontSize();
+        Typeface tf = !originalScriptEnabled ? fontBold : fontMedium;
         int initialColor = lv.lastState == STATE_ACTIVE ? ACTIVE_COLOR : (lv.lastState == STATE_PAST ? PAST_COLOR : INACTIVE_COLOR);
         for (int i = 0; i < displayWords.size(); i++) {
             DisplayWord dw = displayWords.get(i);
@@ -442,7 +465,7 @@ public class SyllableHighlighter {
                     WordFlowLayout.LayoutParams.WRAP_CONTENT,
                     WordFlowLayout.LayoutParams.WRAP_CONTENT);
             if (i < displayWords.size() - 1) {
-                rwlp.rightMargin = dpToPx(7);
+                rwlp.rightMargin = !originalScriptEnabled ? dpToPx(6) : dpToPx(4);
             }
             rwlp.isWordBoundary = true;
             rwv.setLayoutParams(rwlp);
@@ -664,28 +687,32 @@ public class SyllableHighlighter {
      * like it jumps back and re-advances.
      */
     private void playWordCascade(LineView lv, long position) {
-        if (lv.wordViews == null || lv.wordViews.isEmpty()) return;
-        int k = 0;
-        for (int i = 0; i < lv.wordViews.size(); i++) {
-            GradientWordView wv = lv.wordViews.get(i);
-            wv.animate().cancel();
-            if (position >= wv.getStartTime() - 300) {
-                // Already being sung (or starting within 300ms): never hide it.
-                wv.setAlpha(1f);
-                wv.setTranslationY(0f);
-            } else {
-                wv.setAlpha(0f);
-                wv.setTranslationY(dpToPx(7));
-                wv.animate()
-                        .alpha(1f)
-                        .translationY(0f)
-                        .setStartDelay(Math.min(26L * k, 200))
-                        .setDuration(230)
-                        .setInterpolator(Anim.DECEL)
-                        .start();
+        int wordCount = lv.wordViews != null ? lv.wordViews.size() : 0;
+        int romajiCount = lv.romajiWordViews != null ? lv.romajiWordViews.size() : 0;
+        int maxWords = Math.max(wordCount, romajiCount);
+        if (maxWords == 0) return;
+
+        for (int i = 0; i < maxWords; i++) {
+            if (lv.wordViews != null && i < wordCount) {
+                GradientWordView wv = lv.wordViews.get(i);
+                wv.animate().cancel();
+                if (position >= wv.getStartTime() - 300) {
+                    wv.setAlpha(1f);
+                    wv.setTranslationY(0f);
+                } else {
+                    wv.setAlpha(0f);
+                    wv.setTranslationY(dpToPx(7));
+                    wv.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .setStartDelay(Math.min(26L * i, 200))
+                            .setDuration(230)
+                            .setInterpolator(Anim.DECEL)
+                            .start();
+                }
             }
 
-            if (lv.romajiWordViews != null && i < lv.romajiWordViews.size()) {
+            if (lv.romajiWordViews != null && i < romajiCount) {
                 GradientWordView rwv = lv.romajiWordViews.get(i);
                 rwv.animate().cancel();
                 if (position >= rwv.getStartTime() - 300) {
@@ -697,13 +724,12 @@ public class SyllableHighlighter {
                     rwv.animate()
                             .alpha(1f)
                             .translationY(0f)
-                            .setStartDelay(Math.min(26L * k, 200))
+                            .setStartDelay(Math.min(26L * i, 200))
                             .setDuration(230)
                             .setInterpolator(Anim.DECEL)
                             .start();
                 }
             }
-            k++;
         }
     }
 
@@ -739,8 +765,8 @@ public class SyllableHighlighter {
                     }
                 }
             }
-            float romajiFontSize = !originalScriptEnabled ? fontSizeSp : (fontSizeSp * 0.82f);
-            Typeface romajiTf = (!originalScriptEnabled && isActive) ? fontBold : fontMedium;
+            float romajiFontSize = getRomajiFontSize();
+            Typeface romajiTf = !originalScriptEnabled ? fontBold : fontMedium;
             if (isActive) {
                 if (lv.rootView != null) {
                     lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);

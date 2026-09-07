@@ -743,7 +743,9 @@ public class FloatingOverlayService extends Service {
         float screenWidthDp = getResources().getConfiguration().screenWidthDp;
         float baseFontSize = Math.max(11f, Math.min(22f, screenWidthDp * 0.038f));
         float fontScale = Math.max(0.5f, Math.min(2.0f, sharedPrefs.getFloat("font_scale", 1.0f)));
-        return Math.max(9f, Math.min(30f, baseFontSize * fontScale));
+        int widthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 45, 100);
+        float widthFactor = Math.max(0.70f, Math.min(1.15f, widthPercent / 88f));
+        return Math.max(9f, Math.min(24f, baseFontSize * fontScale * widthFactor));
     }
 
     /** (Re)load the user's chosen typeface pair through the shared registry. */
@@ -2658,6 +2660,7 @@ public class FloatingOverlayService extends Service {
                         if (springScroller != null) {
                             springScroller.setScrollPositionRatio(calculateScrollPositionRatio());
                         }
+                        applyRuntimeSettings(true);
                         Haptics.snap(v);
                     }
                     return isResizing[0];
