@@ -2333,9 +2333,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, text, false);
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-        bubble.setTextSize(12f);
+        bubble.setTextSize(13f);
+        bubble.setLineSpacing(0f, 1.2f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
-        bubble.setPadding(dpToPx(12), dpToPx(7), dpToPx(12), dpToPx(7));
+        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+        bubble.setMaxWidth(dpToPx(280));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -2344,6 +2346,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         bubble.setLayoutParams(lp);
 
         aiStudioChatContainer.addView(bubble);
+        animateBubbleIn(bubble);
         if (aiStudioChatScroll != null) {
             aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
         }
@@ -2353,23 +2356,35 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (aiStudioChatContainer == null) return null;
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, initialText, false);
-        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
-        bubble.setTextSize(12f);
+        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        bubble.setTextSize(13f);
+        bubble.setLineSpacing(0f, 1.2f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
-        bubble.setPadding(dpToPx(12), dpToPx(7), dpToPx(12), dpToPx(7));
+        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
         bubble.setMovementMethod(io.noties.markwon.ext.tables.TableAwareMovementMethod.create());
+        bubble.setTextIsSelectable(true);
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.START;
-        lp.setMargins(0, dpToPx(4), dpToPx(36), dpToPx(4));
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dpToPx(4), 0, dpToPx(4));
         bubble.setLayoutParams(lp);
 
         aiStudioChatContainer.addView(bubble);
+        animateBubbleIn(bubble);
         if (aiStudioChatScroll != null) {
             aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
         }
         return bubble;
+    }
+
+    private boolean restoringChat = false;
+
+    /** Quick fade+rise for chat bubbles; skipped while bulk-restoring history. */
+    private void animateBubbleIn(View v) {
+        if (v == null || restoringChat) return;
+        v.setAlpha(0f);
+        v.setTranslationY(dpToPx(8));
+        v.animate().alpha(1f).translationY(0f).setDuration(200).setInterpolator(Anim.DECEL).start();
     }
 
     private void handleAiNewChat() {
@@ -2430,6 +2445,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             }
 
             if (session.messages != null) {
+                restoringChat = true;
                 for (AiChatMessage msg : session.messages) {
                     if (msg == null || msg.content == null || msg.content.trim().isEmpty()) continue;
                     boolean isUser = "user".equalsIgnoreCase(msg.role);
@@ -2440,6 +2456,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         CleanMarkdownFormatter.applyMarkdown(bubble, msg.content, false);
                     }
                 }
+                restoringChat = false;
             }
 
             if (session.webSources != null && !session.webSources.isEmpty()) {

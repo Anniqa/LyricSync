@@ -506,7 +506,8 @@
                             <EditText
                                 android:id="@+id/ai_studio_chat_input"
                                 android:layout_width="0dp"
-                                android:layout_height="38dp"
+                                android:layout_height="wrap_content"
+                                android:minHeight="38dp"
                                 android:layout_weight="1"
                                 android:layout_marginStart="6dp"
                                 android:layout_marginEnd="6dp"
@@ -517,10 +518,12 @@
                                 android:background="@null"
                                 android:paddingStart="6dp"
                                 android:paddingEnd="6dp"
-                                android:inputType="text"
+                                android:paddingTop="8dp"
+                                android:paddingBottom="8dp"
+                                android:gravity="center_vertical"
+                                android:inputType="textCapSentences|textMultiLine"
                                 android:imeOptions="actionSend"
-                                android:maxLines="1"
-                                android:singleLine="true" />
+                                android:maxLines="4" />
 
                             <ImageView
                                 android:id="@+id/ai_studio_chat_send"
