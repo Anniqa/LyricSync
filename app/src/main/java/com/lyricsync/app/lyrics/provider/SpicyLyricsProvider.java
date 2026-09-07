@@ -10,6 +10,7 @@ import com.google.gson.JsonParser;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.util.AppLog;
+import com.lyricsync.app.ai.transliteration.ScriptDetector;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -374,6 +375,38 @@ public class SpicyLyricsProvider implements LyricsProvider {
         List<LyricsData.Word> words = new ArrayList<>();
         if (syllables == null) return words;
 
+        // Check if syllables contain non-Latin scripts (Japanese Kanji/Kana, Chinese, Korean)
+        boolean hasNonLatin = false;
+        for (int i = 0; i < syllables.size(); i++) {
+            JsonObject syl = syllables.get(i).getAsJsonObject();
+            String text = safeString(syl, "Text", "text");
+            if (ScriptDetector.isNonLatin(text)) {
+                hasNonLatin = true;
+                break;
+            }
+        }
+
+        if (hasNonLatin) {
+            // In CJK languages without word spaces, keep each syllable/mora distinct with its own
+            // timing from SpicyLyrics. Merging all syllables into a single Word destroys per-syllable
+            // timing and creates an unbreakable run-on line that overflows the overlay.
+            for (int i = 0; i < syllables.size(); i++) {
+                JsonObject syl = syllables.get(i).getAsJsonObject();
+                String text = safeString(syl, "Text", "text");
+                if (text.isEmpty()) continue;
+                long start = getTimeMs(syl, "StartTime");
+                long end = getTimeMs(syl, "EndTime");
+                if (start < 0 || end < 0) continue;
+                boolean partOfWord = syl.has("IsPartOfWord") && !syl.get("IsPartOfWord").isJsonNull()
+                        && syl.get("IsPartOfWord").getAsBoolean();
+
+                LyricsData.Word w = new LyricsData.Word(start, end, text);
+                w.isPartOfWord = partOfWord;
+                words.add(w);
+                lineText.append(text);
+            }
+            return words;
+        }
         StringBuilder cur = new StringBuilder();
         long curStart = 0;
         long curEnd = 0;

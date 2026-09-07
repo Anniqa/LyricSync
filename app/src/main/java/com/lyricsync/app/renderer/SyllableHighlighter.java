@@ -362,25 +362,35 @@ public class SyllableHighlighter {
         lv.wordViews = new ArrayList<>();
         for (int i = 0; i < displayWords.size(); i++) {
             DisplayWord dw = displayWords.get(i);
-            GradientWordView wv = new GradientWordView(context);
-            wv.setAnimConfig(animConfig);
-            wv.setWordIndex(i);
-            wv.setText(dw.text);
-            wv.setTiming(dw.startTime, dw.endTime);
-            wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
-            wv.initLetterEmphasis(dw.text, dw.startTime, dw.endTime);
+            String wText = dw.text != null ? dw.text.trim() : "";
+            if (wText.isEmpty()) continue;
 
-            WordFlowLayout.LayoutParams wlp = new WordFlowLayout.LayoutParams(
-                    WordFlowLayout.LayoutParams.WRAP_CONTENT,
-                    WordFlowLayout.LayoutParams.WRAP_CONTENT);
-            if (i < displayWords.size() - 1) {
+            String[] tokens = wText.split("\\s+");
+            long wordDur = dw.endTime > dw.startTime ? (dw.endTime - dw.startTime) / tokens.length : 0;
+            for (int k = 0; k < tokens.length; k++) {
+                String tok = tokens[k];
+                if (tok.isEmpty()) continue;
+                long wStart = dw.startTime + k * wordDur;
+                long wEnd = (k == tokens.length - 1) ? dw.endTime : wStart + wordDur;
+
+                GradientWordView wv = new GradientWordView(context);
+                wv.setAnimConfig(animConfig);
+                wv.setWordIndex(lv.wordViews.size());
+                wv.setText(tok);
+                wv.setTiming(wStart, wEnd);
+                wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
+                wv.initLetterEmphasis(tok, wStart, wEnd);
+
+                WordFlowLayout.LayoutParams wlp = new WordFlowLayout.LayoutParams(
+                        WordFlowLayout.LayoutParams.WRAP_CONTENT,
+                        WordFlowLayout.LayoutParams.WRAP_CONTENT);
                 wlp.rightMargin = dpToPx(7);
-            }
-            wlp.isWordBoundary = true;
-            wv.setLayoutParams(wlp);
+                wlp.isWordBoundary = true;
+                wv.setLayoutParams(wlp);
 
-            flow.addView(wv);
-            lv.wordViews.add(wv);
+                flow.addView(wv);
+                lv.wordViews.add(wv);
+            }
         }
 
         container.addView(flow);
@@ -446,32 +456,41 @@ public class SyllableHighlighter {
             DisplayWord dw = displayWords.get(i);
             String rText = "";
             if (dw.romanji != null && !dw.romanji.trim().isEmpty()) {
-                rText = dw.romanji;
+                rText = dw.romanji.trim();
             } else if (dw.text != null && !ScriptDetector.isNonLatin(dw.text)) {
-                rText = dw.text;
+                rText = dw.text.trim();
             }
-            GradientWordView rwv = new GradientWordView(context);
-            rwv.setAnimConfig(animConfig);
-            rwv.setWordIndex(i);
-            rwv.setText(rText);
-            rwv.setTiming(dw.startTime, dw.endTime);
-            rwv.setWordStyle(romajiFontSize, initialColor, tf);
-            rwv.initLetterEmphasis(rText, dw.startTime, dw.endTime);
-            if (lv.lastState == STATE_ACTIVE) {
-                rwv.setLineActive(true);
-            }
+            if (rText.isEmpty()) continue;
 
-            WordFlowLayout.LayoutParams rwlp = new WordFlowLayout.LayoutParams(
-                    WordFlowLayout.LayoutParams.WRAP_CONTENT,
-                    WordFlowLayout.LayoutParams.WRAP_CONTENT);
-            if (i < displayWords.size() - 1) {
+            String[] tokens = rText.split("\\s+");
+            long wordDur = dw.endTime > dw.startTime ? (dw.endTime - dw.startTime) / tokens.length : 0;
+            for (int k = 0; k < tokens.length; k++) {
+                String tok = tokens[k];
+                if (tok.isEmpty()) continue;
+                long wStart = dw.startTime + k * wordDur;
+                long wEnd = (k == tokens.length - 1) ? dw.endTime : wStart + wordDur;
+
+                GradientWordView rwv = new GradientWordView(context);
+                rwv.setAnimConfig(animConfig);
+                rwv.setWordIndex(romajiWordViews.size());
+                rwv.setText(tok);
+                rwv.setTiming(wStart, wEnd);
+                rwv.setWordStyle(romajiFontSize, initialColor, tf);
+                rwv.initLetterEmphasis(tok, wStart, wEnd);
+                if (lv.lastState == STATE_ACTIVE) {
+                    rwv.setLineActive(true);
+                }
+
+                WordFlowLayout.LayoutParams rwlp = new WordFlowLayout.LayoutParams(
+                        WordFlowLayout.LayoutParams.WRAP_CONTENT,
+                        WordFlowLayout.LayoutParams.WRAP_CONTENT);
                 rwlp.rightMargin = !originalScriptEnabled ? dpToPx(6) : dpToPx(4);
-            }
-            rwlp.isWordBoundary = true;
-            rwv.setLayoutParams(rwlp);
+                rwlp.isWordBoundary = true;
+                rwv.setLayoutParams(rwlp);
 
-            romajiFlow.addView(rwv);
-            romajiWordViews.add(rwv);
+                romajiFlow.addView(rwv);
+                romajiWordViews.add(rwv);
+            }
         }
 
         if (lv.romajiWordFlowLayout != null && container != null) {

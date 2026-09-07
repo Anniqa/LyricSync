@@ -3051,6 +3051,9 @@ public class FloatingOverlayService extends Service {
 
         for (int i = 0; i < lyrics.lines.size(); i++) {
             LyricsData.LyricsLine line = lyrics.lines.get(i);
+            if (highlighter.hasAnyWordRomanji(line)) {
+                AiSyllableTransliterationService.computeWordBoundaries(line);
+            }
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
