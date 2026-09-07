@@ -85,10 +85,12 @@ public class AntigravityApiClient {
     public interface LyricActionDelegate {
         void translateLyrics(String targetLang, ActionCallback callback);
         void transliterateLyrics(String mode, ActionCallback callback);
+        default void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
+            transliterateLyrics(mode, callback);
+        }
         void setSyncOffset(int offsetMs, ActionCallback callback);
         void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback);
         void toggleDisplay(String feature, boolean enabled, ActionCallback callback);
-
         interface ActionCallback {
             void onSuccess(String message);
             void onError(String error);
@@ -254,20 +256,27 @@ public class AntigravityApiClient {
     }
 
     public static JsonArray buildToolDeclarations() {
+        return buildToolDeclarations(true);
+    }
+
+    public static JsonArray buildToolDeclarations(boolean enableWebSearch) {
         JsonArray declarations = new JsonArray();
-        declarations.add(makeTool("web_search", "Mencari informasi fakta terkini di Google/web terkait lagu, artis, lirik, rilisan, latar belakang cerita, dan wawancara.",
-                new String[]{"query"},
-                "query", "STRING", "Kata kunci pencarian yang spesifik dan efektif di Google.",
-                "num_search_results", "INTEGER", "Jumlah maksimal sumber pencarian yang diinginkan (default: 5)."));
-        declarations.add(makeTool("web_fetch", "Mengambil dan membaca isi konten artikel/halaman web dari URL untuk membaca wawancara, artikel berita, atau ulasan lengkap.",
-                new String[]{"url"},
-                "url", "STRING", "URL halaman web publik (http:// atau https://) yang akan dibaca."));
+        if (enableWebSearch) {
+            declarations.add(makeTool("web_search", "Mencari informasi fakta terkini di Google/web terkait lagu, artis, lirik, rilisan, latar belakang cerita, dan wawancara.",
+                    new String[]{"query"},
+                    "query", "STRING", "Kata kunci pencarian yang spesifik dan efektif di Google.",
+                    "num_search_results", "INTEGER", "Jumlah maksimal sumber pencarian yang diinginkan (default: 5)."));
+            declarations.add(makeTool("web_fetch", "Mengambil dan membaca isi konten artikel/halaman web dari URL untuk membaca wawancara, artikel berita, atau ulasan lengkap.",
+                    new String[]{"url"},
+                    "url", "STRING", "URL halaman web publik (http:// atau https://) yang akan dibaca."));
+        }
         declarations.add(makeTool("translate_lyrics", "Menerjemahkan lirik lagu saat ini ke bahasa target secara langsung dan menampilkannya di overlay pemutar lirik.",
                 new String[]{"target_language"},
                 "target_language", "STRING", "Kode bahasa tujuan ('id', 'en', 'ja', 'ko', 'es', dll)."));
         declarations.add(makeTool("transliterate_lyrics", "Mentransliterasikan lirik beraksara non-Latin ke huruf Latin/Romaji dan langsung menerapkannya pada overlay lirik.",
                 null,
-                "mode", "STRING", "Mode: 'romaji_with_translation', 'romaji_only', atau 'pure_romaji'."));
+                "mode", "STRING", "Mode: 'romaji_with_translation' (dengan arti), 'romaji_only' (romaji saja), atau 'pure_romaji' (hanya romaji).",
+                "show_original_script", "BOOLEAN", "true untuk tetap menampilkan huruf asli di atas romaji, false untuk membuang/menyembunyikan huruf asli (default: true)."));
         declarations.add(makeTool("set_sync_offset", "Menyesuaikan offset sinkronisasi audio dan lirik secara instan dalam milidetik.",
                 new String[]{"offset_ms"},
                 "offset_ms", "INTEGER", "Nilai offset dalam milidetik (positif untuk tunda, negatif untuk percepat)."));
@@ -348,14 +357,12 @@ public class AntigravityApiClient {
         JsonObject request = new JsonObject();
         request.add("contents", contents != null ? contents : new JsonArray());
 
-        // Inject tools if enabled (agent function declarations: web_search, web_fetch)
-        if (enableTools) {
-            JsonArray tools = new JsonArray();
-            JsonObject tool = new JsonObject();
-            tool.add("functionDeclarations", buildToolDeclarations());
-            tools.add(tool);
-            request.add("tools", tools);
-        }
+        // Always inject tools: lyric tools are always available, web search added if enabled
+        JsonArray tools = new JsonArray();
+        JsonObject tool = new JsonObject();
+        tool.add("functionDeclarations", buildToolDeclarations(enableTools));
+        tools.add(tool);
+        request.add("tools", tools);
 
         // Inject reasoning effort config if specified (uncapped maxOutputTokens)
         if (effortLevel != null && !effortLevel.trim().isEmpty() && !"none".equalsIgnoreCase(effortLevel.trim())) {
@@ -820,7 +827,7 @@ public class AntigravityApiClient {
                         }
 
                         // Check if model invoked a tool functionCall
-                        if (enableTools && detectedFunctionCall != null) {
+                        if (detectedFunctionCall != null) {
                             if (toolIteration >= MAX_TOOL_ITERATIONS) {
                                 // Hard loop guard: reached max iterations, complete immediately
                                 activeHandles.remove(handle);
@@ -1020,8 +1027,14 @@ public class AntigravityApiClient {
                 lyricActionDelegate.translateLyrics(targetLang, wrapActionCallback(callback, "Gagal menerjemahkan"));
             } else if ("transliterate_lyrics".equals(toolName)) {
                 String mode = toolArgs.has("mode") && !toolArgs.get("mode").isJsonNull()
-                        ? toolArgs.get("mode").getAsString() : "romaji_with_translation";
-                lyricActionDelegate.transliterateLyrics(mode, wrapActionCallback(callback, "Gagal transliterasi"));
+                        ? toolArgs.get("mode").getAsString() : "romaji";
+                boolean showOriginal = true;
+                if (toolArgs.has("show_original_script") && !toolArgs.get("show_original_script").isJsonNull()) {
+                    showOriginal = toolArgs.get("show_original_script").getAsBoolean();
+                } else if ("pure_romaji".equalsIgnoreCase(mode)) {
+                    showOriginal = false;
+                }
+                lyricActionDelegate.transliterateLyrics(mode, showOriginal, wrapActionCallback(callback, "Gagal mentransliterasikan lirik"));
             } else if ("set_sync_offset".equals(toolName)) {
                 int offsetMs = toolArgs.has("offset_ms") && !toolArgs.get("offset_ms").isJsonNull()
                         ? toolArgs.get("offset_ms").getAsInt() : 0;

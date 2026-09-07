@@ -63,7 +63,10 @@ public class AntigravityApiClientToolLoopTest {
     public void testBuildToolDeclarationsStructure() {
         JsonArray declarations = AntigravityApiClient.buildToolDeclarations();
         assertNotNull("Tool declarations array should not be null", declarations);
-        assertEquals("Must declare exactly 2 tools (web_search, web_fetch)", 2, declarations.size());
+        assertEquals("Must declare exactly 7 tools with web search", 7, declarations.size());
+
+        JsonArray declarationsNoWeb = AntigravityApiClient.buildToolDeclarations(false);
+        assertEquals("Must declare 5 lyric tools without web search", 5, declarationsNoWeb.size());
 
         // 1. web_search
         JsonObject searchTool = declarations.get(0).getAsJsonObject();
@@ -115,7 +118,7 @@ public class AntigravityApiClientToolLoopTest {
         assertFalse("tool object must NOT have built-in googleSearch", tool0.has("googleSearch"));
 
         JsonArray decls = tool0.getAsJsonArray("functionDeclarations");
-        assertEquals(2, decls.size());
+        assertEquals(7, decls.size());
         assertEquals("web_search", decls.get(0).getAsJsonObject().get("name").getAsString());
         assertEquals("web_fetch", decls.get(1).getAsJsonObject().get("name").getAsString());
     }
@@ -537,6 +540,108 @@ public class AntigravityApiClientToolLoopTest {
                     .body(ResponseBody.create(MediaType.parse("text/event-stream; charset=utf-8"), sse))
                     .build();
         }
+    }
+
+    // -------------------------------------------------------------
+    // Test: Simulation of "tampilkan romanji dan translate nya Jepang buang"
+    // -------------------------------------------------------------
+    @Test
+    public void testSimulationTransliterateLyricsAndTranslation() throws InterruptedException {
+        final AtomicReference<String> executedMode = new AtomicReference<>();
+        final AtomicBoolean executedShowOriginal = new AtomicBoolean(true);
+        final AtomicBoolean delegateInvoked = new AtomicBoolean(false);
+
+        apiClient.setLyricActionDelegate(new AntigravityApiClient.LyricActionDelegate() {
+            @Override
+            public void translateLyrics(String targetLang, ActionCallback callback) {
+                callback.onSuccess("Translated to " + targetLang);
+            }
+
+            @Override
+            public void transliterateLyrics(String mode, ActionCallback callback) {
+                transliterateLyrics(mode, true, callback);
+            }
+
+            @Override
+            public void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
+                executedMode.set(mode);
+                executedShowOriginal.set(showOriginalScript);
+                delegateInvoked.set(true);
+                callback.onSuccess("Transliterasi (" + mode + ", aksara=" + showOriginalScript + ") berhasil diterapkan.");
+            }
+
+            @Override
+            public void setSyncOffset(int offsetMs, ActionCallback callback) {
+                callback.onSuccess("Sync offset: " + offsetMs);
+            }
+
+            @Override
+            public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) {
+                callback.onSuccess("Modified line " + lineIndex);
+            }
+
+            @Override
+            public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {
+                callback.onSuccess("Toggled " + feature);
+            }
+        });
+
+        // Turn 1: Model calls transliterate_lyrics with show_original_script=false
+        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"functionCall\": {\"name\": \"transliterate_lyrics\",\"id\": \"call_translit_1\",\"args\": {\"mode\": \"romaji_with_translation\",\"show_original_script\": false}}}]}}]}}\n\n";
+
+        // Turn 2: Model returns explanation
+        String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Aksara Jepang telah disembunyikan dan lirik ditampilkan dalam Romaji beserta terjemahannya di layar overlay.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 45,\"candidatesTokenCount\": 25}}}\n\n";
+
+        mockInterceptor.enqueueSseResponse(turn1Response);
+        mockInterceptor.enqueueSseResponse(turn2Response);
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final List<String> toolEvents = new ArrayList<>();
+        final AtomicReference<String> completedText = new AtomicReference<>();
+        final AtomicReference<Exception> errorRef = new AtomicReference<>();
+
+        // Test with webSearch=false, ensuring lyric tools still work!
+        apiClient.generateContentStream("gemini-3.8-flash-high", new ArrayList<>(),
+                "tampilkan romanji dan translate nya Jepang buang", false, new AntigravityApiClient.StreamListener() {
+                    @Override
+                    public void onToolExecuting(String toolName, String queryOrUrl) {
+                        toolEvents.add("executing:" + toolName);
+                    }
+
+                    @Override
+                    public void onToolCompleted(String toolName, int resultsCount) {
+                        toolEvents.add("completed:" + toolName);
+                    }
+
+                    @Override
+                    public void onComplete(String fullResponse, List<String> webSources) {
+                        completedText.set(fullResponse);
+                        latch.countDown();
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        errorRef.set(e);
+                        latch.countDown();
+                    }
+                });
+
+        assertTrue("Simulation should complete within 5 seconds", latch.await(5, TimeUnit.SECONDS));
+        assertNull("Should not encounter error: " + errorRef.get(), errorRef.get());
+
+        // Verify tool execution
+        assertTrue("LyricActionDelegate must be invoked", delegateInvoked.get());
+        assertEquals("romaji_with_translation", executedMode.get());
+        assertFalse("showOriginalScript must be false for 'Jepang buang'", executedShowOriginal.get());
+
+        // Verify event lifecycle
+        assertEquals(2, toolEvents.size());
+        assertEquals("executing:transliterate_lyrics", toolEvents.get(0));
+        assertEquals("completed:transliterate_lyrics", toolEvents.get(1));
+
+        // Verify completion text
+        assertNotNull(completedText.get());
+        assertTrue(completedText.get().contains("Romaji"));
     }
 
     static class FakeToolExecutor extends AntigravityToolExecutor {

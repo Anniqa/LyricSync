@@ -1164,7 +1164,12 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
                 @Override
                 public void transliterateLyrics(String mode, ActionCallback callback) {
-                    runOnUiThread(() -> transliterateLyricsStudio(mode, callback));
+                    runOnUiThread(() -> transliterateLyricsStudio(mode, true, callback));
+                }
+
+                @Override
+                public void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
+                    runOnUiThread(() -> transliterateLyricsStudio(mode, showOriginalScript, callback));
                 }
 
                 @Override
@@ -2063,15 +2068,18 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (callback != null) callback.onSuccess("Lirik berhasil diterjemahkan ke " + lang + ".");
     }
 
-    public void transliterateLyricsStudio(String mode, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void transliterateLyricsStudio(String mode, boolean showOriginalScript, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (lyricsData == null || lyricsData.isEmpty()) {
             if (callback != null) callback.onError("Tidak ada lirik aktif");
             return;
         }
         boolean includeTranslation = !"romaji_only".equalsIgnoreCase(mode);
-        boolean showOriginalScript = !"pure_romaji".equalsIgnoreCase(mode);
         performTransliteration(includeTranslation, showOriginalScript);
-        if (callback != null) callback.onSuccess("Transliterasi (" + mode + ") berhasil diproses.");
+        if (callback != null) callback.onSuccess("Transliterasi (" + mode + ", aksara=" + showOriginalScript + ") berhasil diproses.");
+    }
+
+    public void transliterateLyricsStudio(String mode, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+        transliterateLyricsStudio(mode, true, callback);
     }
 
     public void setSyncOffsetStudio(int offsetMs, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
@@ -2149,18 +2157,23 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
         if (userQuery != null && lyricsData != null && lyricsData.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(lyricsData)) {
             String lower = userQuery.toLowerCase(java.util.Locale.ROOT);
-            if (lower.contains("tanpa huruf") || lower.contains("tanpa aksara") || lower.contains("hide original") || lower.contains("tanpa jepang") || lower.contains("romaji saja") || lower.contains("romaji only") || lower.contains("hanya romaji")) {
-                performTransliteration(false, false);
-            } else if (lower.contains("saja") || lower.contains("tanpa terjemahan") || lower.contains("tanpa arti") || lower.contains("only")) {
-                if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
-                    performTransliteration(false, true);
-                }
-            } else if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
-                if (lower.contains("terjemahan") || lower.contains("arti") || lower.contains("dengan") || lower.contains("dan") || lower.contains("with")) {
-                    performTransliteration(true, true);
-                }
+            boolean isRomajiReq = lower.contains("romaji") || lower.contains("romanji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja");
+            boolean isHideScript = lower.contains("tanpa huruf") || lower.contains("tanpa aksara") || lower.contains("hide original")
+                    || lower.contains("tanpa jepang") || lower.contains("jepang buang") || lower.contains("buang jepang")
+                    || lower.contains("romaji saja") || lower.contains("romanji saja") || lower.contains("romaji only") || lower.contains("hanya romaji");
+            boolean isTranslateReq = lower.contains("terjemahan") || lower.contains("translate") || lower.contains("arti") || lower.contains("dengan") || lower.contains("dan") || lower.contains("with");
+            boolean isOnly = lower.contains("saja") || lower.contains("tanpa terjemahan") || lower.contains("tanpa arti") || lower.contains("only");
+
+            if (isRomajiReq || isHideScript) {
+                boolean includeTranslation = !isOnly && isTranslateReq;
+                boolean showOriginalScript = !isHideScript;
+                performTransliteration(includeTranslation, showOriginalScript);
+                showStudioInlineToolStatus("transliterate_lyrics", "romaji");
+                completeStudioInlineToolStatus("transliterate_lyrics", 1);
             } else if (lower.contains("tampilkan huruf asli") || lower.contains("tampilkan aksara") || lower.contains("show original")) {
                 prefs.edit().putBoolean("pref_original_script_enabled", true).apply();
+                showStudioInlineToolStatus("toggle_display", "original_script (on)");
+                completeStudioInlineToolStatus("toggle_display", 1);
             }
         }
 
@@ -2173,29 +2186,35 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onToolExecuting(String toolName, String queryOrUrl) {
                         runOnUiThread(() -> {
-                            if (isFinishing() || isDestroyed() || aiStudioToolStatusContainer == null) return;
-                            cancelPendingToolStatusHide();
-                            CleanMarkdownFormatter.ToolDisplayInfo info =
-                                    CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, MainActivity.this);
-                            if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(info.iconRes);
-                            if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText(info.runningText);
-                            aiStudioToolStatusContainer.setAlpha(0f);
-                            aiStudioToolStatusContainer.setVisibility(View.VISIBLE);
-                            aiStudioToolStatusContainer.animate().alpha(1f).setDuration(220).start();
+                            if (isFinishing() || isDestroyed()) return;
+                            showStudioInlineToolStatus(toolName, queryOrUrl);
+                            if (aiStudioToolStatusContainer != null) {
+                                cancelPendingToolStatusHide();
+                                CleanMarkdownFormatter.ToolDisplayInfo info =
+                                        CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, MainActivity.this);
+                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(info.iconRes);
+                                if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText(info.runningText);
+                                aiStudioToolStatusContainer.setAlpha(0f);
+                                aiStudioToolStatusContainer.setVisibility(View.VISIBLE);
+                                aiStudioToolStatusContainer.animate().alpha(1f).setDuration(220).start();
+                            }
                         });
                     }
 
                     @Override
                     public void onToolCompleted(String toolName, int resultsCount) {
                         runOnUiThread(() -> {
-                            if (isFinishing() || isDestroyed() || aiStudioToolStatusContainer == null) return;
-                            if (aiStudioToolStatusIcon != null) {
-                                aiStudioToolStatusIcon.setImageResource(R.drawable.ic_check);
+                            if (isFinishing() || isDestroyed()) return;
+                            completeStudioInlineToolStatus(toolName, resultsCount);
+                            if (aiStudioToolStatusContainer != null) {
+                                if (aiStudioToolStatusIcon != null) {
+                                    aiStudioToolStatusIcon.setImageResource(R.drawable.ic_check);
+                                }
+                                CleanMarkdownFormatter.ToolDisplayInfo info =
+                                        CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, MainActivity.this);
+                                if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText(info.doneText);
+                                scheduleToolStatusHide();
                             }
-                            CleanMarkdownFormatter.ToolDisplayInfo info =
-                                    CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, MainActivity.this);
-                            if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText(info.doneText);
-                            scheduleToolStatusHide();
                         });
                     }
 
@@ -2218,9 +2237,12 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         runOnUiThread(() -> {
                             activeChatCall = null;
                             if (isFinishing() || isDestroyed()) return;
-                            hideToolStatusNow();
+                            scheduleToolStatusHide();
                             String finalContent = (fullText != null && !fullText.trim().isEmpty())
                                     ? fullText : responseAcc.toString();
+                            if (finalContent == null || finalContent.trim().isEmpty()) {
+                                finalContent = "Perubahan lirik telah berhasil diterapkan ke layar overlay.";
+                            }
                             if (activeStudioAnimator != null) {
                                 activeStudioAnimator.complete(finalContent);
                                 activeStudioAnimator = null;
@@ -2325,6 +2347,45 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
             aiStudioChatContainer.addView(chip);
             added++;
+        }
+    }
+
+    private View activeStudioToolCard = null;
+
+    private void showStudioInlineToolStatus(String toolName, String queryOrUrl) {
+        if (aiStudioChatContainer == null) return;
+        CleanMarkdownFormatter.ToolDisplayInfo info =
+                CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
+
+        TextView card = new TextView(this);
+        card.setText("⚡ " + info.runningText);
+        card.setTextSize(11f);
+        card.setTextColor(ContextCompat.getColor(this, R.color.accent));
+        card.setBackgroundResource(R.drawable.bg_tool_status_pill);
+        card.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.START;
+        lp.setMargins(0, dpToPx(3), dpToPx(32), dpToPx(3));
+        card.setLayoutParams(lp);
+
+        int count = aiStudioChatContainer.getChildCount();
+        int insertPos = Math.max(0, count - 1);
+        aiStudioChatContainer.addView(card, insertPos);
+        activeStudioToolCard = card;
+
+        if (aiStudioChatScroll != null) {
+            aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private void completeStudioInlineToolStatus(String toolName, int resultsCount) {
+        if (activeStudioToolCard instanceof TextView) {
+            CleanMarkdownFormatter.ToolDisplayInfo info =
+                    CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
+            ((TextView) activeStudioToolCard).setText("✓ " + info.doneText);
+            ((TextView) activeStudioToolCard).setTextColor(0xFF81C784);
+            activeStudioToolCard = null;
         }
     }
 

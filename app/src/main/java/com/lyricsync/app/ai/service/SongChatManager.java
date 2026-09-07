@@ -307,13 +307,13 @@ public class SongChatManager {
             sb.append("\n[PANDUAN ALAT LIRIK]\n");
             sb.append("Anda memiliki alat fungsi (tools) untuk mengontrol dan memodifikasi tampilan lirik secara langsung di layar overlay pengguna:\n");
             sb.append("- 'translate_lyrics': Gunakan jika pengguna meminta menerjemahkan lirik lagu ke bahasa lain (misal: Indonesia, Inggris, Jepang, Spanyol).\n");
-            sb.append("- 'transliterate_lyrics': Gunakan jika pengguna meminta transliterasi (Romaji/Pinyin/Romaja) atau menyembunyikan/menampilkan huruf asli.\n");
+            sb.append("- 'transliterate_lyrics': Gunakan jika pengguna meminta transliterasi (Romaji/Pinyin/Romaja). Parameter 'mode': 'romaji_with_translation' (dengan arti), 'romaji_only' (hanya romaji), atau 'pure_romaji' (hanya romaji). Parameter 'show_original_script': false jika pengguna meminta membuang/menyembunyikan huruf asli (misal: 'Jepang buang').\n");
             sb.append("- 'set_sync_offset': Gunakan jika pengguna mengeluh lirik terlalu cepat/lambat atau meminta memajukan/menunda lirik.\n");
             sb.append("- 'modify_lyric_line': Gunakan jika pengguna meminta mengoreksi teks, arti, atau bacaan baris lirik tertentu.\n");
             sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
             sb.append("Jika permintaan pengguna berkaitan dengan tindakan di atas, SEGERA panggil alat tersebut!\n");
+            sb.append("Setelah memanggil alat, selalu berikan konfirmasi ringkas dan ramah mengenai perubahan yang telah berhasil Anda terapkan di layar overlay.\n");
             sb.append("Jawab pertanyaan pengguna mengenai makna lagu, kisah di balik lagu, tema emosi, dan lirik secara ramah, mendalam, dan terstruktur dalam Bahasa Indonesia.");
-        } else {
             sb.append("\n[LYRIC TOOLS DIRECTIVE]\n");
             sb.append("You have native tools to control and modify the overlay lyrics in real-time:\n");
             sb.append("- 'translate_lyrics': Call when user asks to translate lyrics.\n");

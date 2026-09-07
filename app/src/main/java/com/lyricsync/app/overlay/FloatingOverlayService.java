@@ -339,7 +339,12 @@ public class FloatingOverlayService extends Service {
 
             @Override
             public void transliterateLyrics(String mode, ActionCallback callback) {
-                handler.post(() -> transliterateLyricsLive(mode, callback));
+                handler.post(() -> transliterateLyricsLive(mode, true, callback));
+            }
+
+            @Override
+            public void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
+                handler.post(() -> transliterateLyricsLive(mode, showOriginalScript, callback));
             }
 
             @Override
@@ -1663,7 +1668,14 @@ public class FloatingOverlayService extends Service {
                 highlighter.setTransliterationEnabled(true);
                 highlighter.setOriginalScriptEnabled(showOriginalScript);
                 if (includeTranslation) {
+                    translationEnabled = true;
+                    sharedPrefs.edit()
+                            .putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
+                            .apply();
                     highlighter.setTranslationEnabled(true);
+                    if (overlayTranslateSwitch != null) {
+                        overlayTranslateSwitch.setChecked(true);
+                    }
                 }
             }
             sharedPrefs.edit()
@@ -1849,17 +1861,20 @@ public class FloatingOverlayService extends Service {
         }
     }
 
-    public void transliterateLyricsLive(String mode, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void transliterateLyricsLive(String mode, boolean showOriginalScript, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (currentLyrics == null || currentLyrics.isEmpty()) {
             if (callback != null) callback.onError("Tidak ada lirik aktif");
             return;
         }
         boolean includeTranslation = !"romaji_only".equalsIgnoreCase(mode);
-        boolean showOriginalScript = !"pure_romaji".equalsIgnoreCase(mode);
         performTransliteration(includeTranslation, showOriginalScript);
         if (callback != null) {
-            callback.onSuccess("Transliterasi (" + mode + ") berhasil diproses dan diterapkan ke overlay.");
+            callback.onSuccess("Transliterasi (" + mode + ", aksara=" + showOriginalScript + ") berhasil diproses dan diterapkan ke overlay.");
         }
+    }
+
+    public void transliterateLyricsLive(String mode, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+        transliterateLyricsLive(mode, true, callback);
     }
 
     public void setSyncOffsetLive(int offsetMs, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
@@ -1967,21 +1982,26 @@ public class FloatingOverlayService extends Service {
 
         if (userQuery != null && currentLyrics != null && currentLyrics.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(currentLyrics)) {
             String lower = userQuery.toLowerCase(java.util.Locale.ROOT);
-            if (lower.contains("tanpa huruf") || lower.contains("tanpa aksara") || lower.contains("hide original") || lower.contains("tanpa jepang") || lower.contains("romaji saja") || lower.contains("romaji only") || lower.contains("hanya romaji")) {
-                performTransliteration(false, false);
-            } else if (lower.contains("saja") || lower.contains("tanpa terjemahan") || lower.contains("tanpa arti") || lower.contains("only")) {
-                if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
-                    performTransliteration(false, true);
-                }
-            } else if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
-                if (lower.contains("terjemahan") || lower.contains("arti") || lower.contains("dengan") || lower.contains("dan") || lower.contains("with")) {
-                    performTransliteration(true, true);
-                }
+            boolean isRomajiReq = lower.contains("romaji") || lower.contains("romanji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja");
+            boolean isHideScript = lower.contains("tanpa huruf") || lower.contains("tanpa aksara") || lower.contains("hide original")
+                    || lower.contains("tanpa jepang") || lower.contains("jepang buang") || lower.contains("buang jepang")
+                    || lower.contains("romaji saja") || lower.contains("romanji saja") || lower.contains("romaji only") || lower.contains("hanya romaji");
+            boolean isTranslateReq = lower.contains("terjemahan") || lower.contains("translate") || lower.contains("arti") || lower.contains("dengan") || lower.contains("dan") || lower.contains("with");
+            boolean isOnly = lower.contains("saja") || lower.contains("tanpa terjemahan") || lower.contains("tanpa arti") || lower.contains("only");
+
+            if (isRomajiReq || isHideScript) {
+                boolean includeTranslation = !isOnly && isTranslateReq;
+                boolean showOriginalScript = !isHideScript;
+                performTransliteration(includeTranslation, showOriginalScript);
+                showInlineToolStatus("transliterate_lyrics", "romaji");
+                completeInlineToolStatus("transliterate_lyrics", 1);
             } else if (lower.contains("tampilkan huruf asli") || lower.contains("tampilkan aksara") || lower.contains("show original")) {
                 if (highlighter != null) {
                     highlighter.setOriginalScriptEnabled(true);
                 }
                 sharedPrefs.edit().putBoolean("pref_original_script_enabled", true).apply();
+                showInlineToolStatus("toggle_display", "original_script (on)");
+                completeInlineToolStatus("toggle_display", 1);
             }
         }
 
@@ -1994,29 +2014,35 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onToolExecuting(String toolName, String queryOrUrl) {
                         handler.post(() -> {
-                            if (isDestroyed || aiToolStatusContainer == null) return;
-                            cancelPendingToolStatusHide();
-                            com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
-                                    com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, FloatingOverlayService.this);
-                            if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(info.iconRes);
-                            if (aiToolStatusText != null) aiToolStatusText.setText(info.runningText);
-                            aiToolStatusContainer.setAlpha(0f);
-                            aiToolStatusContainer.setVisibility(View.VISIBLE);
-                            aiToolStatusContainer.animate().alpha(1f).setDuration(220).start();
+                            if (isDestroyed) return;
+                            showInlineToolStatus(toolName, queryOrUrl);
+                            if (aiToolStatusContainer != null) {
+                                cancelPendingToolStatusHide();
+                                com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
+                                        com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, FloatingOverlayService.this);
+                                if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(info.iconRes);
+                                if (aiToolStatusText != null) aiToolStatusText.setText(info.runningText);
+                                aiToolStatusContainer.setAlpha(0f);
+                                aiToolStatusContainer.setVisibility(View.VISIBLE);
+                                aiToolStatusContainer.animate().alpha(1f).setDuration(220).start();
+                            }
                         });
                     }
 
                     @Override
                     public void onToolCompleted(String toolName, int resultsCount) {
                         handler.post(() -> {
-                            if (isDestroyed || aiToolStatusContainer == null) return;
-                            if (aiToolStatusIcon != null) {
-                                aiToolStatusIcon.setImageResource(R.drawable.ic_check);
+                            if (isDestroyed) return;
+                            completeInlineToolStatus(toolName, resultsCount);
+                            if (aiToolStatusContainer != null) {
+                                if (aiToolStatusIcon != null) {
+                                    aiToolStatusIcon.setImageResource(R.drawable.ic_check);
+                                }
+                                com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
+                                        com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, FloatingOverlayService.this);
+                                if (aiToolStatusText != null) aiToolStatusText.setText(info.doneText);
+                                scheduleToolStatusHide();
                             }
-                            com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
-                                    com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, FloatingOverlayService.this);
-                            if (aiToolStatusText != null) aiToolStatusText.setText(info.doneText);
-                            scheduleToolStatusHide();
                         });
                     }
 
@@ -2037,9 +2063,12 @@ public class FloatingOverlayService extends Service {
                     public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
                         handler.post(() -> {
                             activeChatCall = null;
-                            hideToolStatusNow();
+                            scheduleToolStatusHide();
                             String finalContent = (fullText != null && !fullText.trim().isEmpty())
                                     ? fullText : responseAcc.toString();
+                            if (finalContent == null || finalContent.trim().isEmpty()) {
+                                finalContent = "Perubahan lirik telah berhasil diterapkan ke layar overlay.";
+                            }
                             if (activeAiBubbleAnimator != null) {
                                 activeAiBubbleAnimator.complete(finalContent);
                                 activeAiBubbleAnimator = null;
@@ -2131,6 +2160,45 @@ public class FloatingOverlayService extends Service {
             });
             aiChatMessages.addView(chip);
             added++;
+        }
+    }
+
+    private TextView activeOverlayToolCard = null;
+
+    private void showInlineToolStatus(String toolName, String queryOrUrl) {
+        if (aiChatMessages == null) return;
+        com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
+                com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
+
+        TextView card = new TextView(this);
+        card.setText("⚡ " + info.runningText);
+        card.setTextSize(11f);
+        card.setTextColor(getResources().getColor(R.color.accent));
+        card.setBackgroundResource(R.drawable.bg_tool_status_pill);
+        card.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.START;
+        lp.setMargins(0, dpToPx(3), dpToPx(32), dpToPx(3));
+        card.setLayoutParams(lp);
+
+        int count = aiChatMessages.getChildCount();
+        int insertPos = Math.max(0, count - 1);
+        aiChatMessages.addView(card, insertPos);
+        activeOverlayToolCard = card;
+
+        if (aiChatScroll != null) {
+            aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private void completeInlineToolStatus(String toolName, int resultsCount) {
+        if (activeOverlayToolCard != null) {
+            com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
+                    com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
+            activeOverlayToolCard.setText("✓ " + info.doneText);
+            activeOverlayToolCard.setTextColor(0xFF81C784);
+            activeOverlayToolCard = null;
         }
     }
 
