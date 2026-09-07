@@ -47,10 +47,10 @@ public class SpicyLyricsProvider implements LyricsProvider {
     private static final String PREF_TOKEN = "access_token";
     private static final String PREF_TOKEN_TIME = "token_captured_at";
     private static final long TOKEN_MAX_AGE_MS = 50 * 60 * 1000L;
-    private static final long EMBED_TOKEN_MAX_AGE_MS = 55 * 60 * 1000L;
-    private static final long MIN_REQUEST_INTERVAL_MS = 2000;
+    private static final long EMBED_TOKEN_MAX_AGE_MS = 8 * 60 * 1000L;
+    private static final long MIN_REQUEST_INTERVAL_MS = 1500;
     private static final int MAX_RETRIES = 2;
-    private static final long[] RETRY_DELAYS_MS = {1500, 3000};
+    private static final long[] RETRY_DELAYS_MS = {1200, 2500};
 
     private final Context context;
     private final OkHttpClient client = new OkHttpClient.Builder()
@@ -60,6 +60,11 @@ public class SpicyLyricsProvider implements LyricsProvider {
     private volatile long lastRequestTime = 0;
     private volatile String cachedEmbedToken = null;
     private volatile long embedTokenFetchedAt = 0;
+
+    public void invalidateEmbedToken() {
+        cachedEmbedToken = null;
+        embedTokenFetchedAt = 0;
+    }
 
     public SpicyLyricsProvider(Context context) {
         this.context = context;
@@ -79,30 +84,9 @@ public class SpicyLyricsProvider implements LyricsProvider {
         if (trackId == null) {
             throw new IOException("No Spotify track ID available");
         }
-        String token = getCachedToken(trackId);
 
         String jsonBody = "{\"queries\":[{\"operation\":\"lyrics\",\"variables\":{\"id\":\""
                 + trackId + "\",\"auth\":\"SpicyLyrics-WebAuth\"}}],\"client\":{\"version\":\"" + SPICY_VERSION + "\"}}";
-
-        Request.Builder builder = new Request.Builder()
-                .url(API_URL)
-                .post(RequestBody.create(jsonBody, JSON))
-                .header("Accept", "*/*")
-                .header("Accept-Language", "en-US,en;q=0.9")
-                .header("Content-Type", "application/json")
-                .header("Origin", SPICY_ORIGIN)
-                .header("Referer", SPICY_ORIGIN + "/")
-                .header("Sec-Fetch-Dest", "empty")
-                .header("Sec-Fetch-Mode", "cors")
-                .header("Sec-Fetch-Site", "cross-site")
-                .header("SpicyLyrics-Version", SPICY_VERSION)
-                .header("X-mode", "2")
-                .header("User-Agent", SPICY_USER_AGENT);
-
-        if (token != null) {
-            builder.header("SpicyLyrics-WebAuth", "Bearer " + token);
-        }
-        Request request = builder.build();
 
         // Rate limiting: enforce minimum interval between requests
         long now = System.currentTimeMillis();
@@ -111,11 +95,37 @@ public class SpicyLyricsProvider implements LyricsProvider {
             Thread.sleep(MIN_REQUEST_INTERVAL_MS - elapsed);
         }
 
-        // Retry with backoff on 429
+        // Retry with backoff on 429, server errors, or token failure
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             lastRequestTime = System.currentTimeMillis();
+            if (attempt > 0) {
+                invalidateEmbedToken();
+            }
+            String token = getCachedToken(trackId);
+
+            Request.Builder builder = new Request.Builder()
+                    .url(API_URL)
+                    .post(RequestBody.create(jsonBody, JSON))
+                    .header("Accept", "*/*")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Content-Type", "application/json")
+                    .header("Origin", SPICY_ORIGIN)
+                    .header("Referer", SPICY_ORIGIN + "/")
+                    .header("Sec-Fetch-Dest", "empty")
+                    .header("Sec-Fetch-Mode", "cors")
+                    .header("Sec-Fetch-Site", "cross-site")
+                    .header("SpicyLyrics-Version", SPICY_VERSION)
+                    .header("X-mode", "2")
+                    .header("User-Agent", SPICY_USER_AGENT);
+
+            if (token != null) {
+                builder.header("SpicyLyrics-WebAuth", "Bearer " + token);
+            }
+            Request request = builder.build();
+
             try (Response response = client.newCall(request).execute()) {
                 if (response.code() == 429) {
+                    invalidateEmbedToken();
                     if (attempt < MAX_RETRIES) {
                         long delay = RETRY_DELAYS_MS[attempt];
                         AppLog.w(TAG, "Rate limited (429), retrying in " + delay + "ms (attempt " + (attempt + 1) + ")");
@@ -125,18 +135,45 @@ public class SpicyLyricsProvider implements LyricsProvider {
                     throw new IOException("HTTP 429 Too Many Requests (after " + MAX_RETRIES + " retries)");
                 }
                 if (!response.isSuccessful()) {
+                    invalidateEmbedToken();
+                    if (attempt < MAX_RETRIES && response.code() >= 500) {
+                        long delay = RETRY_DELAYS_MS[attempt];
+                        AppLog.w(TAG, "Server error (" + response.code() + "), retrying in " + delay + "ms");
+                        Thread.sleep(delay);
+                        continue;
+                    }
                     throw new IOException("HTTP " + response.code());
                 }
 
                 if (response.body() == null) throw new IOException("Empty response body");
                 String body = response.body().string();
-                return parseResponse(body);
+                try {
+                    return parseResponse(body);
+                } catch (IOException e) {
+                    invalidateEmbedToken();
+                    if (attempt < MAX_RETRIES) {
+                        long delay = RETRY_DELAYS_MS[attempt];
+                        AppLog.w(TAG, "API error: " + e.getMessage() + ", retrying with fresh token in " + delay + "ms");
+                        Thread.sleep(delay);
+                        continue;
+                    }
+                    throw e;
+                }
             }
         }
         throw new IOException("SpicyLyrics request failed");
     }
 
     private String getCachedToken(String trackId) {
+        // 0. Try user-configured Spotify token if set
+        try {
+            SharedPreferences appPrefs = context.getSharedPreferences("lyricsync", Context.MODE_PRIVATE);
+            String userToken = appPrefs.getString("pref_spotify_access_token", null);
+            if (userToken != null && !userToken.trim().isEmpty()) {
+                return userToken.trim();
+            }
+        } catch (Exception ignored) {}
+
         // 1. Try LSPosed-captured token (highest quality — real user token)
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -157,18 +194,25 @@ public class SpicyLyricsProvider implements LyricsProvider {
     }
 
     private String fetchEmbedToken(String trackId) {
+        String target = (trackId != null && !trackId.isEmpty()) ? trackId : "4fouWK6XVHhzl78KzQ1UjL";
+        String token = tryFetchEmbedPage(target);
+        if (token != null) return token;
+        if (!target.equals("4fouWK6XVHhzl78KzQ1UjL")) {
+            return tryFetchEmbedPage("4fouWK6XVHhzl78KzQ1UjL");
+        }
+        return null;
+    }
+
+    private String tryFetchEmbedPage(String trackId) {
         try {
-            String targetId = (trackId != null && !trackId.isEmpty()) ? trackId : "4fouWK6XVHhzl78KzQ1UjL";
             Request request = new Request.Builder()
-                    .url(EMBED_URL + targetId)
+                    .url(EMBED_URL + trackId)
                     .get()
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                     .build();
             try (Response response = client.newCall(request).execute()) {
-                if (!response.isSuccessful()) return null;
-                if (response.body() == null) throw new IOException("Empty response body");
+                if (!response.isSuccessful() || response.body() == null) return null;
                 String html = response.body().string();
-                // Extract accessToken from JSON in page: "accessToken":"BQD..."
                 int idx = html.indexOf("\"accessToken\":\"");
                 if (idx < 0) return null;
                 int start = idx + 15;
@@ -178,11 +222,11 @@ public class SpicyLyricsProvider implements LyricsProvider {
                 if (token.length() < 20) return null;
                 cachedEmbedToken = token;
                 embedTokenFetchedAt = System.currentTimeMillis();
-                AppLog.i(TAG, "Fetched Spotify embed token len=" + token.length());
+                AppLog.i(TAG, "Fetched Spotify embed token len=" + token.length() + " for track " + trackId);
                 return token;
             }
         } catch (Exception e) {
-            AppLog.w(TAG, "Failed to fetch embed token: " + e.getMessage());
+            AppLog.w(TAG, "Failed to fetch embed token for " + trackId + ": " + e.getMessage());
             return null;
         }
     }
