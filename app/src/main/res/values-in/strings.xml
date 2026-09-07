@@ -181,6 +181,8 @@
     <string name="ai_chip_transliterate_with_translation_desc">Transliterasi suku kata lengkap dengan terjemahan baris</string>
     <string name="ai_chip_transliterate_only">Transliterasi Saja</string>
     <string name="ai_chip_transliterate_only_desc">Transliterasi suku kata saja tanpa terjemahan</string>
+    <string name="ai_chip_transliterate_pure_romaji">Romaji Saja (Tanpa Huruf Asli)</string>
+    <string name="ai_chip_transliterate_pure_romaji_desc">Hanya tampilkan romaji bersih tanpa huruf Jepang aslinya</string>
     <string name="ai_transliterating">Membuat Romaji dan terjemahan...</string>
     <string name="ai_transliteration_complete">Transliterasi suku kata siap</string>
     <string name="edit_syllables_title">Edit Suku Kata &amp; Terjemahan</string>

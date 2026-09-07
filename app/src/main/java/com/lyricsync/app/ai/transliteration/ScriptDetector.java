@@ -54,4 +54,20 @@ public final class ScriptDetector {
     public static boolean isNonLatin(String text) {
         return detectScript(text) != ScriptType.LATIN;
     }
+
+    private static final Pattern NON_LATIN_CHARS = Pattern.compile(
+            "[\\u3040-\\u30FF\\u4E00-\\u9FAF\\uAC00-\\uD7AF\\u1100-\\u11FF\\u0400-\\u04FF\\u0600-\\u06FF\\u0E00-\\u0E7F\\u0370-\\u03FF]"
+    );
+
+    /**
+     * Strips all non-Latin characters (Kanji, Kana, Hanzi, Hangul, Cyrillic, etc.)
+     * and leftover wrapper punctuation, leaving strictly Latin transliteration text.
+     */
+    public static String stripNonLatinCharacters(String text) {
+        if (text == null) return "";
+        String stripped = NON_LATIN_CHARS.matcher(text).replaceAll("").trim();
+        stripped = stripped.replace("()", "").replace("（）", "").replace("[]", "").replace("【】", "");
+        stripped = stripped.replaceAll("^[\\(\\（\\[\\【]+|[\\)\\）\\]\\】]+$", "").trim();
+        return stripped;
+    }
 }

@@ -84,23 +84,26 @@ public class AiSyllableTransliterationService {
         if (aiWordsRomanji != null && aiWordsRomanji.size() == expectedCount) {
             for (int i = 0; i < expectedCount; i++) {
                 String token = aiWordsRomanji.get(i);
-                line.words.get(i).romanji = token != null ? token.trim() : "";
+                line.words.get(i).romanji = ScriptDetector.stripNonLatinCharacters(token);
             }
             return;
         }
 
         List<String> tokens = new ArrayList<>();
         if (aiWordsRomanji != null && !aiWordsRomanji.isEmpty()) {
-            tokens.addAll(aiWordsRomanji);
+            for (String tok : aiWordsRomanji) {
+                tokens.add(ScriptDetector.stripNonLatinCharacters(tok));
+            }
         } else if (fallbackRomanjiLine != null && !fallbackRomanjiLine.trim().isEmpty()) {
-            String[] split = fallbackRomanjiLine.trim().split("\\s+");
+            String cleanFallback = ScriptDetector.stripNonLatinCharacters(fallbackRomanjiLine);
+            String[] split = cleanFallback.trim().split("\\s+");
             Collections.addAll(tokens, split);
         }
 
         for (int i = 0; i < expectedCount; i++) {
             if (i < tokens.size()) {
                 String tok = tokens.get(i);
-                line.words.get(i).romanji = tok != null ? tok.trim() : "";
+                line.words.get(i).romanji = ScriptDetector.stripNonLatinCharacters(tok);
             } else {
                 line.words.get(i).romanji = "";
             }
@@ -140,13 +143,14 @@ public class AiSyllableTransliterationService {
                 JsonObject obj = el.getAsJsonObject();
                 LineTransliterationResult item = new LineTransliterationResult();
                 item.index = obj.has("index") ? obj.get("index").getAsInt() : -1;
-                item.romanji = obj.has("romanji") ? obj.get("romanji").getAsString() : "";
+                item.romanji = obj.has("romanji") ? ScriptDetector.stripNonLatinCharacters(obj.get("romanji").getAsString()) : "";
                 item.translation = obj.has("translation") ? obj.get("translation").getAsString() : "";
 
                 if (obj.has("wordsRomanji") && obj.get("wordsRomanji").isJsonArray()) {
                     JsonArray wr = obj.getAsJsonArray("wordsRomanji");
                     for (JsonElement elWord : wr) {
-                        item.wordsRomanji.add(elWord != null && !elWord.isJsonNull() ? elWord.getAsString() : "");
+                        String rawToken = elWord != null && !elWord.isJsonNull() ? elWord.getAsString() : "";
+                        item.wordsRomanji.add(ScriptDetector.stripNonLatinCharacters(rawToken));
                     }
                 }
                 list.add(item);
@@ -199,7 +203,7 @@ public class AiSyllableTransliterationService {
         return "You are an expert multilingual song lyrics transliteration and translation engine.\n" +
                 "Given song lines with syllable segmentation, output a strict JSON object with a \"lines\" array.\n" +
                 "Rules:\n" +
-                "1. Transliterate non-Latin scripts (Japanese Kanji/Kana to Hepburn Romaji, Chinese Hanzi to Pinyin, Korean to Revised Romanization, Russian to Latin).\n" +
+                "1. Transliterate non-Latin scripts (Japanese Kanji/Kana to Hepburn Romaji, Chinese Hanzi to Pinyin, Korean to Revised Romanization, Russian to Latin). Output 'romanji' and 'wordsRomanji' in STRICT LATIN CHARACTERS ONLY. Under no circumstances should original Japanese Kanji/Kana or Chinese characters appear in transliteration fields.\n" +
                 translationRule +
                 "3. CRITICAL: For \"wordsRomanji\", provide an array of strings of EXACTLY THE SAME LENGTH as input \"syllables\".\n" +
                 "   - Each element in \"wordsRomanji\" must correspond 1:1 to the syllable or character at the exact same index in \"syllables\".\n" +

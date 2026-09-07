@@ -180,6 +180,8 @@
     <string name="ai_chip_transliterate_with_translation_desc">Syllable transliteration with line translations</string>
     <string name="ai_chip_transliterate_only">Transliteration Only</string>
     <string name="ai_chip_transliterate_only_desc">Syllable transliteration only, without translations</string>
+    <string name="ai_chip_transliterate_pure_romaji">Romaji Only (Hide Original)</string>
+    <string name="ai_chip_transliterate_pure_romaji_desc">Clean transliteration only, hiding original characters</string>
     <string name="ai_transliterating">Generating Romaji and translation...</string>
     <string name="ai_transliteration_complete">Syllable transliteration ready</string>
     <string name="edit_syllables_title">Edit Syllables &amp; Translation</string>

@@ -63,4 +63,13 @@ public class ScriptDetectorTest {
         assertEquals(ScriptDetector.ScriptType.LATIN, ScriptDetector.detectScript("   "));
         assertFalse(ScriptDetector.isNonLatin(null));
     }
+
+    @Test
+    public void testStripNonLatinCharacters() {
+        assertEquals("zen", ScriptDetector.stripNonLatinCharacters("前 (zen)"));
+        assertEquals("boku", ScriptDetector.stripNonLatinCharacters("僕boku"));
+        assertEquals("", ScriptDetector.stripNonLatinCharacters("スパークル"));
+        assertEquals("ka ra", ScriptDetector.stripNonLatinCharacters("ka ra"));
+        assertEquals("", ScriptDetector.stripNonLatinCharacters(null));
+    }
 }

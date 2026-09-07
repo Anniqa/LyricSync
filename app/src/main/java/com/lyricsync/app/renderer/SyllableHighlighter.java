@@ -75,19 +75,43 @@ public class SyllableHighlighter {
     }
 
     private boolean transliterationEnabled = true;
+    private boolean originalScriptEnabled = true;
 
     public void setTransliterationEnabled(boolean enabled) {
         this.transliterationEnabled = enabled;
         for (LineView lv : lineViews) {
-            if (lv.romajiWordFlowLayout != null) {
-                boolean hasRomanji = lv.line != null && hasAnyWordRomanji(lv.line);
-                lv.romajiWordFlowLayout.setVisibility(enabled && hasRomanji ? View.VISIBLE : View.GONE);
-            }
+            updateLineScriptVisibility(lv);
         }
     }
 
     public boolean isTransliterationEnabled() {
         return transliterationEnabled;
+    }
+
+    public void setOriginalScriptEnabled(boolean enabled) {
+        this.originalScriptEnabled = enabled;
+        for (LineView lv : lineViews) {
+            updateLineScriptVisibility(lv);
+        }
+    }
+
+    public boolean isOriginalScriptEnabled() {
+        return originalScriptEnabled;
+    }
+
+    public void updateLineScriptVisibility(LineView lv) {
+        if (lv == null) return;
+        boolean hasRomanji = lv.line != null && hasAnyWordRomanji(lv.line);
+        boolean showOriginal = originalScriptEnabled || !transliterationEnabled || !hasRomanji;
+        if (lv.wordFlowLayout != null) {
+            lv.wordFlowLayout.setVisibility(showOriginal ? View.VISIBLE : View.GONE);
+        }
+        if (lv.gradientView != null) {
+            lv.gradientView.setVisibility(showOriginal ? View.VISIBLE : View.GONE);
+        }
+        if (lv.romajiWordFlowLayout != null) {
+            lv.romajiWordFlowLayout.setVisibility(transliterationEnabled && hasRomanji ? View.VISIBLE : View.GONE);
+        }
     }
 
     public boolean hasAnyWordRomanji(LyricsData.LyricsLine line) {
@@ -106,10 +130,11 @@ public class SyllableHighlighter {
         if (index < 0 || index >= lineViews.size()) return;
         LineView lv = lineViews.get(index);
         if (lv.line == null) return;
-        lv.line.romanji = lineRomanji;
+        lv.line.romanji = lineRomanji != null ? ScriptDetector.stripNonLatinCharacters(lineRomanji) : null;
         if (wordsRomanji != null && lv.line.words != null) {
             for (int i = 0; i < Math.min(wordsRomanji.size(), lv.line.words.size()); i++) {
-                lv.line.words.get(i).romanji = wordsRomanji.get(i);
+                String rToken = wordsRomanji.get(i);
+                lv.line.words.get(i).romanji = ScriptDetector.stripNonLatinCharacters(rToken);
             }
         }
         boolean hasRomanji = hasAnyWordRomanji(lv.line);
@@ -124,7 +149,7 @@ public class SyllableHighlighter {
                     LyricsData.Word w = (i < lv.line.words.size()) ? lv.line.words.get(i) : null;
                     String r = "";
                     if (w != null && w.romanji != null && !w.romanji.trim().isEmpty()) {
-                        r = w.romanji.trim();
+                        r = ScriptDetector.stripNonLatinCharacters(w.romanji);
                     } else if (w != null && w.text != null && !ScriptDetector.isNonLatin(w.text)) {
                         r = w.text;
                     }
@@ -134,7 +159,7 @@ public class SyllableHighlighter {
                     }
                 }
             }
-            lv.romajiWordFlowLayout.setVisibility(transliterationEnabled && hasRomanji ? View.VISIBLE : View.GONE);
+            updateLineScriptVisibility(lv);
         }
     }
 
@@ -325,7 +350,7 @@ public class SyllableHighlighter {
             LyricsData.Word word = line.words.get(i);
             String rText = "";
             if (word.romanji != null && !word.romanji.trim().isEmpty()) {
-                rText = word.romanji.trim();
+                rText = ScriptDetector.stripNonLatinCharacters(word.romanji);
             } else if (word.text != null && !ScriptDetector.isNonLatin(word.text)) {
                 rText = word.text;
             }
@@ -352,8 +377,8 @@ public class SyllableHighlighter {
             romajiWordViews.add(rwv);
         }
 
-        boolean hasRomanji = hasAnyWordRomanji(line);
-        romajiFlow.setVisibility(transliterationEnabled && hasRomanji ? View.VISIBLE : View.GONE);
+        lv.romajiWordFlowLayout = romajiFlow;
+        lv.romajiWordViews = romajiWordViews;
 
         if (container != null) {
             int flowIndex = lv.wordFlowLayout != null ? container.indexOfChild(lv.wordFlowLayout) : -1;
@@ -364,8 +389,7 @@ public class SyllableHighlighter {
             }
         }
 
-        lv.romajiWordFlowLayout = romajiFlow;
-        lv.romajiWordViews = romajiWordViews;
+        updateLineScriptVisibility(lv);
     }
 
     private View createPerLineView(LyricsData.LyricsLine line, LineView lv, LinearLayout.LayoutParams params) {

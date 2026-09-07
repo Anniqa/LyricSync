@@ -170,4 +170,44 @@ public class SyllableHighlighterLayerTest {
         // SyllableHighlighter must never put Kanji "前" into romanji field
         assertNull(line.words.get(1).romanji);
     }
+
+    @Test
+    public void testOriginalScriptToggle() {
+        assertTrue("Original script enabled by default", highlighter.isOriginalScriptEnabled());
+        highlighter.setOriginalScriptEnabled(false);
+        assertFalse("Original script disabled after toggle", highlighter.isOriginalScriptEnabled());
+        highlighter.setOriginalScriptEnabled(true);
+        assertTrue("Original script re-enabled", highlighter.isOriginalScriptEnabled());
+    }
+
+    @Test
+    public void testUpdateLineTransliterationStripsNonLatinCharacters() {
+        SyllableHighlighter.LineView lv = new SyllableHighlighter.LineView();
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 2000, "前 僕");
+        line.words.add(new LyricsData.Word(0, 1000, "前"));
+        line.words.add(new LyricsData.Word(1000, 2000, "僕"));
+        lv.line = line;
+        highlighter.getLineViews().add(lv);
+
+        highlighter.updateLineTransliteration(0, Arrays.asList("前 (zen)", "僕"), "前 (zen) 僕");
+        assertEquals("zen", lv.line.words.get(0).romanji);
+        assertEquals("", lv.line.words.get(1).romanji);
+        assertEquals("zen", lv.line.romanji);
+    }
+
+    @Test
+    public void testFallbackToOriginalScriptWhenTransliterationDisabled() {
+        SyllableHighlighter.LineView lv = new SyllableHighlighter.LineView();
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 2000, "前");
+        line.words.add(new LyricsData.Word(0, 2000, "前", "zen"));
+        lv.line = line;
+
+        // When original is disabled but transliteration is also disabled, original should be shown to prevent blank lines
+        highlighter.setOriginalScriptEnabled(false);
+        highlighter.setTransliterationEnabled(false);
+
+        boolean hasRomanji = lv.line != null && highlighter.hasAnyWordRomanji(lv.line);
+        boolean showOriginal = highlighter.isOriginalScriptEnabled() || !highlighter.isTransliterationEnabled() || !hasRomanji;
+        assertTrue("Original script must be shown if transliteration is disabled", showOriginal);
+    }
 }

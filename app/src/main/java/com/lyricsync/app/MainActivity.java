@@ -1230,9 +1230,40 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
             chip.setOnClickListener(v -> {
                 Haptics.tick(v);
-                performTransliteration();
+                performTransliteration(true, true);
             });
             aiStudioQuickChipsContainer.addView(chip);
+
+            LinearLayout chipPure = new LinearLayout(this);
+            chipPure.setOrientation(LinearLayout.HORIZONTAL);
+            chipPure.setGravity(Gravity.CENTER_VERTICAL);
+            chipPure.setBackgroundResource(R.drawable.bg_prompt_card);
+            chipPure.setPadding(padH, padV, padH, padV);
+
+            ImageView iconPure = new ImageView(this);
+            iconPure.setImageResource(R.drawable.ic_sparkles);
+            iconPure.setColorFilter(ContextCompat.getColor(this, R.color.accent));
+            LinearLayout.LayoutParams iconPureLp = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
+            iconPureLp.setMarginEnd(dpToPx(6));
+            chipPure.addView(iconPure, iconPureLp);
+
+            TextView titlePure = new TextView(this);
+            titlePure.setText(R.string.ai_chip_transliterate_pure_romaji);
+            titlePure.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+            titlePure.setTextSize(11f);
+            titlePure.setTypeface(null, android.graphics.Typeface.BOLD);
+            chipPure.addView(titlePure);
+
+            LinearLayout.LayoutParams lpPure = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lpPure.setMarginEnd(dpToPx(8));
+            chipPure.setLayoutParams(lpPure);
+
+            chipPure.setOnClickListener(v -> {
+                Haptics.tick(v);
+                performTransliteration(false, false);
+            });
+            aiStudioQuickChipsContainer.addView(chipPure);
         }
         String lang = LocaleHelper.getLanguage(this);
         List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
@@ -1731,18 +1762,32 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     }
 
     private void performTransliteration() {
+        performTransliteration(true, true);
+    }
+
+    private void performTransliteration(final boolean includeTranslation, final boolean showOriginalScript) {
         if (lyricsData == null || aiTransliterationService == null || currentTrack == null) return;
         if (activeTransliterationCall != null) {
             activeTransliterationCall.cancel();
             activeTransliterationCall = null;
         }
+        prefs.edit()
+                .putBoolean("pref_romaji_enabled", true)
+                .putBoolean("pref_original_script_enabled", showOriginalScript)
+                .apply();
+
+        if (lyricsData.hasTransliteration) {
+            Toast.makeText(this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         final TrackInfo track = currentTrack;
         Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
         String title = currentTrackTitle != null ? currentTrackTitle : "";
         String artist = currentTrackArtist != null ? currentTrackArtist : "";
         String targetLang = LocaleHelper.getLanguage(this);
         activeTransliterationCall = aiTransliterationService.transliterateSyllablesAsync(
-                lyricsData, title, artist, targetLang,
+                lyricsData, title, artist, targetLang, includeTranslation,
                 new AiSyllableTransliterationService.Callback() {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
@@ -1925,6 +1970,23 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
+        }
+
+        if (userQuery != null && lyricsData != null && lyricsData.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(lyricsData)) {
+            String lower = userQuery.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("tanpa huruf") || lower.contains("tanpa aksara") || lower.contains("hide original") || lower.contains("tanpa jepang") || lower.contains("romaji saja") || lower.contains("romaji only") || lower.contains("hanya romaji")) {
+                performTransliteration(false, false);
+            } else if (lower.contains("saja") || lower.contains("tanpa terjemahan") || lower.contains("tanpa arti") || lower.contains("only")) {
+                if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
+                    performTransliteration(false, true);
+                }
+            } else if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
+                if (lower.contains("terjemahan") || lower.contains("arti") || lower.contains("dengan") || lower.contains("dan") || lower.contains("with")) {
+                    performTransliteration(true, true);
+                }
+            } else if (lower.contains("tampilkan huruf asli") || lower.contains("tampilkan aksara") || lower.contains("show original")) {
+                prefs.edit().putBoolean("pref_original_script_enabled", true).apply();
+            }
         }
 
         String currentModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
