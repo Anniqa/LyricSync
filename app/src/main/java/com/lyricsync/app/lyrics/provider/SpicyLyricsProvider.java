@@ -72,14 +72,14 @@ public class SpicyLyricsProvider implements LyricsProvider {
 
     @Override
     public LyricsData fetchLyrics(TrackInfo track) throws Exception {
-        String token = getCachedToken();
         String trackId = extractSpotifyId(track);
         if (trackId == null) {
-            trackId = resolveSpotifyTrackId(track, token);
+            trackId = resolveSpotifyTrackId(track, getCachedToken(null));
         }
         if (trackId == null) {
             throw new IOException("No Spotify track ID available");
         }
+        String token = getCachedToken(trackId);
 
         String jsonBody = "{\"queries\":[{\"operation\":\"lyrics\",\"variables\":{\"id\":\""
                 + trackId + "\",\"auth\":\"SpicyLyrics-WebAuth\"}}],\"client\":{\"version\":\"" + SPICY_VERSION + "\"}}";
@@ -96,12 +96,12 @@ public class SpicyLyricsProvider implements LyricsProvider {
                 .header("Sec-Fetch-Mode", "cors")
                 .header("Sec-Fetch-Site", "cross-site")
                 .header("SpicyLyrics-Version", SPICY_VERSION)
+                .header("X-mode", "2")
                 .header("User-Agent", SPICY_USER_AGENT);
 
         if (token != null) {
             builder.header("SpicyLyrics-WebAuth", "Bearer " + token);
         }
-
         Request request = builder.build();
 
         // Rate limiting: enforce minimum interval between requests
@@ -136,7 +136,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
         throw new IOException("SpicyLyrics request failed");
     }
 
-    private String getCachedToken() {
+    private String getCachedToken(String trackId) {
         // 1. Try LSPosed-captured token (highest quality — real user token)
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -153,14 +153,14 @@ public class SpicyLyricsProvider implements LyricsProvider {
         if (cachedEmbedToken != null && (System.currentTimeMillis() - embedTokenFetchedAt) < EMBED_TOKEN_MAX_AGE_MS) {
             return cachedEmbedToken;
         }
-        return fetchEmbedToken();
+        return fetchEmbedToken(trackId);
     }
 
-    private String fetchEmbedToken() {
+    private String fetchEmbedToken(String trackId) {
         try {
-            // Use any known Spotify track ID for the embed page
+            String targetId = (trackId != null && !trackId.isEmpty()) ? trackId : "4fouWK6XVHhzl78KzQ1UjL";
             Request request = new Request.Builder()
-                    .url(EMBED_URL + "4fouWK6XVHhzl78KzQ1UjL")
+                    .url(EMBED_URL + targetId)
                     .get()
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                     .build();
