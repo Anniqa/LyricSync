@@ -62,58 +62,6 @@ public class LyricsData {
             }
         }
     }
-    public static void synthesizeWordTimings(LyricsData data) {
-        if (data == null || data.lines == null || data.lines.isEmpty()) return;
-
-        boolean hasTrueWordTiming = false;
-        for (LyricsLine line : data.lines) {
-            if (line.words != null && !line.words.isEmpty()) {
-                for (Word w : line.words) {
-                    if (w.endTime > w.startTime) {
-                        hasTrueWordTiming = true;
-                        break;
-                    }
-                }
-            }
-            if (hasTrueWordTiming) break;
-        }
-        if (hasTrueWordTiming && data.type == Type.SYLLABLE) return;
-
-        for (LyricsLine line : data.lines) {
-            if (line.isInterlude || line.text == null || line.text.trim().isEmpty()) continue;
-            if (line.words != null && !line.words.isEmpty()) continue;
-
-            String text = line.text.trim();
-            List<String> tokens = new ArrayList<>();
-            if (text.contains(" ")) {
-                for (String t : text.split("\\s+")) {
-                    if (!t.isEmpty()) tokens.add(t);
-                }
-            } else {
-                // CJK or continuous script without spaces: chunk into 1-2 character units
-                for (int i = 0; i < text.length(); i++) {
-                    tokens.add(String.valueOf(text.charAt(i)));
-                }
-            }
-            if (tokens.isEmpty()) continue;
-
-            long lineDur = Math.max(800, line.endTime - line.startTime);
-            int totalWeight = 0;
-            for (String tok : tokens) totalWeight += Math.max(1, tok.length());
-
-            long curStart = line.startTime;
-            for (int i = 0; i < tokens.size(); i++) {
-                String tok = tokens.get(i);
-                long dur = (long) ((double) Math.max(1, tok.length()) / totalWeight * lineDur);
-                long wEnd = (i == tokens.size() - 1) ? line.endTime : curStart + dur;
-                Word w = new Word(curStart, wEnd, tok);
-                w.isPartOfWord = false;
-                line.words.add(w);
-                curStart = wEnd;
-            }
-        }
-        data.type = Type.SYLLABLE;
-    }
 
     public static class Word {
         public long startTime;

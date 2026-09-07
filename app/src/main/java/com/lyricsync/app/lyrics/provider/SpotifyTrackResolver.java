@@ -25,10 +25,40 @@ public class SpotifyTrackResolver {
             .readTimeout(5, TimeUnit.SECONDS)
             .build();
 
+    public static String cleanTitle(String title) {
+        if (title == null) return "";
+        String cleaned = title
+                .replaceAll("(?i)\\s*\\[[^\\]]*]", "")
+                .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance)[^)]*\\)", "")
+                .replaceAll("(?i)\\s+-\\s+(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k).*$", "")
+                .replaceAll("(?i)\\s*[\\(\\[]?\\s*(feat\\.?|ft\\.?|featuring)\\s+[^\\)\\]]*[\\)\\]]?", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return cleaned.isEmpty() ? title.trim() : cleaned;
+    }
+
+    public static String cleanArtist(String artist) {
+        if (artist == null) return "";
+        String cleaned = artist
+                .replaceAll("(?i)\\s*-\\s*topic\\s*$", "")
+                .replaceAll("(?i)\\s*vevo\\s*$", "")
+                .replaceAll("(?i)\\s*official\\s*$", "")
+                .replaceAll("(?i)\\s*(feat\\.?|ft\\.?|featuring)\\s+.*$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        String[] split = cleaned.split("\\s*(,|&| x | X |/|;)\\s*");
+        if (split.length > 0 && !split[0].trim().isEmpty()) {
+            cleaned = split[0].trim();
+        }
+        return cleaned.isEmpty() ? artist.trim() : cleaned;
+    }
+
     public static String resolve(String title, String artist) {
         if (title == null || title.trim().isEmpty()) return null;
+        String cTitle = cleanTitle(title);
+        String cArtist = cleanArtist(artist);
         try {
-            String query = (title + " " + (artist != null ? artist : "")).trim();
+            String query = (cTitle + " " + cArtist).trim();
             String deezerUrl = "https://api.deezer.com/search?q=" + URLEncoder.encode(query, "UTF-8");
             Request dReq = new Request.Builder()
                     .url(deezerUrl)
