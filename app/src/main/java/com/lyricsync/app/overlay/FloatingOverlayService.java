@@ -1670,6 +1670,15 @@ public class FloatingOverlayService extends Service {
                                 .putBoolean("pref_romaji_enabled", true)
                                 .putBoolean("pref_original_script_enabled", showOriginalScript)
                                 .apply();
+                        if (includeTranslation) {
+                            translationEnabled = true;
+                            sharedPrefs.edit()
+                                    .putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
+                                    .apply();
+                            if (overlayTranslateSwitch != null) {
+                                overlayTranslateSwitch.setChecked(true);
+                            }
+                        }
                         if (overlayRomajiSwitch != null) {
                             isProgrammaticRomajiUpdate = true;
                             overlayRomajiSwitch.setChecked(true);

@@ -85,13 +85,16 @@ public class SyllableHighlighter {
                 cur.syllables.add(w);
             } else {
                 LyricsData.Word prev = line.words.get(i - 1);
-                if (prev.isPartOfWord) {
+                String r = (w.romanji != null) ? ScriptDetector.stripNonLatinCharacters(w.romanji).trim() : "";
+                // Safety limit: never merge more than 4 syllables or 16 romaji characters into one DisplayWord
+                // to ensure WordFlowLayout can always wrap words and never overflow off-screen.
+                boolean canMerge = prev.isPartOfWord
+                        && cur.syllables.size() < 5
+                        && (cur.romanji.length() + r.length()) <= 16;
+                if (canMerge) {
                     cur.text += (w.text != null ? w.text : "");
-                    if (w.romanji != null && !w.romanji.trim().isEmpty()) {
-                        String r = ScriptDetector.stripNonLatinCharacters(w.romanji);
-                        if (!r.isEmpty()) {
-                            cur.romanji += r;
-                        }
+                    if (!r.isEmpty()) {
+                        cur.romanji += r;
                     }
                     cur.endTime = Math.max(cur.endTime, w.endTime);
                     cur.syllables.add(w);
@@ -99,7 +102,7 @@ public class SyllableHighlighter {
                     list.add(cur);
                     cur = new DisplayWord();
                     cur.text = (w.text != null) ? w.text : "";
-                    cur.romanji = (w.romanji != null) ? ScriptDetector.stripNonLatinCharacters(w.romanji) : "";
+                    cur.romanji = r;
                     cur.startTime = w.startTime;
                     cur.endTime = w.endTime;
                     cur.syllables.add(w);
@@ -388,6 +391,10 @@ public class SyllableHighlighter {
 
         TextView tv = createTranslationTextView(line);
         if (tv != null) {
+            LinearLayout.LayoutParams tvLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            tv.setLayoutParams(tvLp);
             container.addView(tv);
             lv.translationView = tv;
         }
@@ -507,6 +514,10 @@ public class SyllableHighlighter {
 
         TextView tv = createTranslationTextView(line);
         if (tv != null) {
+            LinearLayout.LayoutParams tvLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            tv.setLayoutParams(tvLp);
             container.addView(tv);
             lv.translationView = tv;
         }

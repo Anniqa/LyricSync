@@ -286,4 +286,20 @@ public class SyllableHighlighterLayerTest {
         assertEquals(500, displayWords.get(1).startTime);
         assertEquals(1000, displayWords.get(1).endTime);
     }
+
+    @Test
+    public void testBuildDisplayWordsSafetyCap() {
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "12345678");
+        for (int i = 0; i < 8; i++) {
+            LyricsData.Word w = new LyricsData.Word(i * 300, (i + 1) * 300, "word" + i, "romaji" + i);
+            w.isPartOfWord = true; // all marked as part of word (e.g. erroneous run-on)
+            line.words.add(w);
+        }
+        List<SyllableHighlighter.DisplayWord> displayWords = SyllableHighlighter.buildDisplayWords(line);
+        // Safety cap must prevent all 8 syllables from becoming 1 giant display word
+        assertTrue("Safety cap must split runaway words so views can wrap in WordFlowLayout", displayWords.size() > 1);
+        for (SyllableHighlighter.DisplayWord dw : displayWords) {
+            assertTrue("DisplayWord must not exceed 4 syllables", dw.syllables.size() <= 4);
+        }
+    }
 }

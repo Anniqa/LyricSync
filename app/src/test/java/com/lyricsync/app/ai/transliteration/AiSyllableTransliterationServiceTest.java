@@ -396,6 +396,51 @@ public class AiSyllableTransliterationServiceTest {
         assertFalse(called.get());
     }
 
+    @Test
+    public void testComputeWordBoundariesPunctuationAndApostropheNoRunaway() {
+        // Line with apostrophe in Pinyin (e.g. qin'ai) or Chinese words
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 5000, "我爱你中国亲爱的母亲");
+        String[] text = {"我", "爱", "你", "中", "国", "亲", "爱", "的", "母", "亲"};
+        String[] romaji = {"wo", "ai", "ni", "zhong", "guo", "qin", "ai", "de", "mu", "qin"};
+        for (int i = 0; i < text.length; i++) {
+            line.words.add(new LyricsData.Word(i * 300, (i + 1) * 300, text[i], romaji[i]));
+        }
+        line.romanji = "wo ai ni zhongguo qin'ai de muqin";
+
+        AiSyllableTransliterationService.computeWordBoundaries(line);
+
+        // Ensure that words are separated properly and not all merged into one giant word
+        assertFalse("Last syllable of 'zhongguo' must be boundary", line.words.get(4).isPartOfWord);
+        assertFalse("Last syllable must be boundary", line.words.get(9).isPartOfWord);
+
+        int partOfWordCount = 0;
+        for (LyricsData.Word w : line.words) {
+            if (w.isPartOfWord) partOfWordCount++;
+        }
+        // In this line, only compound words 'zhong-guo' (index 3) and 'mu-qin' (index 8) or 'qin-ai' (index 5) should continue
+        assertTrue("Must not merge all syllables into one run-on word", partOfWordCount < line.words.size() - 1);
+    }
+
+    @Test
+    public void testComputeWordBoundariesJapaneseKanaFallbackNoRunaway() {
+        // Japanese Kana line where line.romanji is null or mismatched
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "あなたのことがすきだ");
+        String[] text = {"あ", "な", "た", "の", "こ", "と", "が", "す", "き", "だ"};
+        String[] romaji = {"a", "na", "ta", "no", "ko", "to", "ga", "su", "ki", "da"};
+        for (int i = 0; i < text.length; i++) {
+            line.words.add(new LyricsData.Word(i * 300, (i + 1) * 300, text[i], romaji[i]));
+        }
+        line.romanji = null; // simulate missing or invalid full line romaji
+
+        AiSyllableTransliterationService.computeWordBoundaries(line);
+
+        // Fallback must NOT mark all kana as isPartOfWord=true
+        for (int i = 0; i < line.words.size(); i++) {
+            assertFalse("Full-sized kana in fallback must not be merged into a single word: index " + i,
+                    line.words.get(i).isPartOfWord);
+        }
+    }
+
     private static class MockApiClient extends AntigravityApiClient {
         int callCount = 0;
         String mockResponse;

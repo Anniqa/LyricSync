@@ -534,13 +534,27 @@ public class AiSyllableTransliterationService {
         computeWordBoundaries(line);
     }
 
+    private static boolean isWordSeparator(char c) {
+        return Character.isWhitespace(c) || c == '-' || c == '\'' || c == '\"' || c == '/'
+                || c == ',' || c == '.' || c == '!' || c == '?' || c == '~' || c == ';' || c == ':'
+                || c == '—' || c == '–' || c == '…';
+    }
+
+    private static boolean isSmallKanaOrChouon(char c) {
+        return c == 'っ' || c == 'ッ' || c == 'ゃ' || c == 'ャ'
+                || c == 'ゅ' || c == 'ュ' || c == 'ょ' || c == 'ョ'
+                || c == 'ぁ' || c == 'ァ' || c == 'ぃ' || c == 'ィ'
+                || c == 'ぅ' || c == 'ゥ' || c == 'ぇ' || c == 'ェ'
+                || c == 'ぉ' || c == 'ォ' || c == 'ー';
+    }
+
     public static void computeWordBoundaries(LyricsData.LyricsLine line) {
         if (line == null || line.words == null || line.words.isEmpty()) return;
         int n = line.words.size();
         if (line.romanji != null && !line.romanji.isEmpty()) {
             String full = line.romanji.trim();
             int cursor = 0;
-            boolean matched = true;
+            boolean hadAnyMatch = false;
             for (int i = 0; i < n; i++) {
                 LyricsData.Word w = line.words.get(i);
                 String tok = (w.romanji != null) ? w.romanji.trim() : "";
@@ -548,23 +562,43 @@ public class AiSyllableTransliterationService {
                     w.isPartOfWord = false;
                     continue;
                 }
-                while (cursor < full.length() && Character.isWhitespace(full.charAt(cursor))) {
+                while (cursor < full.length() && isWordSeparator(full.charAt(cursor))) {
                     cursor++;
                 }
+
+                int matchPos = -1;
                 if (cursor + tok.length() <= full.length()
                         && full.substring(cursor, cursor + tok.length()).equalsIgnoreCase(tok)) {
-                    cursor += tok.length();
-                    if (cursor < full.length() && !Character.isWhitespace(full.charAt(cursor)) && i < n - 1) {
-                        w.isPartOfWord = true;
-                    } else {
-                        w.isPartOfWord = false;
-                    }
+                    matchPos = cursor;
                 } else {
-                    matched = false;
-                    break;
+                    // Lookahead window up to 20 chars to recover from minor omissions, particles, or punctuation
+                    int searchLimit = Math.min(full.length(), cursor + 20);
+                    for (int s = cursor; s <= searchLimit - tok.length(); s++) {
+                        if (isWordSeparator(full.charAt(s))) continue;
+                        if (full.regionMatches(true, s, tok, 0, tok.length())) {
+                            matchPos = s;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchPos >= 0) {
+                    hadAnyMatch = true;
+                    cursor = matchPos + tok.length();
+                    boolean continuesWord = false;
+                    if (cursor < full.length() && i < n - 1) {
+                        char nextChar = full.charAt(cursor);
+                        if (Character.isLetterOrDigit(nextChar)) {
+                            continuesWord = true;
+                        }
+                    }
+                    w.isPartOfWord = continuesWord;
+                } else {
+                    // Mismatched token: keep as independent boundary, do NOT merge blindly
+                    w.isPartOfWord = false;
                 }
             }
-            if (matched) {
+            if (hadAnyMatch) {
                 line.words.get(n - 1).isPartOfWord = false;
                 return;
             }
@@ -586,16 +620,9 @@ public class AiSyllableTransliterationService {
             } else if (w.romanji != null && w.romanji.endsWith(" ")) {
                 w.isPartOfWord = false;
             } else if (!t.isEmpty() && !nt.isEmpty()) {
-                char c1 = t.charAt(t.length() - 1);
-                char c2 = nt.charAt(0);
-                boolean c1Kanji = (c1 >= 0x4E00 && c1 <= 0x9FAF) || (c1 >= 0x3400 && c1 <= 0x4DBF);
-                boolean c2Kanji = (c2 >= 0x4E00 && c2 <= 0x9FAF) || (c2 >= 0x3400 && c2 <= 0x4DBF);
-                boolean c1Kana = (c1 >= 0x3040 && c1 <= 0x309F) || (c1 >= 0x30A0 && c1 <= 0x30FF);
-                boolean c2Kana = (c2 >= 0x3040 && c2 <= 0x309F) || (c2 >= 0x30A0 && c2 <= 0x30FF);
-
-                if (c1Kanji && c2Kanji) {
-                    w.isPartOfWord = true;
-                } else if (c1Kana && c2Kana && t.length() == 1 && nt.length() == 1) {
+                char nextFirst = nt.charAt(0);
+                if (isSmallKanaOrChouon(nextFirst)) {
+                    // Small kana / chouon always continues the preceding mora
                     w.isPartOfWord = true;
                 } else {
                     w.isPartOfWord = false;
