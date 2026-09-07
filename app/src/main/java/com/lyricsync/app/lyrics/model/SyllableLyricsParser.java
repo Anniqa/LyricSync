@@ -67,22 +67,13 @@ public class SyllableLyricsParser {
             xored[i] = (byte) (rawKrc[i + offset] ^ KRC_KEY[i % KRC_KEY.length]);
         }
 
-        Inflater inflater = new Inflater();
-        inflater.setInput(xored);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        byte[] buffer = new byte[4096];
-        try {
-            while (!inflater.finished()) {
-                int count = inflater.inflate(buffer);
-                if (count == 0) {
-                    if (inflater.needsInput() || inflater.needsDictionary()) break;
-                }
-                baos.write(buffer, 0, count);
-            }
-        } finally {
-            inflater.end();
+        try (java.util.zip.InflaterInputStream in = new java.util.zip.InflaterInputStream(new java.io.ByteArrayInputStream(xored));
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) != -1) baos.write(buf, 0, n);
+            return baos.toByteArray();
         }
-        return baos.toByteArray();
     }
 
     public static String decryptKrcToString(byte[] rawKrc) throws Exception {
@@ -119,41 +110,13 @@ public class SyllableLyricsParser {
 
     public static LyricsData parseAuto(String raw) {
         if (raw == null || raw.isEmpty()) return new LyricsData(LyricsData.Type.LINE);
-
         String trimmed = raw.trim();
-        // Check TTML / XML
         if (trimmed.startsWith("<") || trimmed.contains("<tt") || trimmed.contains("<p ") || trimmed.contains("<p>")) {
             return parseTtml(raw);
         }
-
-        // Check KRC vs YRC vs ELRC vs LRC
-        boolean hasMsHeader = false;
-        boolean hasKrcWord = false;
-        boolean hasYrcWord = false;
-        boolean hasElrcWord = false;
-
-        String[] lines = raw.split("\n", 20);
-        for (String line : lines) {
-            String l = line.trim();
-            if (l.isEmpty()) continue;
-            if (YRC_LINE_HEADER.matcher(l).find()) {
-                hasMsHeader = true;
-            }
-            if (KRC_SYLLABLE.matcher(l).find()) {
-                hasKrcWord = true;
-            }
-            if (YRC_SYLLABLE.matcher(l).find()) {
-                hasYrcWord = true;
-            }
-            if (ELRC_WORD.matcher(l).find()) {
-                hasElrcWord = true;
-            }
-        }
-
-        if (hasMsHeader && hasKrcWord) return parseKrc(raw);
-        if (hasMsHeader && hasYrcWord) return parseYrc(raw);
-        if (hasElrcWord) return parseElrc(raw);
-
+        if (KRC_SYLLABLE.matcher(raw).find()) return parseKrc(raw);
+        if (YRC_SYLLABLE.matcher(raw).find()) return parseYrc(raw);
+        if (ELRC_WORD.matcher(raw).find()) return parseElrc(raw);
         return parseLrc(raw);
     }
 

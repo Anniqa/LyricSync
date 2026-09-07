@@ -83,7 +83,7 @@ public class KugouLyricsProvider implements LyricsProvider {
         // 4. Decode base64 and decrypt KRC
         byte[] rawKrc;
         try {
-            rawKrc = Base64.getDecoder().decode(rawBase64.replaceAll("\\s+", ""));
+            rawKrc = Base64.getMimeDecoder().decode(rawBase64);
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -112,10 +112,7 @@ public class KugouLyricsProvider implements LyricsProvider {
     }
     private Candidate searchCandidate(String title, String artist, long duration) throws IOException {
         String keyword = (title + " " + artist).trim();
-        String encodedKeyword = "";
-        try {
-            encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
-        } catch (Exception ignored) {}
+        String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
         String url = SEARCH_URL + "?ver=1&man=yes&client=mobi"
                 + "&keyword=" + encodedKeyword
                 + "&duration=" + (duration > 0 ? duration : "")
@@ -176,15 +173,9 @@ public class KugouLyricsProvider implements LyricsProvider {
     }
 
     private String downloadLyricContent(String id, String accesskey) throws IOException {
-        String encId = id;
-        String encKey = accesskey;
-        try {
-            encId = URLEncoder.encode(id, "UTF-8");
-            encKey = URLEncoder.encode(accesskey, "UTF-8");
-        } catch (Exception ignored) {}
         String url = DOWNLOAD_URL + "?ver=1&client=pc"
-                + "&id=" + encId
-                + "&accesskey=" + encKey
+                + "&id=" + URLEncoder.encode(id, "UTF-8")
+                + "&accesskey=" + URLEncoder.encode(accesskey, "UTF-8")
                 + "&fmt=krc&charset=utf8";
         Request request = new Request.Builder()
                 .url(url)

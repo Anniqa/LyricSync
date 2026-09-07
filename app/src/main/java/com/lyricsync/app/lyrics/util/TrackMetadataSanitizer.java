@@ -23,12 +23,7 @@ public class TrackMetadataSanitizer {
         public SanitizedMetadata(String cleanTitle, String cleanArtist, List<String> titleAliases) {
             this.cleanTitle = cleanTitle != null ? cleanTitle : "";
             this.cleanArtist = cleanArtist != null ? cleanArtist : "";
-            this.titleAliases = titleAliases != null ? Collections.unmodifiableList(new ArrayList<>(titleAliases)) : Collections.emptyList();
-        }
-
-        @Override
-        public String toString() {
-            return cleanArtist + " - " + cleanTitle + (titleAliases.isEmpty() ? "" : " (aliases: " + titleAliases + ")");
+            this.titleAliases = titleAliases != null ? titleAliases : Collections.emptyList();
         }
     }
 
@@ -72,12 +67,8 @@ public class TrackMetadataSanitizer {
         // 1. Clean artist noise suffix first
         artist = ARTIST_NOISE_SUFFIX.matcher(artist).replaceAll("");
         artist = ARTIST_FEAT.matcher(artist).replaceAll("");
-        // Primary artist from comma / ampersand if multiple
-        int splitIdx = findFirstArtistDelimiter(artist);
-        if (splitIdx > 0) {
-            artist = artist.substring(0, splitIdx).trim();
-        }
-        artist = artist.trim();
+        // Primary artist from comma / ampersand / slash if multiple
+        artist = artist.split("[,&/]", 2)[0].trim();
 
         // 2. Remove noise tags from title
         title = NOISE_BRACKETS.matcher(title).replaceAll("");
@@ -101,11 +92,6 @@ public class TrackMetadataSanitizer {
             }
         }
 
-        // Clean any remaining brackets if they were generic like [Official]
-        title = NOISE_BRACKETS.matcher(title).replaceAll("");
-        title = NOISE_PARENTHESES.matcher(title).replaceAll("");
-        title = title.replaceAll("\\s+", " ").trim();
-
         // 4. Dual-script title extraction (e.g. "アイドル (Idol)" or "KAIKAI KITAN (廻廻奇譚)")
         List<String> aliases = new ArrayList<>();
         Matcher dualMatcher = DUAL_SCRIPT_PAREN.matcher(title);
@@ -121,17 +107,6 @@ public class TrackMetadataSanitizer {
         return new SanitizedMetadata(title, artist, aliases);
     }
 
-    private static int findFirstArtistDelimiter(String artist) {
-        if (artist == null) return -1;
-        int comma = artist.indexOf(',');
-        int ampersand = artist.indexOf('&');
-        int slash = artist.indexOf('/');
-        int min = -1;
-        if (comma > 0) min = comma;
-        if (ampersand > 0 && (min == -1 || ampersand < min)) min = ampersand;
-        if (slash > 0 && (min == -1 || slash < min)) min = slash;
-        return min;
-    }
 
     private static boolean isGenericArtist(String artist) {
         if (artist == null || artist.isEmpty()) return true;

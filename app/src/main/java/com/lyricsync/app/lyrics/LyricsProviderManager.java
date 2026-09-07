@@ -77,18 +77,18 @@ public class LyricsProviderManager {
 
             LyricsData bestLyrics = cached != null && !cached.isEmpty() ? cached : null;
             String bestProvider = bestLyrics != null ? "cache" : null;
+            final String normTarget = (targetProvider != null && !targetProvider.trim().isEmpty() && !"all".equalsIgnoreCase(targetProvider.trim()))
+                    ? targetProvider.trim().toLowerCase() : null;
 
             for (LyricsProvider provider : providers) {
-                if (targetProvider != null && !targetProvider.trim().isEmpty() && !"all".equalsIgnoreCase(targetProvider.trim())) {
-                    String tp = targetProvider.trim().toLowerCase();
+                if (normTarget != null) {
                     String pn = provider.getName().toLowerCase();
-                    if (!pn.contains(tp) && !tp.contains(pn)) {
-                        if (!("spotify".equals(tp) && pn.contains("spicy"))) {
+                    if (!pn.contains(normTarget) && !normTarget.contains(pn)) {
+                        if (!("spotify".equals(normTarget) && pn.contains("spicy"))) {
                             continue;
                         }
                     }
                 }
-
                 if (bestLyrics != null && bestLyrics.type == LyricsData.Type.SYLLABLE) break;
                 try {
                     AppLog.d(TAG, "Trying provider: " + provider.getName() + " for: " + queryTrack);

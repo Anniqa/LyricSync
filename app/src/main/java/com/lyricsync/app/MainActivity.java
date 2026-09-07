@@ -2168,12 +2168,20 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (hasAnyRomaji) {
             prefs.edit().putBoolean("pref_romaji_enabled", true).apply();
         }
-        updateSongChatLyricsStudio(lyricsData);
+        commitLyricsStudio();
         if (callback != null) {
             callback.onSuccess(count + " baris lirik berhasil diperbarui.");
         }
     }
 
+    private void commitLyricsStudio() {
+        if (lyricsCacheManager != null && currentTrack != null) {
+            lyricsCacheManager.cache(currentTrack, lyricsData);
+        }
+        updateSongChatLyricsStudio(lyricsData);
+        FloatingOverlayService service = FloatingOverlayService.getInstance();
+        if (service != null) service.applyLyricsLive(lyricsData, null);
+    }
     private void updateSongChatLyricsStudio(LyricsData lyrics) {
         if (songChatManager != null && lyrics != null && lyrics.lines != null) {
             StringBuilder sb = new StringBuilder();
@@ -2259,11 +2267,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         }
 
         lyricsData = lyrics;
-        if (currentTrack != null && lyricsCacheManager != null) {
-            lyricsCacheManager.cache(currentTrack, lyrics);
-        }
+        commitLyricsStudio();
         setupAiQuickChips();
-        updateSongChatLyricsStudio(lyrics);
         if (callback != null) {
             callback.onSuccess("Lirik (" + lyrics.type + ", " + lyrics.lines.size() + " baris) berhasil diterapkan.");
         }
@@ -2321,10 +2326,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 return;
             }
             lyricsData.lines.remove(lineIndex);
-            if (lyricsCacheManager != null && currentTrack != null) {
-                lyricsCacheManager.cache(currentTrack, lyricsData);
-            }
-            updateSongChatLyricsStudio(lyricsData);
+            commitLyricsStudio();
             if (callback != null) callback.onSuccess("Baris " + (lineIndex + 1) + " berhasil dihapus.");
         } else if ("insert".equals(act)) {
             if (text == null || text.trim().isEmpty()) {
@@ -2338,10 +2340,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             if (translation != null && !translation.trim().isEmpty()) newLine.translation = translation.trim();
             if (romanji != null && !romanji.trim().isEmpty()) newLine.romanji = romanji.trim();
             lyricsData.lines.add(insertPos, newLine);
-            if (lyricsCacheManager != null && currentTrack != null) {
-                lyricsCacheManager.cache(currentTrack, lyricsData);
-            }
-            updateSongChatLyricsStudio(lyricsData);
+            commitLyricsStudio();
             if (callback != null) callback.onSuccess("Baris lirik baru berhasil disisipkan di baris " + (insertPos + 1) + ".");
         } else if ("shift_timing".equals(act)) {
             if (lineIndex < 0 || lineIndex >= lyricsData.lines.size()) {
@@ -2357,10 +2356,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     w.endTime = Math.max(w.startTime + 100, w.endTime + shiftMs);
                 }
             }
-            if (lyricsCacheManager != null && currentTrack != null) {
-                lyricsCacheManager.cache(currentTrack, lyricsData);
-            }
-            updateSongChatLyricsStudio(lyricsData);
+            commitLyricsStudio();
             if (callback != null) callback.onSuccess("Timing baris " + (lineIndex + 1) + " digeser sebesar " + shiftMs + " ms.");
         } else {
             if (callback != null) callback.onError("Aksi manage_lyric_lines tidak dikenal: " + action);

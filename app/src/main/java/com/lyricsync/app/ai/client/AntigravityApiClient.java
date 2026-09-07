@@ -328,46 +328,11 @@ public class AntigravityApiClient {
                 new String[]{"feature", "enabled"},
                 "feature", "STRING", "Fitur: 'translation', 'romaji', atau 'original_script'.",
                 "enabled", "BOOLEAN", "true untuk menampilkan, false untuk menyembunyikan."));
-        JsonObject batchTool = new JsonObject();
-        batchTool.addProperty("name", "batch_edit_lyrics");
-        batchTool.addProperty("description", "Membuat terjemahan, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus.");
-        JsonObject batchParams = new JsonObject();
-        batchParams.addProperty("type", "OBJECT");
-        JsonObject batchProps = new JsonObject();
-        JsonObject linesProp = new JsonObject();
-        linesProp.addProperty("type", "ARRAY");
-        linesProp.addProperty("description", "Daftar baris lirik yang diedit/diterjemahkan.");
-        JsonObject itemObj = new JsonObject();
-        itemObj.addProperty("type", "OBJECT");
-        JsonObject itemProps = new JsonObject();
-        JsonObject liProp = new JsonObject();
-        liProp.addProperty("type", "INTEGER");
-        liProp.addProperty("description", "Indeks baris lirik (mulai dari 0).");
-        itemProps.add("line_index", liProp);
-        JsonObject trProp = new JsonObject();
-        trProp.addProperty("type", "STRING");
-        trProp.addProperty("description", "Terjemahan baru untuk baris tersebut.");
-        itemProps.add("translation", trProp);
-        JsonObject txProp = new JsonObject();
-        txProp.addProperty("type", "STRING");
-        txProp.addProperty("description", "Teks lirik baru (opsional).");
-        itemProps.add("text", txProp);
-        JsonObject roProp = new JsonObject();
-        roProp.addProperty("type", "STRING");
-        roProp.addProperty("description", "Bacaan romaji baru (opsional).");
-        itemProps.add("romanji", roProp);
-        itemObj.add("properties", itemProps);
-        JsonArray itemReq = new JsonArray();
-        itemReq.add("line_index");
-        itemObj.add("required", itemReq);
-        linesProp.add("items", itemObj);
-        batchProps.add("lines", linesProp);
-        batchParams.add("properties", batchProps);
-        JsonArray batchReq = new JsonArray();
-        batchReq.add("lines");
-        batchParams.add("required", batchReq);
-        batchTool.add("parameters", batchParams);
-        declarations.add(batchTool);
+        declarations.add(com.google.gson.JsonParser.parseString("{"
+                + "\"name\":\"batch_edit_lyrics\","
+                + "\"description\":\"Membuat terjemahan, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus.\","
+                + "\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"lines\":{\"type\":\"ARRAY\",\"description\":\"Daftar baris lirik yang diedit/diterjemahkan.\",\"items\":{\"type\":\"OBJECT\",\"properties\":{\"line_index\":{\"type\":\"INTEGER\",\"description\":\"Indeks baris lirik (mulai dari 0).\"},\"translation\":{\"type\":\"STRING\",\"description\":\"Terjemahan baru untuk baris tersebut.\"},\"text\":{\"type\":\"STRING\",\"description\":\"Teks lirik baru (opsional).\"},\"romanji\":{\"type\":\"STRING\",\"description\":\"Bacaan romaji baru (opsional).\"}},\"required\":[\"line_index\"]}}},\"required\":[\"lines\"]}}"
+        ).getAsJsonObject());
         declarations.add(makeTool("fetch_external_syllable_lyrics",
                 "Mencari dan mengambil lirik suku kata (syllable/karaoke) dari berbagai provider internet (NetEase YRC, Kugou KRC, Spotify, LRCLIB) dan langsung menerapkannya ke overlay pemutar lirik.",
                 new String[]{"title", "artist"},
