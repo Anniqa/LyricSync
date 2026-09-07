@@ -597,7 +597,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
     }
 
     private String resolveSpotifyTrackId(TrackInfo track, String token) {
-        if (token == null || token.isEmpty() || !track.isValid()) return null;
+        if (!track.isValid()) return null;
 
         String cleanTitle = cleanSearchTitle(track.title);
         String cleanArtist = cleanSearchArtist(track.artist);
@@ -617,6 +617,16 @@ public class SpicyLyricsProvider implements LyricsProvider {
                 cleanArtist = maybeArtist;
             }
         }
+        // 1. Primary resolver: Deezer search + MusicBrainz ISRC cross-reference
+        // Works without any token, completely free, zero rate limit, no 401/429
+        String isrcResolvedId = SpotifyTrackResolver.resolve(cleanTitle, cleanArtist);
+        if (isrcResolvedId != null) {
+            track.trackId = "spotify:track:" + isrcResolvedId;
+            AppLog.i(TAG, "Resolved trackId via Deezer+MusicBrainz: " + isrcResolvedId + " for " + cleanTitle);
+            return isrcResolvedId;
+        }
+
+        if (token == null || token.isEmpty()) return null;
 
         // Primary: pathfinder searchDesktop. Free-text query is the most tolerant of
         // messy YouTube Music titles ("Artist - Song (Official Video)") and, crucially,

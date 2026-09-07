@@ -56,6 +56,12 @@ public class SpotifyColorLyricsProvider implements LyricsProvider {
         }
 
         String trackId = extractTrackId(track);
+        if (trackId == null && track != null && track.isValid()) {
+            trackId = SpotifyTrackResolver.resolve(track.title, track.artist);
+            if (trackId != null) {
+                track.trackId = "spotify:track:" + trackId;
+            }
+        }
         if (trackId == null) {
             throw new IOException("No Spotify track ID available");
         }
