@@ -5,11 +5,13 @@ import android.content.Context;
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
+import com.lyricsync.app.lyrics.provider.KugouLyricsProvider;
 import com.lyricsync.app.lyrics.provider.LRCLIBProvider;
 import com.lyricsync.app.lyrics.provider.LyricsProvider;
 import com.lyricsync.app.lyrics.provider.NeteaseLyricsProvider;
 import com.lyricsync.app.lyrics.provider.SpicyLyricsProvider;
 import com.lyricsync.app.lyrics.provider.SpotifyColorLyricsProvider;
+import com.lyricsync.app.lyrics.util.TrackMetadataSanitizer;
 import com.lyricsync.app.util.AppLog;
 
 import java.util.ArrayList;
@@ -35,15 +37,41 @@ public class LyricsProviderManager {
         providers.add(new SpicyLyricsProvider(context));
         providers.add(new SpotifyColorLyricsProvider(context));
         providers.add(new NeteaseLyricsProvider());
+        providers.add(new KugouLyricsProvider());
         providers.add(new LRCLIBProvider());
     }
 
     public void fetchLyrics(TrackInfo track, LyricsCallback callback) {
+        fetchLyrics(track, null, callback);
+    }
+
+    public void fetchLyrics(TrackInfo track, String targetProvider, LyricsCallback callback) {
         executor.execute(() -> {
+            if (track == null) {
+                mainHandler.post(() -> callback.onLyricsError("Track is null"));
+                return;
+            }
+
+            // Sanitize metadata before querying
+            TrackMetadataSanitizer.SanitizedMetadata meta = TrackMetadataSanitizer.sanitize(track);
+            TrackInfo queryTrack = new TrackInfo();
+            queryTrack.title = !meta.cleanTitle.isEmpty() ? meta.cleanTitle : track.title;
+            queryTrack.artist = !meta.cleanArtist.isEmpty() ? meta.cleanArtist : track.artist;
+            queryTrack.album = track.album;
+            queryTrack.albumArtUri = track.albumArtUri;
+            queryTrack.albumArtBitmap = track.albumArtBitmap;
+            queryTrack.duration = track.duration;
+            queryTrack.packageName = track.packageName;
+            queryTrack.trackId = track.trackId;
+
             LyricsData cached = cacheManager.getCached(track);
+            if (cached == null || cached.isEmpty()) {
+                cached = cacheManager.getCached(queryTrack);
+            }
             if (cached != null && !cached.isEmpty() && cached.type == LyricsData.Type.SYLLABLE) {
                 AppLog.d(TAG, "Cache hit (SYLLABLE) for: " + track);
-                mainHandler.post(() -> callback.onLyricsLoaded(cached));
+                final LyricsData hit = cached;
+                mainHandler.post(() -> callback.onLyricsLoaded(hit));
                 return;
             }
 
@@ -51,10 +79,20 @@ public class LyricsProviderManager {
             String bestProvider = bestLyrics != null ? "cache" : null;
 
             for (LyricsProvider provider : providers) {
+                if (targetProvider != null && !targetProvider.trim().isEmpty() && !"all".equalsIgnoreCase(targetProvider.trim())) {
+                    String tp = targetProvider.trim().toLowerCase();
+                    String pn = provider.getName().toLowerCase();
+                    if (!pn.contains(tp) && !tp.contains(pn)) {
+                        if (!("spotify".equals(tp) && pn.contains("spicy"))) {
+                            continue;
+                        }
+                    }
+                }
+
                 if (bestLyrics != null && bestLyrics.type == LyricsData.Type.SYLLABLE) break;
                 try {
-                    AppLog.d(TAG, "Trying provider: " + provider.getName() + " for: " + track);
-                    LyricsData lyrics = provider.fetchLyrics(track);
+                    AppLog.d(TAG, "Trying provider: " + provider.getName() + " for: " + queryTrack);
+                    LyricsData lyrics = provider.fetchLyrics(queryTrack);
 
                     if (lyrics != null && !lyrics.isEmpty() && betterThan(lyrics, bestLyrics)) {
                         bestLyrics = lyrics;

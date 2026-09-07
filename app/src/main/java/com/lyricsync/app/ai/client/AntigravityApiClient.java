@@ -10,7 +10,8 @@ import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor.SourceItem;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor.ToolCallback;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor.ToolResult;
-
+import com.lyricsync.app.lyrics.model.LyricsData;
+import com.lyricsync.app.lyrics.model.SyllableLyricsParser;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -83,6 +84,18 @@ public class AntigravityApiClient {
     }
 
     public interface LyricActionDelegate {
+        class LineEdit {
+            public final int lineIndex;
+            public final String text;
+            public final String translation;
+            public final String romanji;
+            public LineEdit(int lineIndex, String text, String translation, String romanji) {
+                this.lineIndex = lineIndex;
+                this.text = text;
+                this.translation = translation;
+                this.romanji = romanji;
+            }
+        }
         void translateLyrics(String targetLang, ActionCallback callback);
         void transliterateLyrics(String mode, ActionCallback callback);
         default void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
@@ -90,7 +103,19 @@ public class AntigravityApiClient {
         }
         void setSyncOffset(int offsetMs, ActionCallback callback);
         void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback);
+        default void batchEditLyrics(List<LineEdit> edits, ActionCallback callback) {
+            if (edits == null || edits.isEmpty()) {
+                callback.onError("Daftar editan kosong");
+                return;
+            }
+            for (LineEdit e : edits) {
+                modifyLine(e.lineIndex, e.text, e.translation, e.romanji, null);
+            }
+            callback.onSuccess(edits.size() + " baris berhasil diperbarui.");
+        }
         void toggleDisplay(String feature, boolean enabled, ActionCallback callback);
+        void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback);
+        void applyLyrics(LyricsData lyrics, ActionCallback callback);
         interface ActionCallback {
             void onSuccess(String message);
             void onError(String error);
@@ -290,6 +315,57 @@ public class AntigravityApiClient {
                 new String[]{"feature", "enabled"},
                 "feature", "STRING", "Fitur: 'translation', 'romaji', atau 'original_script'.",
                 "enabled", "BOOLEAN", "true untuk menampilkan, false untuk menyembunyikan."));
+        JsonObject batchTool = new JsonObject();
+        batchTool.addProperty("name", "batch_edit_lyrics");
+        batchTool.addProperty("description", "Membuat terjemahan, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus.");
+        JsonObject batchParams = new JsonObject();
+        batchParams.addProperty("type", "OBJECT");
+        JsonObject batchProps = new JsonObject();
+        JsonObject linesProp = new JsonObject();
+        linesProp.addProperty("type", "ARRAY");
+        linesProp.addProperty("description", "Daftar baris lirik yang diedit/diterjemahkan.");
+        JsonObject itemObj = new JsonObject();
+        itemObj.addProperty("type", "OBJECT");
+        JsonObject itemProps = new JsonObject();
+        JsonObject liProp = new JsonObject();
+        liProp.addProperty("type", "INTEGER");
+        liProp.addProperty("description", "Indeks baris lirik (mulai dari 0).");
+        itemProps.add("line_index", liProp);
+        JsonObject trProp = new JsonObject();
+        trProp.addProperty("type", "STRING");
+        trProp.addProperty("description", "Terjemahan baru untuk baris tersebut.");
+        itemProps.add("translation", trProp);
+        JsonObject txProp = new JsonObject();
+        txProp.addProperty("type", "STRING");
+        txProp.addProperty("description", "Teks lirik baru (opsional).");
+        itemProps.add("text", txProp);
+        JsonObject roProp = new JsonObject();
+        roProp.addProperty("type", "STRING");
+        roProp.addProperty("description", "Bacaan romaji baru (opsional).");
+        itemProps.add("romanji", roProp);
+        itemObj.add("properties", itemProps);
+        JsonArray itemReq = new JsonArray();
+        itemReq.add("line_index");
+        itemObj.add("required", itemReq);
+        linesProp.add("items", itemObj);
+        batchProps.add("lines", linesProp);
+        batchParams.add("properties", batchProps);
+        JsonArray batchReq = new JsonArray();
+        batchReq.add("lines");
+        batchParams.add("required", batchReq);
+        batchTool.add("parameters", batchParams);
+        declarations.add(batchTool);
+        declarations.add(makeTool("fetch_external_syllable_lyrics",
+                "Mencari dan mengambil lirik suku kata (syllable/karaoke) dari berbagai provider internet (NetEase YRC, Kugou KRC, Spotify, LRCLIB) dan langsung menerapkannya ke overlay pemutar lirik.",
+                new String[]{"title", "artist"},
+                "title", "STRING", "Judul lagu.",
+                "artist", "STRING", "Nama penyanyi / artis.",
+                "provider", "STRING", "Provider tujuan: 'all' (default), 'netease', 'kugou', 'spotify', atau 'lrclib'."));
+        declarations.add(makeTool("parse_and_apply_lyrics",
+                "Mem-parsing teks lirik mentah dalam berbagai format suku kata (YRC/KRC/TTML/ELRC/LRC) dan langsung menerapkannya ke overlay lirik.",
+                new String[]{"raw_lyrics", "format"},
+                "raw_lyrics", "STRING", "Konten mentah lirik (format YRC, KRC, TTML, ELRC, atau LRC).",
+                "format", "STRING", "Format lirik: 'yrc', 'krc', 'ttml', 'elrc', 'lrc', atau 'auto'."));
         return declarations;
     }
 
@@ -921,6 +997,22 @@ public class AntigravityApiClient {
         } else if ("toggle_display".equals(toolName)) {
             queryOrUrl = (toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull() ? toolArgs.get("feature").getAsString() : "")
                     + " (" + (toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull() && toolArgs.get("enabled").getAsBoolean() ? "on" : "off") + ")";
+        } else if ("batch_edit_lyrics".equals(toolName)) {
+            int lineCount = 0;
+            if (toolArgs.has("lines") && toolArgs.get("lines").isJsonArray()) {
+                lineCount = toolArgs.getAsJsonArray("lines").size();
+            }
+            queryOrUrl = lineCount + " baris lirik";
+        } else if ("fetch_external_syllable_lyrics".equals(toolName)) {
+            String title = toolArgs.has("title") && !toolArgs.get("title").isJsonNull()
+                    ? toolArgs.get("title").getAsString() : "";
+            String artist = toolArgs.has("artist") && !toolArgs.get("artist").isJsonNull()
+                    ? toolArgs.get("artist").getAsString() : "";
+            queryOrUrl = (title + " - " + artist).trim();
+        } else if ("parse_and_apply_lyrics".equals(toolName)) {
+            String fmt = toolArgs.has("format") && !toolArgs.get("format").isJsonNull()
+                    ? toolArgs.get("format").getAsString() : "auto";
+            queryOrUrl = "format:" + fmt;
         } else {
             queryOrUrl = toolArgs.toString();
         }
@@ -1097,12 +1189,49 @@ public class AntigravityApiClient {
                 String romanji = toolArgs.has("romanji") && !toolArgs.get("romanji").isJsonNull()
                         ? toolArgs.get("romanji").getAsString() : null;
                 lyricActionDelegate.modifyLine(lineIndex, text, translation, romanji, wrapActionCallback(callback, "Gagal mengubah baris"));
+            } else if ("batch_edit_lyrics".equals(toolName)) {
+                List<LyricActionDelegate.LineEdit> edits = new ArrayList<>();
+                if (toolArgs.has("lines") && toolArgs.get("lines").isJsonArray()) {
+                    JsonArray arr = toolArgs.getAsJsonArray("lines");
+                    for (JsonElement el : arr) {
+                        if (!el.isJsonObject()) continue;
+                        JsonObject o = el.getAsJsonObject();
+                        int idx = o.has("line_index") && !o.get("line_index").isJsonNull() ? o.get("line_index").getAsInt() : -1;
+                        if (idx < 0) continue;
+                        String t = o.has("text") && !o.get("text").isJsonNull() ? o.get("text").getAsString() : null;
+                        String tr = o.has("translation") && !o.get("translation").isJsonNull() ? o.get("translation").getAsString() : null;
+                        String r = o.has("romanji") && !o.get("romanji").isJsonNull() ? o.get("romanji").getAsString() : null;
+                        edits.add(new LyricActionDelegate.LineEdit(idx, t, tr, r));
+                    }
+                }
+                lyricActionDelegate.batchEditLyrics(edits, wrapActionCallback(callback, "Gagal mengedit banyak baris"));
             } else if ("toggle_display".equals(toolName)) {
                 String feature = toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull()
                         ? toolArgs.get("feature").getAsString() : "";
                 boolean enabled = toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull()
                         && toolArgs.get("enabled").getAsBoolean();
                 lyricActionDelegate.toggleDisplay(feature, enabled, wrapActionCallback(callback, "Gagal mengubah tampilan"));
+            } else if ("fetch_external_syllable_lyrics".equals(toolName)) {
+                String title = toolArgs.has("title") && !toolArgs.get("title").isJsonNull()
+                        ? toolArgs.get("title").getAsString() : "";
+                String artist = toolArgs.has("artist") && !toolArgs.get("artist").isJsonNull()
+                        ? toolArgs.get("artist").getAsString() : "";
+                String provider = toolArgs.has("provider") && !toolArgs.get("provider").isJsonNull()
+                        ? toolArgs.get("provider").getAsString() : "all";
+                lyricActionDelegate.fetchSyllableLyrics(title, artist, provider,
+                        wrapActionCallback(callback, "Gagal mengambil lirik eksternal"));
+            } else if ("parse_and_apply_lyrics".equals(toolName)) {
+                String rawLyrics = toolArgs.has("raw_lyrics") && !toolArgs.get("raw_lyrics").isJsonNull()
+                        ? toolArgs.get("raw_lyrics").getAsString() : "";
+                String format = toolArgs.has("format") && !toolArgs.get("format").isJsonNull()
+                        ? toolArgs.get("format").getAsString() : "auto";
+                LyricsData parsed = SyllableLyricsParser.parse(rawLyrics, format);
+                if (parsed == null || parsed.isEmpty()) {
+                    callback.onResult(new ToolResult(true, "Gagal mem-parsing lirik: format tidak valid atau kosong", Collections.<SourceItem>emptyList()));
+                } else {
+                    lyricActionDelegate.applyLyrics(parsed,
+                            wrapActionCallback(callback, "Gagal menerapkan lirik"));
+                }
             } else {
                 callback.onResult(new ToolResult(true, "Unknown tool: " + toolName, Collections.<SourceItem>emptyList()));
                 return;

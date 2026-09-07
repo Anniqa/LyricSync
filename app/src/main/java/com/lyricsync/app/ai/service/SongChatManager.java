@@ -50,6 +50,8 @@ public class SongChatManager {
         boolean isIndo = "id".equalsIgnoreCase(langCode) || "in".equalsIgnoreCase(langCode);
         if (isIndo) {
             return Collections.unmodifiableList(Arrays.asList(
+                    new PromptTemplate("what_can_you_do", "💡 Apa yang Bisa Kamu Lakukan?", "Lihat kemampuan kontrol penuh: terjemahan, edit teks, romaji, timing", "Apa saja yang bisa kamu lakukan untuk mengontrol dan mengedit lirik lagu ini? Berikan daftar fitur dan contoh perintahnya.", "ic_sparkles"),
+                    new PromptTemplate("translate_all", "🌐 Terjemahkan Lirik Lengkap", "Terjemahkan seluruh lirik secara puitis dan terapkan ke overlay", "Terjemahkan seluruh baris lirik lagu ini ke Bahasa Indonesia dengan gaya puitis dan langsung terapkan ke overlay.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Makna & Kisah Lagu", "Eksplorasi cerita, tema utama, dan narasi lagu", "Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.", "ic_sparkles"),
                     new PromptTemplate("breakdown", "Bedah Lirik & Metafora", "Analisis baris lirik penting dan bahasa kiasan", "Bedah baris-baris lirik penting dan metafora yang digunakan dalam lagu ini.", "ic_lyrics_lines"),
                     new PromptTemplate("intent", "Tujuan & Inspirasi Penulis", "Inspirasi artis dan pesan yang ingin disampaikan", "Apa yang menginspirasi pencipta lagu ini dan apa pesan yang ingin disampaikan?", "ic_person_artist"),
@@ -59,6 +61,8 @@ public class SongChatManager {
             ));
         } else {
             return Collections.unmodifiableList(Arrays.asList(
+                    new PromptTemplate("what_can_you_do", "💡 What Can You Do?", "See full control capabilities: translation, text editing, romaji, timing", "What can you do to control and edit the lyrics of this song? List your features and example prompts.", "ic_sparkles"),
+                    new PromptTemplate("translate_all", "🌐 Translate All Lyrics", "Translate all lines poetically and apply directly to overlay", "Translate all lyric lines of this song poetically and apply the translation directly to the overlay.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Song Meaning & Story", "Deep dive into themes and narrative", "Explain the story, themes, and deeper meaning behind this song.", "ic_sparkles"),
                     new PromptTemplate("breakdown", "Line-by-Line Breakdown", "Analyze metaphors and poetic lyrics", "Break down the key lines and metaphors in these lyrics.", "ic_lyrics_lines"),
                     new PromptTemplate("intent", "Songwriter's Intent", "Artist inspiration and backstory", "What inspired the artist to write this song and what was their intent?", "ic_person_artist"),
@@ -68,7 +72,6 @@ public class SongChatManager {
             ));
         }
     }
-
     private final AntigravityApiClient apiClient;
     private volatile String modelId;
     private volatile String appLanguage = "en";
@@ -226,6 +229,10 @@ public class SongChatManager {
         return fullLyrics;
     }
 
+    public synchronized void updateFullLyrics(String fullLyrics) {
+        this.fullLyrics = fullLyrics;
+    }
+
     public SongMeaning getMeaning() {
         return meaning;
     }
@@ -310,17 +317,23 @@ public class SongChatManager {
             sb.append("- 'transliterate_lyrics': Gunakan jika pengguna meminta transliterasi (Romaji/Pinyin/Romaja). Parameter 'mode': 'romaji_with_translation' (dengan arti), 'romaji_only' (hanya romaji), atau 'pure_romaji' (hanya romaji). Parameter 'show_original_script': false jika pengguna meminta membuang/menyembunyikan huruf asli (misal: 'Jepang buang').\n");
             sb.append("- 'set_sync_offset': Gunakan jika pengguna mengeluh lirik terlalu cepat/lambat atau meminta memajukan/menunda lirik.\n");
             sb.append("- 'modify_lyric_line': Gunakan jika pengguna meminta mengoreksi teks, arti, atau bacaan baris lirik tertentu.\n");
+            sb.append("- 'batch_edit_lyrics': Gunakan jika ingin membuat terjemahan lengkap/sebagian, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus dalam satu pemanggilan (parameter: 'lines' berisi daftar objek baris dengan 'line_index', serta opsional 'translation', 'text', 'romanji').\n");
             sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
+            sb.append("- 'fetch_external_syllable_lyrics': Gunakan jika lirik lagu saat ini tidak sinkron suku kata/karaoke, kosong, atau pengguna meminta mengambil lirik dari provider internet (NetEase/Kugou/Spotify/LRCLIB).\n");
+            sb.append("- 'parse_and_apply_lyrics': Gunakan jika Anda atau pengguna memiliki teks mentah lirik berformat suku kata (YRC, KRC, TTML, ELRC, atau LRC) untuk langsung diterapkan ke overlay.\n");
             sb.append("Jika permintaan pengguna berkaitan dengan tindakan di atas, SEGERA panggil alat tersebut!\n");
+            sb.append("\n[PANDUAN KONTROL PENUH EDITING & MODIFIKASI LIRIK]\n");
+            sb.append("Anda memiliki KONTROL PENUH (FULL CONTROL) untuk mengedit, memodifikasi, dan mengatur tampilan lirik lagu (baik lirik suku kata/syllable, lirik per baris/line-by-line, maupun lirik biasa):\n");
+            sb.append("- 'batch_edit_lyrics': Gunakan jika ingin membuat terjemahan lengkap/sebagian, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus dalam satu pemanggilan (parameter: 'lines' berisi daftar objek baris dengan 'line_index', serta opsional 'translation', 'text', 'romanji'). Gunakan alat ini saat pengguna meminta terjemahan penuh atau modifikasi banyak baris!\n");
+            sb.append("- 'translate_lyrics': Gunakan jika pengguna meminta menerjemahkan lirik lagu ke bahasa lain (misal: Indonesia, Inggris, Jepang, Spanyol).\n");
+            sb.append("- 'transliterate_lyrics': Gunakan jika pengguna meminta transliterasi (Romaji/Pinyin/Romaja). Parameter 'mode': 'romaji_with_translation' (dengan arti), 'romaji_only' (hanya romaji), atau 'pure_romaji' (hanya romaji). Parameter 'show_original_script': false jika pengguna meminta membuang/menyembunyikan huruf asli (misal: 'Jepang buang').\n");
+            sb.append("- 'set_sync_offset': Gunakan jika pengguna mengeluh lirik terlalu cepat/lambat atau meminta memajukan/menunda lirik.\n");
+            sb.append("- 'modify_lyric_line': Gunakan jika pengguna meminta mengoreksi teks, arti, atau bacaan baris lirik tertentu.\n");
+            sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
+            sb.append("Jika pengguna bertanya 'apa saja yang bisa kamu lakukan' ('what can you do') atau meminta rekomendasi, jelaskan dengan ramah semua kemampuan di atas dan beri contoh prompt yang bisa mereka gunakan.\n");
+            sb.append("Jika permintaan pengguna berkaitan dengan tindakan editing lirik di atas, SEGERA panggil alat tersebut!\n");
             sb.append("Setelah memanggil alat, selalu berikan konfirmasi ringkas dan ramah mengenai perubahan yang telah berhasil Anda terapkan di layar overlay.\n");
             sb.append("Jawab pertanyaan pengguna mengenai makna lagu, kisah di balik lagu, tema emosi, dan lirik secara ramah, mendalam, dan terstruktur dalam Bahasa Indonesia.");
-            sb.append("\n[LYRIC TOOLS DIRECTIVE]\n");
-            sb.append("You have native tools to control and modify the overlay lyrics in real-time:\n");
-            sb.append("- 'translate_lyrics': Call when user asks to translate lyrics.\n");
-            sb.append("- 'transliterate_lyrics': Call when user asks for romaji, pinyin, or latin transliteration.\n");
-            sb.append("- 'set_sync_offset': Call when user asks to adjust sync timing/offset.\n");
-            sb.append("- 'modify_lyric_line': Call when user asks to fix or edit a specific lyric line.\n");
-            sb.append("- 'toggle_display': Call when user asks to toggle translation, romaji, or script display.\n");
             sb.append("If user requests any of these actions, execute the respective tool immediately!\n");
             sb.append("Answer user questions about the song's meaning, backstory, emotional themes, and lyrics warmly, insightfully, and clearly in English.");
         }

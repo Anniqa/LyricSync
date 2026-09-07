@@ -1183,8 +1183,22 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 }
 
                 @Override
+                public void batchEditLyrics(List<AntigravityApiClient.LyricActionDelegate.LineEdit> edits, ActionCallback callback) {
+                    runOnUiThread(() -> batchEditLyricsStudio(edits, callback));
+                }
+
+                @Override
                 public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {
                     runOnUiThread(() -> toggleDisplayStudio(feature, enabled, callback));
+                }
+                @Override
+                public void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) {
+                    runOnUiThread(() -> fetchSyllableLyricsStudio(title, artist, provider, callback));
+                }
+
+                @Override
+                public void applyLyrics(LyricsData lyrics, ActionCallback callback) {
+                    runOnUiThread(() -> applyLyricsStudio(lyrics, callback));
                 }
             });
         }
@@ -1317,7 +1331,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private void setupAiQuickChips() {
         if (aiStudioQuickChipsContainer == null) return;
         aiStudioQuickChipsContainer.removeAllViews();
-        if (lyricsData != null && lyricsData.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(lyricsData)) {
+        if (lyricsData != null && isLyricsNonLatin(lyricsData)) {
             LinearLayout chip = new LinearLayout(this);
             chip.setOrientation(LinearLayout.HORIZONTAL);
             chip.setGravity(Gravity.CENTER_VERTICAL);
@@ -2104,6 +2118,67 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (callback != null) callback.onSuccess("Baris " + (lineIndex + 1) + " berhasil diperbarui.");
     }
 
+    public void batchEditLyricsStudio(List<AntigravityApiClient.LyricActionDelegate.LineEdit> edits, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+        if (lyricsData == null || lyricsData.lines == null || lyricsData.lines.isEmpty()) {
+            if (callback != null) callback.onError("Tidak ada lirik aktif");
+            return;
+        }
+        if (edits == null || edits.isEmpty()) {
+            if (callback != null) callback.onError("Daftar editan kosong");
+            return;
+        }
+        boolean hasAnyTrans = false;
+        boolean hasAnyRomaji = false;
+        int count = 0;
+        for (AntigravityApiClient.LyricActionDelegate.LineEdit e : edits) {
+            if (e != null && e.lineIndex >= 0 && e.lineIndex < lyricsData.lines.size()) {
+                LyricsData.LyricsLine l = lyricsData.lines.get(e.lineIndex);
+                if (e.text != null && !e.text.trim().isEmpty()) l.text = e.text.trim();
+                if (e.translation != null && !e.translation.trim().isEmpty()) {
+                    l.translation = e.translation.trim();
+                    hasAnyTrans = true;
+                }
+                if (e.romanji != null && !e.romanji.trim().isEmpty()) {
+                    l.romanji = e.romanji.trim();
+                    hasAnyRomaji = true;
+                }
+                count++;
+            }
+        }
+        if (hasAnyTrans) {
+            prefs.edit().putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true).apply();
+            androidx.appcompat.widget.SwitchCompat switchTrans = findViewById(R.id.switch_main_translation);
+            if (switchTrans != null) switchTrans.setChecked(true);
+        }
+        if (hasAnyRomaji) {
+            prefs.edit().putBoolean("pref_romaji_enabled", true).apply();
+        }
+        updateSongChatLyricsStudio(lyricsData);
+        if (callback != null) {
+            callback.onSuccess(count + " baris lirik berhasil diperbarui.");
+        }
+    }
+
+    private void updateSongChatLyricsStudio(LyricsData lyrics) {
+        if (songChatManager != null && lyrics != null && lyrics.lines != null) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < lyrics.lines.size(); i++) {
+                LyricsData.LyricsLine l = lyrics.lines.get(i);
+                if (l != null && l.text != null && !l.isInterlude) {
+                    sb.append("[").append(i).append("] ").append(l.text);
+                    if (l.romanji != null && !l.romanji.trim().isEmpty()) {
+                        sb.append(" (romaji: ").append(l.romanji.trim()).append(")");
+                    }
+                    if (l.translation != null && !l.translation.trim().isEmpty()) {
+                        sb.append(" (arti: ").append(l.translation.trim()).append(")");
+                    }
+                    sb.append("\n");
+                }
+            }
+            songChatManager.updateFullLyrics(sb.toString().trim());
+        }
+    }
+
     public void toggleDisplayStudio(String feature, boolean enabled, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if ("translation".equalsIgnoreCase(feature)) {
             prefs.edit().putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, enabled).apply();
@@ -2118,6 +2193,64 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             if (callback != null) callback.onSuccess("Aksara asli " + (enabled ? "diaktifkan" : "dinonaktifkan"));
         } else {
             if (callback != null) callback.onError("Fitur tidak dikenal: " + feature);
+        }
+    }
+    public void fetchSyllableLyricsStudio(String title, String artist, String provider,
+                                          AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+        if (title == null || title.trim().isEmpty()) {
+            if (callback != null) callback.onError("Judul lagu tidak boleh kosong");
+            return;
+        }
+
+        TrackInfo track = new TrackInfo();
+        track.title = title.trim();
+        track.artist = artist != null ? artist.trim() : "";
+        if (currentTrack != null) {
+            track.duration = currentTrack.duration;
+            track.album = currentTrack.album;
+            track.packageName = currentTrack.packageName;
+        }
+
+        LyricsProviderManager providerManager = new LyricsProviderManager(this);
+        providerManager.fetchLyrics(track, provider, new LyricsProviderManager.LyricsCallback() {
+            @Override
+            public void onLyricsLoaded(LyricsData lyrics) {
+                runOnUiThread(() -> {
+                    applyLyricsStudio(lyrics, null);
+                    if (callback != null) {
+                        callback.onSuccess("Berhasil mengambil dan menerapkan lirik suku kata dari "
+                                + (lyrics.provider != null ? lyrics.provider : "provider eksternal")
+                                + " (" + lyrics.lines.size() + " baris).");
+                    }
+                });
+            }
+
+            @Override
+            public void onLyricsError(String error) {
+                runOnUiThread(() -> {
+                    if (callback != null) {
+                        callback.onError(error);
+                    }
+                });
+            }
+        });
+    }
+
+    public void applyLyricsStudio(LyricsData lyrics,
+                                  AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+        if (lyrics == null || lyrics.isEmpty()) {
+            if (callback != null) callback.onError("Lirik kosong atau tidak valid");
+            return;
+        }
+
+        lyricsData = lyrics;
+        if (currentTrack != null && lyricsCacheManager != null) {
+            lyricsCacheManager.cache(currentTrack, lyrics);
+        }
+        setupAiQuickChips();
+        updateSongChatLyricsStudio(lyrics);
+        if (callback != null) {
+            callback.onSuccess("Lirik (" + lyrics.type + ", " + lyrics.lines.size() + " baris) berhasil diterapkan.");
         }
     }
 
@@ -2155,7 +2288,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             activeChatCall = null;
         }
 
-        if (userQuery != null && lyricsData != null && lyricsData.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(lyricsData)) {
+        if (userQuery != null && lyricsData != null && isLyricsNonLatin(lyricsData)) {
             String lower = userQuery.toLowerCase(java.util.Locale.ROOT);
             boolean isRomajiReq = lower.contains("romaji") || lower.contains("romanji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja");
             boolean isHideScript = lower.contains("tanpa huruf") || lower.contains("tanpa aksara") || lower.contains("hide original")
