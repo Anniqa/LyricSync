@@ -1996,43 +1996,10 @@ public class FloatingOverlayService extends Service {
                         handler.post(() -> {
                             if (isDestroyed || aiToolStatusContainer == null) return;
                             cancelPendingToolStatusHide();
-                            if ("web_fetch".equals(toolName)) {
-                                if (aiToolStatusIcon != null) {
-                                    aiToolStatusIcon.setImageResource(R.drawable.ic_search_globe);
-                                }
-                                String host = queryOrUrl;
-                                try {
-                                    android.net.Uri uri = android.net.Uri.parse(queryOrUrl);
-                                    if (uri.getHost() != null) host = uri.getHost();
-                                } catch (Exception ignored) {}
-                                if (aiToolStatusText != null) {
-                                    aiToolStatusText.setText(getString(R.string.ai_tool_fetching) + (host != null ? " (" + host + ")" : ""));
-                                }
-                            } else if ("translate_lyrics".equals(toolName)) {
-                                if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiToolStatusText != null) aiToolStatusText.setText("Menerjemahkan lirik (" + queryOrUrl + ")…");
-                            } else if ("transliterate_lyrics".equals(toolName)) {
-                                if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiToolStatusText != null) aiToolStatusText.setText("Menerapkan transliterasi Romaji/Latin…");
-                            } else if ("set_sync_offset".equals(toolName)) {
-                                if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(R.drawable.ic_settings);
-                                if (aiToolStatusText != null) aiToolStatusText.setText("Menyesuaikan timing lirik (" + queryOrUrl + " ms)…");
-                            } else if ("modify_lyric_line".equals(toolName)) {
-                                if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiToolStatusText != null) aiToolStatusText.setText("Memperbarui " + queryOrUrl + " di overlay…");
-                            } else if ("toggle_display".equals(toolName)) {
-                                if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiToolStatusText != null) aiToolStatusText.setText("Mengubah tampilan: " + queryOrUrl + "…");
-                            } else {
-                                if (aiToolStatusIcon != null) {
-                                    aiToolStatusIcon.setImageResource(R.drawable.ic_search);
-                                }
-                                String query = queryOrUrl != null ? queryOrUrl : "";
-                                if (query.length() > 50) query = query.substring(0, 50) + "…";
-                                if (aiToolStatusText != null) {
-                                    aiToolStatusText.setText(getString(R.string.ai_tool_searching) + " \"" + query + "\"");
-                                }
-                            }
+                            com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
+                                    com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, FloatingOverlayService.this);
+                            if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(info.iconRes);
+                            if (aiToolStatusText != null) aiToolStatusText.setText(info.runningText);
                             aiToolStatusContainer.setAlpha(0f);
                             aiToolStatusContainer.setVisibility(View.VISIBLE);
                             aiToolStatusContainer.animate().alpha(1f).setDuration(220).start();
@@ -2046,23 +2013,9 @@ public class FloatingOverlayService extends Service {
                             if (aiToolStatusIcon != null) {
                                 aiToolStatusIcon.setImageResource(R.drawable.ic_check);
                             }
-                            if (aiToolStatusText != null) {
-                                if ("web_fetch".equals(toolName)) {
-                                    aiToolStatusText.setText(getString(R.string.ai_tool_fetch_done));
-                                } else if ("translate_lyrics".equals(toolName)) {
-                                    aiToolStatusText.setText("Lirik berhasil diterjemahkan!");
-                                } else if ("transliterate_lyrics".equals(toolName)) {
-                                    aiToolStatusText.setText("Transliterasi berhasil diterapkan!");
-                                } else if ("set_sync_offset".equals(toolName)) {
-                                    aiToolStatusText.setText("Sinkronisasi berhasil disesuaikan!");
-                                } else if ("modify_lyric_line".equals(toolName)) {
-                                    aiToolStatusText.setText("Baris lirik berhasil diperbarui!");
-                                } else if ("toggle_display".equals(toolName)) {
-                                    aiToolStatusText.setText("Pengaturan tampilan diperbarui!");
-                                } else {
-                                    aiToolStatusText.setText(getString(R.string.ai_tool_search_done, resultsCount));
-                                }
-                            }
+                            com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
+                                    com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, FloatingOverlayService.this);
+                            if (aiToolStatusText != null) aiToolStatusText.setText(info.doneText);
                             scheduleToolStatusHide();
                         });
                     }

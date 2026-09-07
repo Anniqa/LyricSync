@@ -2175,43 +2175,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         runOnUiThread(() -> {
                             if (isFinishing() || isDestroyed() || aiStudioToolStatusContainer == null) return;
                             cancelPendingToolStatusHide();
-                            if ("web_fetch".equals(toolName)) {
-                                if (aiStudioToolStatusIcon != null) {
-                                    aiStudioToolStatusIcon.setImageResource(R.drawable.ic_search_globe);
-                                }
-                                String host = queryOrUrl;
-                                try {
-                                    Uri uri = Uri.parse(queryOrUrl);
-                                    if (uri.getHost() != null) host = uri.getHost();
-                                } catch (Exception ignored) {}
-                                if (aiStudioToolStatusText != null) {
-                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_fetching) + (host != null ? " (" + host + ")" : ""));
-                                }
-                            } else if ("translate_lyrics".equals(toolName)) {
-                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText("Menerjemahkan lirik (" + queryOrUrl + ")…");
-                            } else if ("transliterate_lyrics".equals(toolName)) {
-                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText("Menerapkan transliterasi Romaji/Latin…");
-                            } else if ("set_sync_offset".equals(toolName)) {
-                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(R.drawable.ic_settings);
-                                if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText("Menyesuaikan timing lirik (" + queryOrUrl + " ms)…");
-                            } else if ("modify_lyric_line".equals(toolName)) {
-                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText("Memperbarui " + queryOrUrl + "…");
-                            } else if ("toggle_display".equals(toolName)) {
-                                if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(R.drawable.ic_sparkles);
-                                if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText("Mengubah tampilan: " + queryOrUrl + "…");
-                            } else {
-                                if (aiStudioToolStatusIcon != null) {
-                                    aiStudioToolStatusIcon.setImageResource(R.drawable.ic_search);
-                                }
-                                String query = queryOrUrl != null ? queryOrUrl : "";
-                                if (query.length() > 50) query = query.substring(0, 50) + "…";
-                                if (aiStudioToolStatusText != null) {
-                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_searching) + " \"" + query + "\"");
-                                }
-                            }
+                            CleanMarkdownFormatter.ToolDisplayInfo info =
+                                    CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, MainActivity.this);
+                            if (aiStudioToolStatusIcon != null) aiStudioToolStatusIcon.setImageResource(info.iconRes);
+                            if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText(info.runningText);
                             aiStudioToolStatusContainer.setAlpha(0f);
                             aiStudioToolStatusContainer.setVisibility(View.VISIBLE);
                             aiStudioToolStatusContainer.animate().alpha(1f).setDuration(220).start();
@@ -2225,23 +2192,9 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             if (aiStudioToolStatusIcon != null) {
                                 aiStudioToolStatusIcon.setImageResource(R.drawable.ic_check);
                             }
-                            if (aiStudioToolStatusText != null) {
-                                if ("web_fetch".equals(toolName)) {
-                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_fetch_done));
-                                } else if ("translate_lyrics".equals(toolName)) {
-                                    aiStudioToolStatusText.setText("Lirik berhasil diterjemahkan!");
-                                } else if ("transliterate_lyrics".equals(toolName)) {
-                                    aiStudioToolStatusText.setText("Transliterasi berhasil diterapkan!");
-                                } else if ("set_sync_offset".equals(toolName)) {
-                                    aiStudioToolStatusText.setText("Sinkronisasi berhasil disesuaikan!");
-                                } else if ("modify_lyric_line".equals(toolName)) {
-                                    aiStudioToolStatusText.setText("Baris lirik berhasil diperbarui!");
-                                } else if ("toggle_display".equals(toolName)) {
-                                    aiStudioToolStatusText.setText("Pengaturan tampilan diperbarui!");
-                                } else {
-                                    aiStudioToolStatusText.setText(getString(R.string.ai_tool_search_done, resultsCount));
-                                }
-                            }
+                            CleanMarkdownFormatter.ToolDisplayInfo info =
+                                    CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, MainActivity.this);
+                            if (aiStudioToolStatusText != null) aiStudioToolStatusText.setText(info.doneText);
                             scheduleToolStatusHide();
                         });
                     }

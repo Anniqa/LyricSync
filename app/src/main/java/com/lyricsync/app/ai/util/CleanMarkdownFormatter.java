@@ -362,4 +362,59 @@ public final class CleanMarkdownFormatter {
 
         return new SourceChipData(label, url);
     }
+
+    public static class ToolDisplayInfo {
+        public final int iconRes;
+        public final String runningText;
+        public final String doneText;
+
+        public ToolDisplayInfo(int iconRes, String runningText, String doneText) {
+            this.iconRes = iconRes;
+            this.runningText = runningText != null ? runningText : "";
+            this.doneText = doneText != null ? doneText : "";
+        }
+    }
+
+    public static ToolDisplayInfo formatTool(String toolName, String queryOrUrl, int resultsCount, Context context) {
+        int icon = com.lyricsync.app.R.drawable.ic_search;
+        String running = "";
+        String done = "Selesai";
+
+        if ("web_fetch".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_search_globe;
+            String host = queryOrUrl;
+            try {
+                android.net.Uri uri = android.net.Uri.parse(queryOrUrl);
+                if (uri.getHost() != null) host = uri.getHost();
+            } catch (Exception ignored) {}
+            running = (context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_fetching) : "Mengambil isi halaman") + (host != null ? " (" + host + ")" : "");
+            done = context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_fetch_done) : "Halaman berhasil dibaca";
+        } else if ("translate_lyrics".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_sparkles;
+            running = "Menerjemahkan lirik (" + queryOrUrl + ")…";
+            done = "Lirik berhasil diterjemahkan!";
+        } else if ("transliterate_lyrics".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_sparkles;
+            running = "Menerapkan transliterasi Romaji/Latin…";
+            done = "Transliterasi berhasil diterapkan!";
+        } else if ("set_sync_offset".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_settings;
+            running = "Menyesuaikan timing lirik (" + queryOrUrl + " ms)…";
+            done = "Sinkronisasi berhasil disesuaikan!";
+        } else if ("modify_lyric_line".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_sparkles;
+            running = "Memperbarui " + queryOrUrl + " di overlay…";
+            done = "Baris lirik berhasil diperbarui!";
+        } else if ("toggle_display".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_sparkles;
+            running = "Mengubah tampilan: " + queryOrUrl + "…";
+            done = "Pengaturan tampilan diperbarui!";
+        } else {
+            String query = queryOrUrl != null ? queryOrUrl : "";
+            if (query.length() > 50) query = query.substring(0, 50) + "…";
+            running = (context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_searching) : "Mencari") + " \"" + query + "\"";
+            done = context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_search_done, resultsCount) : "Ditemukan " + resultsCount + " sumber";
+        }
+        return new ToolDisplayInfo(icon, running, done);
+    }
 }
