@@ -586,9 +586,8 @@ public class AntigravityApiClientToolLoopTest {
             }
         });
 
-        // Turn 1: Model calls transliterate_lyrics with show_original_script=false
-        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"functionCall\": {\"name\": \"transliterate_lyrics\",\"id\": \"call_translit_1\",\"args\": {\"mode\": \"romaji_with_translation\",\"show_original_script\": false}}}]}}]}}\n\n";
-
+        // Turn 1: Model calls transliterate_lyrics with thought_signature and show_original_script=false
+        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_crypto_gemini_3\",\"functionCall\": {\"name\": \"transliterate_lyrics\",\"id\": \"call_translit_1\",\"args\": {\"mode\": \"romaji_with_translation\",\"show_original_script\": false}}}]}}]}}\n\n";
         // Turn 2: Model returns explanation
         String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Aksara Jepang telah disembunyikan dan lirik ditampilkan dalam Romaji beserta terjemahannya di layar overlay.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 45,\"candidatesTokenCount\": 25}}}\n\n";
 

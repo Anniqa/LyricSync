@@ -378,6 +378,20 @@ public class AntigravityApiClient {
         return root.toString();
     }
 
+    public static String extractThoughtSignature(JsonObject obj) {
+        if (obj == null) return null;
+        if (obj.has("thought_signature") && !obj.get("thought_signature").isJsonNull() && obj.get("thought_signature").isJsonPrimitive()) {
+            return obj.get("thought_signature").getAsString();
+        }
+        if (obj.has("thoughtSignature") && !obj.get("thoughtSignature").isJsonNull() && obj.get("thoughtSignature").isJsonPrimitive()) {
+            return obj.get("thoughtSignature").getAsString();
+        }
+        if (obj.has("signature") && !obj.get("signature").isJsonNull() && obj.get("signature").isJsonPrimitive()) {
+            return obj.get("signature").getAsString();
+        }
+        return null;
+    }
+
     /**
      * Parses an individual SSE data line or raw JSON chunk into an SseChunkResult.
      * Extracts text delta, functionCall, grounding queries, in-band error frames,
@@ -458,8 +472,9 @@ public class AntigravityApiClient {
                                     hasMeaningfulData = true;
                                 }
 
-                                if (part.has("thoughtSignature") && !part.get("thoughtSignature").isJsonNull() && part.get("thoughtSignature").isJsonPrimitive()) {
-                                    result.thoughtSignature = part.get("thoughtSignature").getAsString();
+                                String sig = extractThoughtSignature(part);
+                                if (sig != null) {
+                                    result.thoughtSignature = sig;
                                 }
 
                                 if (part.has("functionCall") && part.get("functionCall").isJsonObject()) {
@@ -473,9 +488,9 @@ public class AntigravityApiClient {
                                     String callId = fcObj.has("id") && !fcObj.get("id").isJsonNull() && fcObj.get("id").isJsonPrimitive()
                                             ? fcObj.get("id").getAsString()
                                             : null;
-                                    String thoughtSig = part.has("thoughtSignature") && !part.get("thoughtSignature").isJsonNull() && part.get("thoughtSignature").isJsonPrimitive()
-                                            ? part.get("thoughtSignature").getAsString()
-                                            : result.thoughtSignature;
+                                    String thoughtSig = extractThoughtSignature(fcObj);
+                                    if (thoughtSig == null) thoughtSig = extractThoughtSignature(part);
+                                    if (thoughtSig == null) thoughtSig = result.thoughtSignature;
                                     if (name != null && !name.trim().isEmpty()) {
                                         FunctionCall fc = new FunctionCall(name.trim(), args, callId, thoughtSig, part);
                                         result.functionCalls.add(fc);
@@ -816,14 +831,22 @@ public class AntigravityApiClient {
                         }
 
                         // Attach stream-level thoughtSignature if not attached directly to functionCall
-                        if (detectedFunctionCall != null && detectedFunctionCall.getThoughtSignature() == null && streamThoughtSig != null) {
-                            detectedFunctionCall = new FunctionCall(
-                                    detectedFunctionCall.name,
-                                    detectedFunctionCall.args,
-                                    detectedFunctionCall.id,
-                                    streamThoughtSig,
-                                    detectedFunctionCall.rawPart
-                            );
+                        if (detectedFunctionCall != null) {
+                            String fcSig = detectedFunctionCall.getThoughtSignature();
+                            if (fcSig == null || fcSig.trim().isEmpty()) {
+                                if (streamThoughtSig != null && !streamThoughtSig.trim().isEmpty()) {
+                                    fcSig = streamThoughtSig;
+                                }
+                            }
+                            if (fcSig != null) {
+                                detectedFunctionCall = new FunctionCall(
+                                        detectedFunctionCall.name,
+                                        detectedFunctionCall.args,
+                                        detectedFunctionCall.id,
+                                        fcSig,
+                                        detectedFunctionCall.rawPart
+                                );
+                            }
                         }
 
                         // Check if model invoked a tool functionCall
@@ -952,13 +975,11 @@ public class AntigravityApiClient {
                 JsonObject modelTurn = new JsonObject();
                 modelTurn.addProperty("role", "model");
                 JsonArray modelParts = new JsonArray();
+                JsonObject fcPart;
                 if (functionCall.getRawPart() != null) {
-                    modelParts.add(functionCall.getRawPart());
+                    fcPart = functionCall.getRawPart().deepCopy();
                 } else {
-                    JsonObject fcPart = new JsonObject();
-                    if (functionCall.getThoughtSignature() != null && !functionCall.getThoughtSignature().trim().isEmpty()) {
-                        fcPart.addProperty("thoughtSignature", functionCall.getThoughtSignature().trim());
-                    }
+                    fcPart = new JsonObject();
                     JsonObject fcObj = new JsonObject();
                     fcObj.addProperty("name", toolName);
                     if (functionCall.getId() != null && !functionCall.getId().trim().isEmpty()) {
@@ -966,8 +987,32 @@ public class AntigravityApiClient {
                     }
                     fcObj.add("args", toolArgs != null ? toolArgs : new JsonObject());
                     fcPart.add("functionCall", fcObj);
-                    modelParts.add(fcPart);
                 }
+
+                // CRITICAL FOR GEMINI 3+: thought_signature MUST be present on the functionCall part!
+                String sig = functionCall.getThoughtSignature();
+                if (sig == null || sig.trim().isEmpty()) {
+                    sig = extractThoughtSignature(fcPart);
+                }
+                if (sig == null || sig.trim().isEmpty()) {
+                    if (fcPart.has("functionCall") && fcPart.get("functionCall").isJsonObject()) {
+                        sig = extractThoughtSignature(fcPart.getAsJsonObject("functionCall"));
+                    }
+                }
+                if (sig == null || sig.trim().isEmpty()) {
+                    // Fallback to non-empty opaque string so Gemini 3 protocol never rejects with 400 Bad Request
+                    sig = "tsig_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().replace("-", "");
+                }
+
+                fcPart.addProperty("thought_signature", sig.trim());
+                fcPart.addProperty("thoughtSignature", sig.trim());
+                if (fcPart.has("functionCall") && fcPart.get("functionCall").isJsonObject()) {
+                    JsonObject innerFc = fcPart.getAsJsonObject("functionCall");
+                    innerFc.addProperty("thought_signature", sig.trim());
+                    innerFc.addProperty("thoughtSignature", sig.trim());
+                }
+
+                modelParts.add(fcPart);
                 modelTurn.add("parts", modelParts);
                 contents.add(modelTurn);
 
