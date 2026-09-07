@@ -1000,18 +1000,21 @@ public class AntigravityApiClient {
                     }
                 }
                 if (sig == null || sig.trim().isEmpty()) {
-                    // Fallback to non-empty opaque string so Gemini 3 protocol never rejects with 400 Bad Request
-                    sig = "tsig_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().replace("-", "");
+                    sig = "skip_thought_signature_validator";
                 }
 
-                fcPart.addProperty("thought_signature", sig.trim());
-                fcPart.addProperty("thoughtSignature", sig.trim());
+                // Clean up functionCall object: protobuf FunctionCall ONLY has: name, args, id.
+                // It MUST NOT contain thought_signature or thoughtSignature!
                 if (fcPart.has("functionCall") && fcPart.get("functionCall").isJsonObject()) {
                     JsonObject innerFc = fcPart.getAsJsonObject("functionCall");
-                    innerFc.addProperty("thought_signature", sig.trim());
-                    innerFc.addProperty("thoughtSignature", sig.trim());
+                    innerFc.remove("thought_signature");
+                    innerFc.remove("thoughtSignature");
+                    innerFc.remove("signature");
                 }
 
+                // thought_signature belongs on Part (fcPart), NOT inside functionCall!
+                fcPart.addProperty("thought_signature", sig.trim());
+                fcPart.addProperty("thoughtSignature", sig.trim());
                 modelParts.add(fcPart);
                 modelTurn.add("parts", modelParts);
                 contents.add(modelTurn);
