@@ -194,6 +194,23 @@ public class AiSyllableTransliterationServiceTest {
     }
 
     @Test
+    public void testBuildPromptPayloadWithAndWithoutTranslation() {
+        List<LyricsData.LyricsLine> lines = new ArrayList<>();
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "前世");
+        line.words.add(new LyricsData.Word(0, 1500, "前"));
+        line.words.add(new LyricsData.Word(1500, 3000, "世"));
+        lines.add(line);
+
+        String promptWithTrans = AiSyllableTransliterationService.buildPromptPayload("Title", "Artist", lines, "id", true);
+        assertTrue(promptWithTrans.contains("\"includeTranslation\": true") || promptWithTrans.contains("\"includeTranslation\":true"));
+        assertTrue(promptWithTrans.contains("translate the meaning accurately"));
+
+        String promptOnlyTranslit = AiSyllableTransliterationService.buildPromptPayload("Title", "Artist", lines, "id", false);
+        assertTrue(promptOnlyTranslit.contains("\"includeTranslation\": false") || promptOnlyTranslit.contains("\"includeTranslation\":false"));
+        assertTrue(promptOnlyTranslit.contains("transliteration ONLY"));
+    }
+
+    @Test
     public void testTransliterateSyllablesAsyncSuccess() {
         MockApiClient mockApi = new MockApiClient();
         mockApi.mockResponse = "{\n" +

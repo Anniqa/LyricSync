@@ -176,6 +176,10 @@
     <string name="ai_history_session_messages">%1$d messages</string>
     <string name="ai_history_deleted_one">Conversation deleted</string>
     <string name="ai_chip_transliterate">Transliterate &amp; Translate Syllables</string>
+    <string name="ai_chip_transliterate_with_translation">Transliteration &amp; Meaning</string>
+    <string name="ai_chip_transliterate_with_translation_desc">Syllable transliteration with line translations</string>
+    <string name="ai_chip_transliterate_only">Transliteration Only</string>
+    <string name="ai_chip_transliterate_only_desc">Syllable transliteration only, without translations</string>
     <string name="ai_transliterating">Generating Romaji and translation...</string>
     <string name="ai_transliteration_complete">Syllable transliteration ready</string>
     <string name="edit_syllables_title">Edit Syllables &amp; Translation</string>
@@ -184,6 +188,10 @@
     <string name="edit_syllables_translation">Line Meaning</string>
     <string name="btn_ai_regenerate">AI Regenerate</string>
     <string name="toggle_romaji">Romaji</string>
+    <string name="toggle_pinyin">Pinyin</string>
+    <string name="toggle_romaja">Romaja</string>
+    <string name="toggle_cyrillic_translit">Latin Transliteration</string>
+    <string name="toggle_transliteration">Transliteration</string>
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string name="romaji_enabled">Romaji enabled</string>

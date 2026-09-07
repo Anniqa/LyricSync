@@ -160,11 +160,16 @@ public class AiSyllableTransliterationService {
     }
 
     public static String buildPromptPayload(String title, String artist, List<LyricsData.LyricsLine> batchLines, String targetLang) {
+        return buildPromptPayload(title, artist, batchLines, targetLang, true);
+    }
+
+    public static String buildPromptPayload(String title, String artist, List<LyricsData.LyricsLine> batchLines, String targetLang, boolean includeTranslation) {
         String safeTargetLang = (targetLang != null && !targetLang.trim().isEmpty()) ? targetLang.trim() : "id";
         JsonObject promptObj = new JsonObject();
         promptObj.addProperty("title", title != null ? title : "");
         promptObj.addProperty("artist", artist != null ? artist : "");
         promptObj.addProperty("targetLanguage", safeTargetLang);
+        promptObj.addProperty("includeTranslation", includeTranslation);
 
         JsonArray linesArr = new JsonArray();
         if (batchLines != null) {
@@ -180,25 +185,32 @@ public class AiSyllableTransliterationService {
                         syllArr.add(w != null && w.text != null ? w.text : "");
                     }
                 }
+                lineObj.addProperty("syllableCount", syllArr.size());
                 lineObj.add("syllables", syllArr);
                 linesArr.add(lineObj);
             }
         }
         promptObj.add("lines", linesArr);
 
+        String translationRule = includeTranslation
+                ? "2. For each line, translate the meaning accurately into targetLanguage (" + safeTargetLang + ").\n"
+                : "2. The user requested transliteration ONLY. Leave \"translation\" as empty string \"\" for all lines.\n";
+
         return "You are an expert multilingual song lyrics transliteration and translation engine.\n" +
                 "Given song lines with syllable segmentation, output a strict JSON object with a \"lines\" array.\n" +
                 "Rules:\n" +
-                "1. Transliterate non-Latin scripts (Japanese Kanji/Kana to Hepburn Romaji, Chinese to Pinyin, Korean to Revised Romanization, Russian to Latin).\n" +
-                "2. For each line, translate the meaning accurately into targetLanguage (" + safeTargetLang + ").\n" +
+                "1. Transliterate non-Latin scripts (Japanese Kanji/Kana to Hepburn Romaji, Chinese Hanzi to Pinyin, Korean to Revised Romanization, Russian to Latin).\n" +
+                translationRule +
                 "3. CRITICAL: For \"wordsRomanji\", provide an array of strings of EXACTLY THE SAME LENGTH as input \"syllables\".\n" +
+                "   - Each element in \"wordsRomanji\" must correspond 1:1 to the syllable or character at the exact same index in \"syllables\".\n" +
+                "   - For Japanese Kanji compounds or Chinese characters: do NOT group or merge them into whole words! Decompose reading into each character. For example, if syllables is [\"前\", \"前\", \"前\", \"世\"], wordsRomanji MUST be [\"zen\", \"zen\", \"zen\", \"se\"], NOT [\"zenzenzense\"]. If syllables is [\"世\", \"界\"], wordsRomanji MUST be [\"se\", \"kai\"]. If input syllable is already Latin, keep it as is.\n" +
                 "Output ONLY valid JSON with schema:\n" +
                 "{\n" +
                 "  \"lines\": [\n" +
                 "    {\n" +
                 "      \"index\": 0,\n" +
-                "      \"romanji\": \"line transliteration\",\n" +
-                "      \"translation\": \"line translation\",\n" +
+                "      \"romanji\": \"full line transliteration\",\n" +
+                "      \"translation\": \"full line translation\",\n" +
                 "      \"wordsRomanji\": [\"syllable1\", \"syllable2\"]\n" +
                 "    }\n" +
                 "  ]\n" +
@@ -212,6 +224,16 @@ public class AiSyllableTransliterationService {
             final String trackTitle,
             final String artist,
             final String targetLang,
+            final Callback callback) {
+        return transliterateSyllablesAsync(data, trackTitle, artist, targetLang, true, callback);
+    }
+
+    public AntigravityApiClient.Cancellable transliterateSyllablesAsync(
+            final LyricsData data,
+            final String trackTitle,
+            final String artist,
+            final String targetLang,
+            final boolean includeTranslation,
             final Callback callback) {
         final BatchCancellable compositeCancellable = new BatchCancellable();
 
@@ -246,7 +268,7 @@ public class AiSyllableTransliterationService {
             batches.add(new ArrayList<>(targetLines.subList(i, end)));
         }
 
-        processBatch(0, batches, 0, totalLines, data, trackTitle, artist, targetLang, callback, compositeCancellable);
+        processBatch(0, batches, 0, totalLines, data, trackTitle, artist, targetLang, includeTranslation, callback, compositeCancellable);
         return compositeCancellable;
     }
 
@@ -259,6 +281,7 @@ public class AiSyllableTransliterationService {
             final String trackTitle,
             final String artist,
             final String targetLang,
+            final boolean includeTranslation,
             final Callback callback,
             final BatchCancellable cancellable) {
         if (cancellable.isCancelled()) {
@@ -287,7 +310,7 @@ public class AiSyllableTransliterationService {
         }
 
         final List<LyricsData.LyricsLine> currentBatch = batches.get(batchIndex);
-        String prompt = buildPromptPayload(trackTitle, artist, currentBatch, targetLang);
+        String prompt = buildPromptPayload(trackTitle, artist, currentBatch, targetLang, includeTranslation);
         List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user(prompt));
 
         AntigravityApiClient.Cancellable call = apiClient.generateContent(
@@ -307,7 +330,7 @@ public class AiSyllableTransliterationService {
                             LyricsData.LyricsLine line = currentBatch.get(i);
                             LineTransliterationResult match = findResultForIndex(results, i);
                             if (match != null) {
-                                if (match.translation != null && !match.translation.trim().isEmpty()) {
+                                if (includeTranslation && match.translation != null && !match.translation.trim().isEmpty()) {
                                     line.translation = match.translation.trim();
                                 }
                                 alignSyllables(line, match.wordsRomanji, match.romanji);
@@ -318,7 +341,7 @@ public class AiSyllableTransliterationService {
                         dispatchProgress(updatedProcessed, totalLines, callback);
 
                         processBatch(batchIndex + 1, batches, updatedProcessed, totalLines,
-                                data, trackTitle, artist, targetLang, callback, cancellable);
+                                data, trackTitle, artist, targetLang, includeTranslation, callback, cancellable);
                     }
 
                     @Override

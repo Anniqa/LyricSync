@@ -153,4 +153,21 @@ public class SyllableHighlighterLayerTest {
         highlighter.updateProgress(1000L);
         highlighter.updateProgress(2500L);
     }
+
+    @Test
+    public void testNoNonLatinInRomajiLayer() {
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "前 前");
+        line.words.add(new LyricsData.Word(0, 1500, "前"));
+        line.words.add(new LyricsData.Word(1500, 3000, "前"));
+
+        // When words don't have romaji yet, hasAnyWordRomanji is false
+        assertFalse(highlighter.hasAnyWordRomanji(line));
+
+        // When 1 word has romaji and 1 doesn't
+        line.words.get(0).romanji = "zen";
+        assertTrue(highlighter.hasAnyWordRomanji(line));
+
+        // SyllableHighlighter must never put Kanji "前" into romanji field
+        assertNull(line.words.get(1).romanji);
+    }
 }

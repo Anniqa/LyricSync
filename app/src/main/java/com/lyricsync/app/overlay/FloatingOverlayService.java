@@ -171,6 +171,7 @@ public class FloatingOverlayService extends Service {
     private AiSyllableTransliterationService aiTransliterationService;
     private LyricsCacheManager lyricsCacheManager;
     private androidx.appcompat.widget.SwitchCompat overlayRomajiSwitch;
+    private TextView overlayTransliterationLabel;
 
     // AI Insights UI & Subsystems
     private ImageView overlayAiButton;
@@ -442,14 +443,14 @@ public class FloatingOverlayService extends Service {
             LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(18), dpToPx(18));
             romajiRow.addView(romajiIcon, iconLp);
 
-            TextView romajiLabel = new TextView(this);
-            romajiLabel.setText(R.string.toggle_romaji);
-            romajiLabel.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-            romajiLabel.setTextSize(13f);
-            romajiLabel.setTypeface(null, Typeface.BOLD);
+            overlayTransliterationLabel = new TextView(this);
+            overlayTransliterationLabel.setText(R.string.toggle_romaji);
+            overlayTransliterationLabel.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+            overlayTransliterationLabel.setTextSize(13f);
+            overlayTransliterationLabel.setTypeface(null, Typeface.BOLD);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
             labelLp.setMarginStart(dpToPx(8));
-            romajiRow.addView(romajiLabel, labelLp);
+            romajiRow.addView(overlayTransliterationLabel, labelLp);
 
             overlayRomajiSwitch = new androidx.appcompat.widget.SwitchCompat(this);
             overlayRomajiSwitch.setShowText(false);
@@ -461,7 +462,10 @@ public class FloatingOverlayService extends Service {
                     highlighter.setTransliterationEnabled(isChecked);
                 }
                 sharedPrefs.edit().putBoolean("pref_romaji_enabled", isChecked).apply();
-                Toast.makeText(this, isChecked ? R.string.romaji_enabled : R.string.romaji_disabled, Toast.LENGTH_SHORT).show();
+                String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
+                        ? overlayTransliterationLabel.getText().toString()
+                        : getString(R.string.toggle_romaji);
+                Toast.makeText(this, labelName + (isChecked ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
             });
             romajiRow.addView(overlayRomajiSwitch, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -1518,20 +1522,33 @@ public class FloatingOverlayService extends Service {
         if (aiPromptTemplatesContainer == null) return;
         aiPromptTemplatesContainer.removeAllViews();
         if (currentLyrics != null && currentLyrics.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(currentLyrics)) {
-            View itemView = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
-            ImageView iconView = itemView.findViewById(R.id.prompt_icon);
-            TextView titleView = itemView.findViewById(R.id.prompt_title);
-            TextView descView = itemView.findViewById(R.id.prompt_desc);
-
-            titleView.setText(R.string.ai_chip_transliterate);
-            descView.setText(R.string.ai_transliterating);
-            iconView.setImageResource(R.drawable.ic_sparkles);
-
-            itemView.setOnClickListener(v -> {
+            // Option 1: Transliterasi & Arti
+            View itemWithTrans = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
+            ImageView icon1 = itemWithTrans.findViewById(R.id.prompt_icon);
+            TextView title1 = itemWithTrans.findViewById(R.id.prompt_title);
+            TextView desc1 = itemWithTrans.findViewById(R.id.prompt_desc);
+            title1.setText(R.string.ai_chip_transliterate_with_translation);
+            desc1.setText(R.string.ai_chip_transliterate_with_translation_desc);
+            icon1.setImageResource(R.drawable.ic_sparkles);
+            itemWithTrans.setOnClickListener(v -> {
                 Haptics.tick(v);
-                performTransliteration();
+                performTransliteration(true);
             });
-            aiPromptTemplatesContainer.addView(itemView);
+            aiPromptTemplatesContainer.addView(itemWithTrans);
+
+            // Option 2: Transliterasi Saja
+            View itemOnly = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
+            ImageView icon2 = itemOnly.findViewById(R.id.prompt_icon);
+            TextView title2 = itemOnly.findViewById(R.id.prompt_title);
+            TextView desc2 = itemOnly.findViewById(R.id.prompt_desc);
+            title2.setText(R.string.ai_chip_transliterate_only);
+            desc2.setText(R.string.ai_chip_transliterate_only_desc);
+            icon2.setImageResource(R.drawable.ic_sparkles);
+            itemOnly.setOnClickListener(v -> {
+                Haptics.tick(v);
+                performTransliteration(false);
+            });
+            aiPromptTemplatesContainer.addView(itemOnly);
         }
         String lang = LocaleHelper.getLanguage(this);
         List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
@@ -1574,6 +1591,10 @@ public class FloatingOverlayService extends Service {
     }
 
     private void performTransliteration() {
+        performTransliteration(true);
+    }
+
+    private void performTransliteration(final boolean includeTranslation) {
         if (currentLyrics == null || aiTransliterationService == null || currentTrack == null) return;
         if (activeTransliterationCall != null) {
             activeTransliterationCall.cancel();
@@ -1585,7 +1606,7 @@ public class FloatingOverlayService extends Service {
         String artist = currentTrack.artist != null ? currentTrack.artist : "";
         String targetLang = LocaleHelper.getLanguage(this);
         activeTransliterationCall = aiTransliterationService.transliterateSyllablesAsync(
-                currentLyrics, title, artist, targetLang,
+                currentLyrics, title, artist, targetLang, includeTranslation,
                 new AiSyllableTransliterationService.Callback() {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
@@ -1593,7 +1614,23 @@ public class FloatingOverlayService extends Service {
                         if (currentTrack == null || !java.util.Objects.equals(track.title, currentTrack.title)) return;
                         currentLyrics = enrichedData;
                         if (highlighter != null) {
+                            for (int i = 0; i < enrichedData.lines.size(); i++) {
+                                LyricsData.LyricsLine line = enrichedData.lines.get(i);
+                                List<String> wordsRomanji = new ArrayList<>();
+                                if (line.words != null) {
+                                    for (LyricsData.Word w : line.words) {
+                                        wordsRomanji.add(w.romanji);
+                                    }
+                                }
+                                highlighter.updateLineTransliteration(i, wordsRomanji, line.romanji);
+                                if (includeTranslation && line.translation != null && !line.translation.trim().isEmpty()) {
+                                    highlighter.updateLineTranslation(i, line.translation);
+                                }
+                            }
                             highlighter.setTransliterationEnabled(true);
+                            if (includeTranslation) {
+                                highlighter.setTranslationEnabled(true);
+                            }
                         }
                         sharedPrefs.edit().putBoolean("pref_romaji_enabled", true).apply();
                         if (overlayRomajiSwitch != null) {
@@ -1602,7 +1639,7 @@ public class FloatingOverlayService extends Service {
                         if (lyricsCacheManager != null && currentTrack != null) {
                             lyricsCacheManager.cache(currentTrack, enrichedData);
                         }
-                        renderOverlayLyrics(currentLyrics);
+                        updateTransliterationToggleUi();
                         Toast.makeText(FloatingOverlayService.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
                     }
 
@@ -1614,6 +1651,103 @@ public class FloatingOverlayService extends Service {
                 });
     }
 
+    private String getTransliterationLabelForScript(ScriptDetector.ScriptType script) {
+        if (script == null) return getString(R.string.toggle_transliteration);
+        switch (script) {
+            case JAPANESE:
+                return getString(R.string.toggle_romaji);
+            case CHINESE:
+                return getString(R.string.toggle_pinyin);
+            case KOREAN:
+                return getString(R.string.toggle_romaja);
+            case CYRILLIC:
+                return getString(R.string.toggle_cyrillic_translit);
+            default:
+                return getString(R.string.toggle_transliteration);
+        }
+    }
+
+    private void updateTransliterationToggleUi() {
+        if (overlayRomajiSwitch == null) return;
+        boolean enabled = highlighter != null ? highlighter.isTransliterationEnabled()
+                : sharedPrefs.getBoolean("pref_romaji_enabled", true);
+        overlayRomajiSwitch.setChecked(enabled);
+
+        if (overlayTransliterationLabel != null) {
+            ScriptDetector.ScriptType script = ScriptDetector.ScriptType.LATIN;
+            if (currentLyrics != null && currentLyrics.sourceScript != null) {
+                try {
+                    script = ScriptDetector.ScriptType.valueOf(currentLyrics.sourceScript);
+                } catch (Exception ignored) {}
+            }
+            if (script == ScriptDetector.ScriptType.LATIN && currentLyrics != null && currentLyrics.lines != null) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < Math.min(5, currentLyrics.lines.size()); i++) {
+                    LyricsData.LyricsLine l = currentLyrics.lines.get(i);
+                    if (l != null && l.text != null && !l.isInterlude) {
+                        sb.append(l.text).append(" ");
+                    }
+                }
+                script = ScriptDetector.detectScript(sb.toString());
+            }
+            overlayTransliterationLabel.setText(getTransliterationLabelForScript(script));
+        }
+    }
+
+    private void autoFetchTransliterationForCurrentLyrics() {
+        if (currentLyrics == null || aiTransliterationService == null || currentTrack == null) return;
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
+        }
+        final String fetchKey = pendingFetchKey;
+        final TrackInfo track = currentTrack;
+        final LyricsData targetLyrics = currentLyrics;
+        String title = track.title != null ? track.title : "";
+        String artist = track.artist != null ? track.artist : "";
+        String targetLang = LocaleHelper.getLanguage(this);
+
+        activeTransliterationCall = aiTransliterationService.transliterateSyllablesAsync(
+                targetLyrics, title, artist, targetLang, true,
+                new AiSyllableTransliterationService.Callback() {
+                    @Override
+                    public void onSuccess(LyricsData enrichedData) {
+                        activeTransliterationCall = null;
+                        if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
+                        currentLyrics = enrichedData;
+                        if (highlighter != null) {
+                            for (int i = 0; i < enrichedData.lines.size(); i++) {
+                                LyricsData.LyricsLine line = enrichedData.lines.get(i);
+                                List<String> wordsRomanji = new ArrayList<>();
+                                if (line.words != null) {
+                                    for (LyricsData.Word w : line.words) {
+                                        wordsRomanji.add(w.romanji);
+                                    }
+                                }
+                                highlighter.updateLineTransliteration(i, wordsRomanji, line.romanji);
+                                if (line.translation != null && !line.translation.trim().isEmpty()) {
+                                    highlighter.updateLineTranslation(i, line.translation);
+                                }
+                            }
+                            highlighter.setTransliterationEnabled(true);
+                            if (translationEnabled) {
+                                highlighter.setTranslationEnabled(true);
+                            }
+                        }
+                        if (lyricsCacheManager != null && track != null) {
+                            lyricsCacheManager.cache(track, enrichedData);
+                        }
+                        updateTransliterationToggleUi();
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        activeTransliterationCall = null;
+                        AppLog.w(TAG, "Auto-transliteration error: " + message);
+                    }
+                });
+    }
+
     public void toggleRomaji() {
         if (overlayRomajiSwitch != null) {
             overlayRomajiSwitch.toggle();
@@ -1621,7 +1755,10 @@ public class FloatingOverlayService extends Service {
             boolean newState = !highlighter.isTransliterationEnabled();
             highlighter.setTransliterationEnabled(newState);
             sharedPrefs.edit().putBoolean("pref_romaji_enabled", newState).apply();
-            Toast.makeText(this, newState ? R.string.romaji_enabled : R.string.romaji_disabled, Toast.LENGTH_SHORT).show();
+            String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
+                    ? overlayTransliterationLabel.getText().toString()
+                    : getString(R.string.toggle_romaji);
+            Toast.makeText(this, labelName + (newState ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1661,6 +1798,19 @@ public class FloatingOverlayService extends Service {
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
+        }
+
+        if (userQuery != null && currentLyrics != null && currentLyrics.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(currentLyrics)) {
+            String lower = userQuery.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("saja") || lower.contains("tanpa terjemahan") || lower.contains("tanpa arti") || lower.contains("only")) {
+                if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
+                    performTransliteration(false);
+                }
+            } else if (lower.contains("romaji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja")) {
+                if (lower.contains("terjemahan") || lower.contains("arti") || lower.contains("dengan") || lower.contains("dan") || lower.contains("with")) {
+                    performTransliteration(true);
+                }
+            }
         }
 
         String currentModel = sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
@@ -2878,6 +3028,10 @@ public class FloatingOverlayService extends Service {
             jumpToCurrentLineAfterLayout();
         }
         AppLog.i(TAG, "Rendered " + lyrics.lines.size() + " lyric lines, Choreographer loop started");
+        updateTransliterationToggleUi();
+        if (romajiPref && isLyricsNonLatin(lyrics) && !lyrics.hasTransliteration) {
+            autoFetchTransliterationForCurrentLyrics();
+        }
         if (translationEnabled) {
             String targetLang = sharedPrefs.getString(
                     com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG,

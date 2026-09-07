@@ -9,6 +9,7 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.lyricsync.app.ai.transliteration.ScriptDetector;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.ui.Anim;
 
@@ -117,16 +118,19 @@ public class SyllableHighlighter {
                 setupRomajiLayer(lv.line, lv, (LinearLayout) lv.rootView);
             }
         } else {
-            if (lv.romajiWordViews != null && wordsRomanji != null) {
-                for (int i = 0; i < Math.min(wordsRomanji.size(), lv.romajiWordViews.size()); i++) {
-                    String r = wordsRomanji.get(i);
-                    if (r != null) {
-                        GradientWordView wv = lv.romajiWordViews.get(i);
-                        wv.setText(r.trim());
-                        if (lv.line.words != null && i < lv.line.words.size()) {
-                            LyricsData.Word w = lv.line.words.get(i);
-                            wv.initLetterEmphasis(r.trim(), w.startTime, w.endTime);
-                        }
+            if (lv.romajiWordViews != null && lv.line.words != null) {
+                for (int i = 0; i < lv.romajiWordViews.size(); i++) {
+                    GradientWordView wv = lv.romajiWordViews.get(i);
+                    LyricsData.Word w = (i < lv.line.words.size()) ? lv.line.words.get(i) : null;
+                    String r = "";
+                    if (w != null && w.romanji != null && !w.romanji.trim().isEmpty()) {
+                        r = w.romanji.trim();
+                    } else if (w != null && w.text != null && !ScriptDetector.isNonLatin(w.text)) {
+                        r = w.text;
+                    }
+                    wv.setText(r);
+                    if (w != null) {
+                        wv.initLetterEmphasis(r, w.startTime, w.endTime);
                     }
                 }
             }
@@ -319,9 +323,12 @@ public class SyllableHighlighter {
         int initialColor = lv.lastState == STATE_ACTIVE ? ACTIVE_COLOR : (lv.lastState == STATE_PAST ? PAST_COLOR : INACTIVE_COLOR);
         for (int i = 0; i < line.words.size(); i++) {
             LyricsData.Word word = line.words.get(i);
-            String rText = (word.romanji != null && !word.romanji.trim().isEmpty())
-                    ? word.romanji
-                    : (word.text != null ? word.text : "");
+            String rText = "";
+            if (word.romanji != null && !word.romanji.trim().isEmpty()) {
+                rText = word.romanji.trim();
+            } else if (word.text != null && !ScriptDetector.isNonLatin(word.text)) {
+                rText = word.text;
+            }
             GradientWordView rwv = new GradientWordView(context);
             rwv.setAnimConfig(animConfig);
             rwv.setWordIndex(i);
