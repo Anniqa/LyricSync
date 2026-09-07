@@ -69,6 +69,116 @@ public class AiSyllableTransliterationService {
         return null;
     }
 
+    private static final java.util.regex.Pattern MORA_PATTERN = java.util.regex.Pattern.compile(
+        "(?i)" +
+        "(?:(?:t?ch|s?sh|ts|[kscnhmrgzdbptfvwj]y)[aiueoāīūēō](?:n(?![aiueoāīūēōy]))?)|" +
+        "(?:[bcdfghjklmnprstvwxyz][aiueoāīūēō](?:n(?![aiueoāīūēōy]))?)|" +
+        "(?:[aiueoāīūēō](?:n(?![aiueoāīūēōy]))?)|" +
+        "(?:n(?![aiueoāīūēōy]))|" +
+        "(?:[bcdfghjklmnprstvwxyz](?=[bcdfghjklmnprstvwxyz]))|" +
+        "(?:[a-zA-Z0-9]+)"
+    );
+
+    public static List<String> splitRomajiIntoMoras(String text) {
+        List<String> moras = new ArrayList<>();
+        if (text == null || text.trim().isEmpty()) return moras;
+        java.util.regex.Matcher m = MORA_PATTERN.matcher(text.trim());
+        while (m.find()) {
+            String mora = m.group().trim();
+            if (!mora.isEmpty()) {
+                moras.add(mora);
+            }
+        }
+        return moras;
+    }
+
+    public static List<String> alignTokens(List<String> rawTokens, int expectedCount) {
+        if (expectedCount <= 0) return Collections.emptyList();
+        if (rawTokens == null || rawTokens.isEmpty()) {
+            List<String> res = new ArrayList<>();
+            for (int i = 0; i < expectedCount; i++) res.add("");
+            return res;
+        }
+
+        // 1. If rawTokens already matches expectedCount exactly: 1:1
+        if (rawTokens.size() == expectedCount) {
+            return new ArrayList<>(rawTokens);
+        }
+
+        // 2. If fewer tokens than expectedCount, attempt mora-level decomposition
+        List<String> expanded = new ArrayList<>();
+        if (rawTokens.size() < expectedCount) {
+            for (String tok : rawTokens) {
+                if (tok == null || tok.isEmpty()) {
+                    expanded.add("");
+                    continue;
+                }
+                List<String> sub = splitRomajiIntoMoras(tok);
+                if (!sub.isEmpty()) {
+                    expanded.addAll(sub);
+                } else if (!tok.trim().isEmpty()) {
+                    expanded.add(tok.trim());
+                }
+            }
+        } else {
+            expanded.addAll(rawTokens);
+        }
+
+        if (expanded.isEmpty()) {
+            List<String> res = new ArrayList<>();
+            for (int i = 0; i < expectedCount; i++) res.add("");
+            return res;
+        }
+
+        // 3. If expanded matches expectedCount exactly: 1:1
+        if (expanded.size() == expectedCount) {
+            return expanded;
+        }
+
+        // 4. If more tokens than expectedCount: group proportionally into expectedCount buckets
+        if (expanded.size() > expectedCount) {
+            List<String> result = new ArrayList<>();
+            int total = expanded.size();
+            for (int i = 0; i < expectedCount; i++) {
+                int start = (i * total) / expectedCount;
+                int end = ((i + 1) * total) / expectedCount;
+                StringBuilder sb = new StringBuilder();
+                for (int k = start; k < end; k++) {
+                    sb.append(expanded.get(k));
+                }
+                result.add(sb.toString());
+            }
+            return result;
+        }
+
+        // 5. If still fewer tokens than expectedCount: distribute proportionally
+        List<String> result = new ArrayList<>();
+        int tokenCount = expanded.size();
+        for (int i = 0; i < expectedCount; i++) {
+            int tokIdx = (i * tokenCount) / expectedCount;
+            int spanStart = 0;
+            while ((spanStart * tokenCount) / expectedCount < tokIdx) {
+                spanStart++;
+            }
+            int spanEnd = spanStart;
+            while (spanEnd < expectedCount && (spanEnd * tokenCount) / expectedCount == tokIdx) {
+                spanEnd++;
+            }
+            int spanLen = Math.max(1, spanEnd - spanStart);
+            int subIdx = i - spanStart;
+
+            String tok = expanded.get(tokIdx);
+            if (tok.length() <= 1 || spanLen <= 1) {
+                result.add(subIdx == 0 ? tok : "");
+            } else {
+                int charStart = (subIdx * tok.length()) / spanLen;
+                int charEnd = ((subIdx + 1) * tok.length()) / spanLen;
+                result.add(tok.substring(charStart, charEnd));
+            }
+        }
+        return result;
+    }
+
     public static void alignSyllables(LyricsData.LyricsLine line, List<String> aiWordsRomanji, String fallbackRomanjiLine) {
         if (line == null) return;
         if (fallbackRomanjiLine != null && !fallbackRomanjiLine.trim().isEmpty()) {
@@ -81,22 +191,34 @@ public class AiSyllableTransliterationService {
 
         int expectedCount = line.words.size();
 
-        List<String> tokens = new ArrayList<>();
+        List<String> rawTokens = new ArrayList<>();
         if (aiWordsRomanji != null && !aiWordsRomanji.isEmpty()) {
             for (String tok : aiWordsRomanji) {
-                tokens.add(ScriptDetector.stripNonLatinCharacters(tok));
+                rawTokens.add(tok != null ? ScriptDetector.stripNonLatinCharacters(tok).trim() : "");
             }
-        } else if (line.romanji != null && !line.romanji.isEmpty()) {
+        }
+        boolean hasAny = false;
+        for (String t : rawTokens) {
+            if (!t.isEmpty()) {
+                hasAny = true;
+                break;
+            }
+        }
+        if (!hasAny && line.romanji != null && !line.romanji.isEmpty()) {
+            rawTokens.clear();
             String[] split = line.romanji.split("\\s+");
-            Collections.addAll(tokens, split);
+            for (String s : split) {
+                String clean = ScriptDetector.stripNonLatinCharacters(s).trim();
+                if (!clean.isEmpty()) {
+                    rawTokens.add(clean);
+                }
+            }
         }
 
+        List<String> aligned = alignTokens(rawTokens, expectedCount);
+
         for (int i = 0; i < expectedCount; i++) {
-            if (i < tokens.size()) {
-                line.words.get(i).romanji = tokens.get(i);
-            } else {
-                line.words.get(i).romanji = "";
-            }
+            line.words.get(i).romanji = (i < aligned.size()) ? aligned.get(i) : "";
         }
 
         if (line.romanji == null || line.romanji.trim().isEmpty()) {
@@ -270,9 +392,12 @@ public class AiSyllableTransliterationService {
                 "Rules:\n" +
                 "1. Transliterate non-Latin scripts (Japanese Kanji/Kana to Hepburn Romaji, Chinese Hanzi to Pinyin, Korean to Revised Romanization, Russian to Latin). Output 'romanji' and 'wordsRomanji' in STRICT LATIN CHARACTERS ONLY. Under no circumstances should original Japanese Kanji/Kana or Chinese characters appear in transliteration fields.\n" +
                 translationRule +
-                "3. CRITICAL: For \"wordsRomanji\", provide an array of strings of EXACTLY THE SAME LENGTH as input \"syllables\".\n" +
-                "   - Each element in \"wordsRomanji\" must correspond 1:1 to the syllable or character at the exact same index in \"syllables\".\n" +
-                "   - For Japanese Kanji compounds or Chinese characters: do NOT group or merge them into whole words! Decompose reading into each character. For example, if syllables is [\"前\", \"前\", \"前\", \"世\"], wordsRomanji MUST be [\"zen\", \"zen\", \"zen\", \"se\"], NOT [\"zenzenzense\"]. If syllables is [\"世\", \"界\"], wordsRomanji MUST be [\"se\", \"kai\"]. If input syllable is already Latin, keep it as is.\n" +
+                "3. CRITICAL: For \"wordsRomanji\", you MUST provide an array of strings of EXACTLY THE SAME LENGTH as the input \"syllables\" array (wordsRomanji.length == syllableCount).\n" +
+                "   - Each element in \"wordsRomanji\" corresponds 1:1 to the syllable or character at the exact same index in \"syllables\".\n" +
+                "   - For Japanese: decompose Kanji words and compounds into individual character/mora readings. For example, if \"syllables\" is [\"君\", \"の\", \"前\", \"前\", \"前\", \"世\", \"か\", \"ら\", \"僕\", \"は\"] (length 10), \"wordsRomanji\" MUST be [\"kimi\", \"no\", \"zen\", \"zen\", \"zen\", \"se\", \"ka\", \"ra\", \"boku\", \"wa\"] (length 10). If \"syllables\" is [\"あ\", \"な\", \"た\", \"の\"] (length 4), \"wordsRomanji\" MUST be [\"a\", \"na\", \"ta\", \"no\"] (length 4). NEVER combine multiple syllables into one token.\n" +
+                "   - For Chinese: each Hanzi character gets its Pinyin syllable.\n" +
+                "   - For Korean: each Hangul syllable block gets its Romanized syllable.\n" +
+                "   - If input syllable is already Latin, keep it as is.\n" +
                 "Output ONLY valid JSON with schema:\n" +
                 "{\n" +
                 "  \"lines\": [\n" +

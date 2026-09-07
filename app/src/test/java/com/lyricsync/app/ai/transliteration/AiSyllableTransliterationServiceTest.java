@@ -43,14 +43,57 @@ public class AiSyllableTransliterationServiceTest {
         line.words.add(new LyricsData.Word(2000, 3000, "前"));
         line.words.add(new LyricsData.Word(3000, 5000, "世"));
 
-        // Only 2 tokens returned instead of 4
+        // 2 word tokens returned instead of 4 syllables
         List<String> aiTokens = Arrays.asList("zenzen", "zense");
         AiSyllableTransliterationService.alignSyllables(line, aiTokens, "zenzen zense");
 
-        assertEquals("zenzen", line.words.get(0).romanji);
+        // Mora-aware decomposition splits "zenzen" and "zense" across all 4 syllables
+        assertEquals("zen", line.words.get(0).romanji);
+        assertEquals("zen", line.words.get(1).romanji);
+        assertEquals("zen", line.words.get(2).romanji);
+        assertEquals("se", line.words.get(3).romanji);
+    }
+
+    @Test
+    public void testAlignSyllablesMoraDecompositionWordsToKana() {
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "あなたのことがすきだ");
+        line.words.add(new LyricsData.Word(0, 300, "あ"));
+        line.words.add(new LyricsData.Word(300, 600, "な"));
+        line.words.add(new LyricsData.Word(600, 900, "た"));
+        line.words.add(new LyricsData.Word(900, 1200, "の"));
+        line.words.add(new LyricsData.Word(1200, 1500, "こ"));
+        line.words.add(new LyricsData.Word(1500, 1800, "と"));
+        line.words.add(new LyricsData.Word(1800, 2100, "が"));
+        line.words.add(new LyricsData.Word(2100, 2400, "す"));
+        line.words.add(new LyricsData.Word(2400, 2700, "き"));
+        line.words.add(new LyricsData.Word(2700, 3000, "だ"));
+
+        List<String> aiWordTokens = Arrays.asList("anata", "no", "koto", "ga", "sukida");
+        AiSyllableTransliterationService.alignSyllables(line, aiWordTokens, "anata no koto ga sukida");
+
+        assertEquals("a", line.words.get(0).romanji);
+        assertEquals("na", line.words.get(1).romanji);
+        assertEquals("ta", line.words.get(2).romanji);
+        assertEquals("no", line.words.get(3).romanji);
+        assertEquals("ko", line.words.get(4).romanji);
+        assertEquals("to", line.words.get(5).romanji);
+        assertEquals("ga", line.words.get(6).romanji);
+        assertEquals("su", line.words.get(7).romanji);
+        assertEquals("ki", line.words.get(8).romanji);
+        assertEquals("da", line.words.get(9).romanji);
+    }
+
+    @Test
+    public void testAlignSyllablesMoreTokensThanSyllables() {
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "君の前世");
+        line.words.add(new LyricsData.Word(0, 1500, "君の"));
+        line.words.add(new LyricsData.Word(1500, 3000, "前世"));
+
+        List<String> aiTokens = Arrays.asList("kimi", "no", "zen", "se");
+        AiSyllableTransliterationService.alignSyllables(line, aiTokens, "kimi no zense");
+
+        assertEquals("kimino", line.words.get(0).romanji);
         assertEquals("zense", line.words.get(1).romanji);
-        assertEquals("", line.words.get(2).romanji);
-        assertEquals("", line.words.get(3).romanji);
     }
 
     @Test
@@ -75,7 +118,6 @@ public class AiSyllableTransliterationServiceTest {
         List<String> aiTokensFallback = new ArrayList<>();
         aiTokensFallback.add(null);
         aiTokensFallback.add("se");
-        aiTokensFallback.add("extra");
         AiSyllableTransliterationService.alignSyllables(line, aiTokensFallback, "zen se");
 
         assertEquals("", line.words.get(0).romanji);
