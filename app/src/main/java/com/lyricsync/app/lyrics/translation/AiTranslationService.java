@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class AiTranslationService {
 
     public static final String PREF_AI_TRANSLATION_ENABLED = "pref_ai_translation_enabled";
-    public static final String DEFAULT_MODEL = "gemini-2.5-flash";
+    public static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
     public static final long DEFAULT_TIMEOUT_MS = 8000;
     public static final String PREF_NAME = "lyricsync";
 

@@ -35,7 +35,7 @@ public class SongChatManager {
         }
     }
 
-    public static final String DEFAULT_MODEL = "gemini-2.5-flash";
+    public static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
 
     public static final List<String> QUICK_PROMPTS = Collections.unmodifiableList(Arrays.asList(
             "Song Meaning & Story",
@@ -304,9 +304,25 @@ public class SongChatManager {
             }
         }
         if (isIndo) {
-            sb.append("\nJawab pertanyaan pengguna mengenai makna lagu, kisah di balik lagu, tema emosi, dan lirik secara ramah, mendalam, dan terstruktur dalam Bahasa Indonesia.");
+            sb.append("\n[PANDUAN ALAT LIRIK]\n");
+            sb.append("Anda memiliki alat fungsi (tools) untuk mengontrol dan memodifikasi tampilan lirik secara langsung di layar overlay pengguna:\n");
+            sb.append("- 'translate_lyrics': Gunakan jika pengguna meminta menerjemahkan lirik lagu ke bahasa lain (misal: Indonesia, Inggris, Jepang, Spanyol).\n");
+            sb.append("- 'transliterate_lyrics': Gunakan jika pengguna meminta transliterasi (Romaji/Pinyin/Romaja) atau menyembunyikan/menampilkan huruf asli.\n");
+            sb.append("- 'set_sync_offset': Gunakan jika pengguna mengeluh lirik terlalu cepat/lambat atau meminta memajukan/menunda lirik.\n");
+            sb.append("- 'modify_lyric_line': Gunakan jika pengguna meminta mengoreksi teks, arti, atau bacaan baris lirik tertentu.\n");
+            sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
+            sb.append("Jika permintaan pengguna berkaitan dengan tindakan di atas, SEGERA panggil alat tersebut!\n");
+            sb.append("Jawab pertanyaan pengguna mengenai makna lagu, kisah di balik lagu, tema emosi, dan lirik secara ramah, mendalam, dan terstruktur dalam Bahasa Indonesia.");
         } else {
-            sb.append("\nAnswer user questions about the song's meaning, backstory, emotional themes, and lyrics warmly, insightfully, and clearly in English.");
+            sb.append("\n[LYRIC TOOLS DIRECTIVE]\n");
+            sb.append("You have native tools to control and modify the overlay lyrics in real-time:\n");
+            sb.append("- 'translate_lyrics': Call when user asks to translate lyrics.\n");
+            sb.append("- 'transliterate_lyrics': Call when user asks for romaji, pinyin, or latin transliteration.\n");
+            sb.append("- 'set_sync_offset': Call when user asks to adjust sync timing/offset.\n");
+            sb.append("- 'modify_lyric_line': Call when user asks to fix or edit a specific lyric line.\n");
+            sb.append("- 'toggle_display': Call when user asks to toggle translation, romaji, or script display.\n");
+            sb.append("If user requests any of these actions, execute the respective tool immediately!\n");
+            sb.append("Answer user questions about the song's meaning, backstory, emotional themes, and lyrics warmly, insightfully, and clearly in English.");
         }
         return sb.toString();
     }

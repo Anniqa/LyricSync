@@ -23,7 +23,7 @@ import java.util.List;
 public class AiSyllableTransliterationService {
     private static final String TAG = "AiTranslitService";
     private static final int BATCH_SIZE = 12;
-    private static final String DEFAULT_MODEL = "gemini-2.5-flash";
+    private static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
 
     private final Context context;
     private final AntigravityApiClient apiClient;

@@ -30,7 +30,7 @@ public class SongChatManagerTest {
 
     @Before
     public void setUp() {
-        chatManager = new SongChatManager(null, "gemini-2.5-flash");
+        chatManager = new SongChatManager(null, "gemini-3.8-flash-high");
         fakePrefs = new FakeSharedPreferences();
         historyManager = new AiChatHistoryManager(fakePrefs);
         chatManager.setHistoryManager(historyManager);
@@ -38,7 +38,7 @@ public class SongChatManagerTest {
 
     @Test
     public void testInitialState() {
-        assertEquals("gemini-2.5-flash", chatManager.getModelId());
+        assertEquals("gemini-3.8-flash-high", chatManager.getModelId());
         assertTrue(chatManager.getHistory().isEmpty());
         assertTrue(chatManager.getLastWebSources().isEmpty());
         assertNotNull(chatManager.getActiveSessionId());

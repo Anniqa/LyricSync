@@ -41,6 +41,7 @@ import okio.BufferedSource;
 public class AntigravityApiClient {
 
     public static final String ENDPOINT_STREAM = "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
+    public static final String ENDPOINT_STREAM_PROD = "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
     public static final String USER_AGENT = "antigravity/ide/2.11.0 darwin/arm64";
     public static final String DEFAULT_PROJECT = "aicode-consumers";
     public static final String DEFAULT_REQUEST_TYPE = "agent";
@@ -79,6 +80,29 @@ public class AntigravityApiClient {
         }
 
         void onError(Exception error);
+    }
+
+    public interface LyricActionDelegate {
+        void translateLyrics(String targetLang, ActionCallback callback);
+        void transliterateLyrics(String mode, ActionCallback callback);
+        void setSyncOffset(int offsetMs, ActionCallback callback);
+        void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback);
+        void toggleDisplay(String feature, boolean enabled, ActionCallback callback);
+
+        interface ActionCallback {
+            void onSuccess(String message);
+            void onError(String error);
+        }
+    }
+
+    private volatile LyricActionDelegate lyricActionDelegate;
+
+    public void setLyricActionDelegate(LyricActionDelegate delegate) {
+        this.lyricActionDelegate = delegate;
+    }
+
+    public LyricActionDelegate getLyricActionDelegate() {
+        return this.lyricActionDelegate;
     }
 
     public interface CompletionCallback {
@@ -258,6 +282,109 @@ public class AntigravityApiClient {
         fetchTool.add("parameters", fetchParameters);
         declarations.add(fetchTool);
 
+        // 3. translate_lyrics
+        JsonObject transTool = new JsonObject();
+        transTool.addProperty("name", "translate_lyrics");
+        transTool.addProperty("description", "Menerjemahkan lirik lagu yang sedang diputar ke bahasa target secara langsung (misal: 'id' untuk Indonesia, 'en' untuk Inggris, 'ja' untuk Jepang) dan langsung menampilkannya di overlay pemutar lirik.");
+        JsonObject transParams = new JsonObject();
+        transParams.addProperty("type", "OBJECT");
+        JsonObject transProps = new JsonObject();
+        JsonObject langProp = new JsonObject();
+        langProp.addProperty("type", "STRING");
+        langProp.addProperty("description", "Kode bahasa tujuan (contoh: 'id' untuk Indonesia, 'en' untuk Inggris, 'ja' untuk Jepang, 'ko' untuk Korea, 'es' untuk Spanyol).");
+        transProps.add("target_language", langProp);
+        transParams.add("properties", transProps);
+        JsonArray transReq = new JsonArray();
+        transReq.add("target_language");
+        transParams.add("required", transReq);
+        transTool.add("parameters", transParams);
+        declarations.add(transTool);
+
+        // 4. transliterate_lyrics
+        JsonObject translitTool = new JsonObject();
+        translitTool.addProperty("name", "transliterate_lyrics");
+        translitTool.addProperty("description", "Mentransliterasikan lirik beraksara non-Latin (Jepang Kanji/Kana, Mandarin Hanzi, Korea Hangul) ke huruf Latin/Romaji dan langsung menerapkannya pada overlay lirik.");
+        JsonObject translitParams = new JsonObject();
+        translitParams.addProperty("type", "OBJECT");
+        JsonObject translitProps = new JsonObject();
+        JsonObject modeProp = new JsonObject();
+        modeProp.addProperty("type", "STRING");
+        modeProp.addProperty("description", "Mode transliterasi: 'romaji_with_translation' (romaji + terjemahan), 'romaji_only' (hanya romaji dengan aksara asli), atau 'pure_romaji' (hanya romaji tanpa huruf asli).");
+        translitProps.add("mode", modeProp);
+        translitParams.add("properties", translitProps);
+        translitTool.add("parameters", translitParams);
+        declarations.add(translitTool);
+
+        // 5. set_sync_offset
+        JsonObject offsetTool = new JsonObject();
+        offsetTool.addProperty("name", "set_sync_offset");
+        offsetTool.addProperty("description", "Menyesuaikan offset sinkronisasi audio dan lirik secara instan dalam milidetik (misal: 500 untuk menunda lirik setengah detik, -500 untuk memajukan lirik).");
+        JsonObject offsetParams = new JsonObject();
+        offsetParams.addProperty("type", "OBJECT");
+        JsonObject offsetProps = new JsonObject();
+        JsonObject offsetMsProp = new JsonObject();
+        offsetMsProp.addProperty("type", "INTEGER");
+        offsetMsProp.addProperty("description", "Nilai offset dalam milidetik.");
+        offsetProps.add("offset_ms", offsetMsProp);
+        offsetParams.add("properties", offsetProps);
+        JsonArray offsetReq = new JsonArray();
+        offsetReq.add("offset_ms");
+        offsetParams.add("required", offsetReq);
+        offsetTool.add("parameters", offsetParams);
+        declarations.add(offsetTool);
+
+        // 6. modify_lyric_line
+        JsonObject lineTool = new JsonObject();
+        lineTool.addProperty("name", "modify_lyric_line");
+        lineTool.addProperty("description", "Mengubah atau memperbaiki teks, arti terjemahan, atau pelafalan romaji baris lirik tertentu secara langsung di layar overlay.");
+        JsonObject lineParams = new JsonObject();
+        lineParams.addProperty("type", "OBJECT");
+        JsonObject lineProps = new JsonObject();
+        JsonObject idxProp = new JsonObject();
+        idxProp.addProperty("type", "INTEGER");
+        idxProp.addProperty("description", "Indeks baris lirik (mulai dari 0).");
+        lineProps.add("line_index", idxProp);
+        JsonObject textProp = new JsonObject();
+        textProp.addProperty("type", "STRING");
+        textProp.addProperty("description", "Teks lirik baru (opsional).");
+        lineProps.add("text", textProp);
+        JsonObject transLineProp = new JsonObject();
+        transLineProp.addProperty("type", "STRING");
+        transLineProp.addProperty("description", "Terjemahan baru untuk baris tersebut (opsional).");
+        lineProps.add("translation", transLineProp);
+        JsonObject romajiLineProp = new JsonObject();
+        romajiLineProp.addProperty("type", "STRING");
+        romajiLineProp.addProperty("description", "Bacaan romaji baru untuk baris tersebut (opsional).");
+        lineProps.add("romanji", romajiLineProp);
+        lineParams.add("properties", lineProps);
+        JsonArray lineReq = new JsonArray();
+        lineReq.add("line_index");
+        lineParams.add("required", lineReq);
+        lineTool.add("parameters", lineParams);
+        declarations.add(lineTool);
+
+        // 7. toggle_display
+        JsonObject toggleTool = new JsonObject();
+        toggleTool.addProperty("name", "toggle_display");
+        toggleTool.addProperty("description", "Menampilkan atau menyembunyikan terjemahan lirik, romaji, atau aksara asli pada tampilan overlay.");
+        JsonObject toggleParams = new JsonObject();
+        toggleParams.addProperty("type", "OBJECT");
+        JsonObject toggleProps = new JsonObject();
+        JsonObject featProp = new JsonObject();
+        featProp.addProperty("type", "STRING");
+        featProp.addProperty("description", "Fitur tampilan: 'translation' (terjemahan), 'romaji' (romaji), atau 'original_script' (aksara asli).");
+        toggleProps.add("feature", featProp);
+        JsonObject enableProp = new JsonObject();
+        enableProp.addProperty("type", "BOOLEAN");
+        enableProp.addProperty("description", "true untuk menampilkan, false untuk menyembunyikan.");
+        toggleProps.add("enabled", enableProp);
+        toggleParams.add("properties", toggleProps);
+        JsonArray toggleReq = new JsonArray();
+        toggleReq.add("feature");
+        toggleReq.add("enabled");
+        toggleParams.add("required", toggleReq);
+        toggleTool.add("parameters", toggleParams);
+        declarations.add(toggleTool);
         return declarations;
     }
 
@@ -853,6 +980,21 @@ public class AntigravityApiClient {
             queryOrUrl = toolArgs.has("url") && !toolArgs.get("url").isJsonNull()
                     ? toolArgs.get("url").getAsString()
                     : toolArgs.toString();
+        } else if ("translate_lyrics".equals(toolName)) {
+            queryOrUrl = toolArgs.has("target_language") && !toolArgs.get("target_language").isJsonNull()
+                    ? toolArgs.get("target_language").getAsString() : "id";
+        } else if ("transliterate_lyrics".equals(toolName)) {
+            queryOrUrl = toolArgs.has("mode") && !toolArgs.get("mode").isJsonNull()
+                    ? toolArgs.get("mode").getAsString() : "romaji";
+        } else if ("set_sync_offset".equals(toolName)) {
+            queryOrUrl = toolArgs.has("offset_ms") && !toolArgs.get("offset_ms").isJsonNull()
+                    ? toolArgs.get("offset_ms").getAsString() : "0";
+        } else if ("modify_lyric_line".equals(toolName)) {
+            queryOrUrl = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
+                    ? "Baris " + (toolArgs.get("line_index").getAsInt() + 1) : "Baris lirik";
+        } else if ("toggle_display".equals(toolName)) {
+            queryOrUrl = (toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull() ? toolArgs.get("feature").getAsString() : "")
+                    + " (" + (toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull() && toolArgs.get("enabled").getAsBoolean() ? "on" : "off") + ")";
         } else {
             queryOrUrl = toolArgs.toString();
         }
@@ -974,6 +1116,104 @@ public class AntigravityApiClient {
                         ? toolArgs.get("url").getAsString()
                         : "";
                 toolCancellable = executor.executeWebFetch(url, callback);
+            } else if ("translate_lyrics".equals(toolName)) {
+                if (lyricActionDelegate != null) {
+                    String targetLang = toolArgs.has("target_language") && !toolArgs.get("target_language").isJsonNull()
+                            ? toolArgs.get("target_language").getAsString() : "id";
+                    lyricActionDelegate.translateLyrics(targetLang, new LyricActionDelegate.ActionCallback() {
+                        @Override
+                        public void onSuccess(String message) {
+                            callback.onResult(new ToolResult(false, message, Collections.<SourceItem>emptyList()));
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            callback.onResult(new ToolResult(true, "Gagal menerjemahkan: " + error, Collections.<SourceItem>emptyList()));
+                        }
+                    });
+                } else {
+                    callback.onResult(new ToolResult(true, "LyricActionDelegate tidak tersedia", Collections.<SourceItem>emptyList()));
+                }
+            } else if ("transliterate_lyrics".equals(toolName)) {
+                if (lyricActionDelegate != null) {
+                    String mode = toolArgs.has("mode") && !toolArgs.get("mode").isJsonNull()
+                            ? toolArgs.get("mode").getAsString() : "romaji_with_translation";
+                    lyricActionDelegate.transliterateLyrics(mode, new LyricActionDelegate.ActionCallback() {
+                        @Override
+                        public void onSuccess(String message) {
+                            callback.onResult(new ToolResult(false, message, Collections.<SourceItem>emptyList()));
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            callback.onResult(new ToolResult(true, "Gagal transliterasi: " + error, Collections.<SourceItem>emptyList()));
+                        }
+                    });
+                } else {
+                    callback.onResult(new ToolResult(true, "LyricActionDelegate tidak tersedia", Collections.<SourceItem>emptyList()));
+                }
+            } else if ("set_sync_offset".equals(toolName)) {
+                if (lyricActionDelegate != null) {
+                    int offsetMs = toolArgs.has("offset_ms") && !toolArgs.get("offset_ms").isJsonNull()
+                            ? toolArgs.get("offset_ms").getAsInt() : 0;
+                    lyricActionDelegate.setSyncOffset(offsetMs, new LyricActionDelegate.ActionCallback() {
+                        @Override
+                        public void onSuccess(String message) {
+                            callback.onResult(new ToolResult(false, message, Collections.<SourceItem>emptyList()));
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            callback.onResult(new ToolResult(true, "Gagal mengatur offset: " + error, Collections.<SourceItem>emptyList()));
+                        }
+                    });
+                } else {
+                    callback.onResult(new ToolResult(true, "LyricActionDelegate tidak tersedia", Collections.<SourceItem>emptyList()));
+                }
+            } else if ("modify_lyric_line".equals(toolName)) {
+                if (lyricActionDelegate != null) {
+                    int lineIndex = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
+                            ? toolArgs.get("line_index").getAsInt() : -1;
+                    String text = toolArgs.has("text") && !toolArgs.get("text").isJsonNull()
+                            ? toolArgs.get("text").getAsString() : null;
+                    String translation = toolArgs.has("translation") && !toolArgs.get("translation").isJsonNull()
+                            ? toolArgs.get("translation").getAsString() : null;
+                    String romanji = toolArgs.has("romanji") && !toolArgs.get("romanji").isJsonNull()
+                            ? toolArgs.get("romanji").getAsString() : null;
+                    lyricActionDelegate.modifyLine(lineIndex, text, translation, romanji, new LyricActionDelegate.ActionCallback() {
+                        @Override
+                        public void onSuccess(String message) {
+                            callback.onResult(new ToolResult(false, message, Collections.<SourceItem>emptyList()));
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            callback.onResult(new ToolResult(true, "Gagal mengubah baris: " + error, Collections.<SourceItem>emptyList()));
+                        }
+                    });
+                } else {
+                    callback.onResult(new ToolResult(true, "LyricActionDelegate tidak tersedia", Collections.<SourceItem>emptyList()));
+                }
+            } else if ("toggle_display".equals(toolName)) {
+                if (lyricActionDelegate != null) {
+                    String feature = toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull()
+                            ? toolArgs.get("feature").getAsString() : "";
+                    boolean enabled = toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull()
+                            && toolArgs.get("enabled").getAsBoolean();
+                    lyricActionDelegate.toggleDisplay(feature, enabled, new LyricActionDelegate.ActionCallback() {
+                        @Override
+                        public void onSuccess(String message) {
+                            callback.onResult(new ToolResult(false, message, Collections.<SourceItem>emptyList()));
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            callback.onResult(new ToolResult(true, "Gagal mengubah tampilan: " + error, Collections.<SourceItem>emptyList()));
+                        }
+                    });
+                } else {
+                    callback.onResult(new ToolResult(true, "LyricActionDelegate tidak tersedia", Collections.<SourceItem>emptyList()));
+                }
             } else {
                 callback.onResult(new ToolResult(true, "Unknown tool: " + toolName, Collections.<SourceItem>emptyList()));
                 return;

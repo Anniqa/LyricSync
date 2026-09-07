@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SongMeaningService {
 
-    public static final String DEFAULT_MODEL = "gemini-2.5-flash";
+    public static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
     public static final String PREF_CACHE_PREFIX = "pref_song_meaning_";
     public static final String PREF_NAME = "lyricsync";
 

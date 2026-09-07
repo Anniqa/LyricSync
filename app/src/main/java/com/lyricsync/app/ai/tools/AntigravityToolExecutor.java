@@ -50,7 +50,7 @@ public class AntigravityToolExecutor {
     public static final String ENDPOINT_PROD =
             "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
     public static final String DEFAULT_PROJECT = "aicode-consumers";
-    public static final String SEARCH_MODEL = "gemini-2.5-flash";
+    public static final String SEARCH_MODEL = "gemini-3.8-flash-high";
     public static final String UNIFIED_SEARCH_MODEL = "same_as_chat";
     private static volatile String activeSearchModel = UNIFIED_SEARCH_MODEL;
     private static volatile java.util.function.Supplier<String> chatModelSupplier = null;
