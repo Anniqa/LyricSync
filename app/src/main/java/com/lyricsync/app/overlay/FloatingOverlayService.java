@@ -1699,10 +1699,10 @@ public class FloatingOverlayService extends Service {
                             lyricsCacheManager.cache(currentTrack, enrichedData);
                         }
                         updateTransliterationToggleUi();
-                        if (overlayScrollView != null) {
-                            overlayScrollView.post(() -> {
-                                if (highlighter != null && currentPosition >= 0) {
-                                    highlighter.updateProgress(currentPosition);
+                        if (scrollView != null) {
+                            scrollView.post(() -> {
+                                if (highlighter != null && sessionTracker != null) {
+                                    highlighter.updateProgress(sessionTracker.getCurrentPosition());
                                 }
                             });
                         }
@@ -1812,10 +1812,10 @@ public class FloatingOverlayService extends Service {
                             lyricsCacheManager.cache(track, enrichedData);
                         }
                         updateTransliterationToggleUi();
-                        if (overlayScrollView != null) {
-                            overlayScrollView.post(() -> {
-                                if (highlighter != null && currentPosition >= 0) {
-                                    highlighter.updateProgress(currentPosition);
+                        if (scrollView != null) {
+                            scrollView.post(() -> {
+                                if (highlighter != null && sessionTracker != null) {
+                                    highlighter.updateProgress(sessionTracker.getCurrentPosition());
                                 }
                             });
                         }
