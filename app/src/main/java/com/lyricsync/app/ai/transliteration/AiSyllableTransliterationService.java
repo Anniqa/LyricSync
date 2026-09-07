@@ -72,7 +72,7 @@ public class AiSyllableTransliterationService {
     public static void alignSyllables(LyricsData.LyricsLine line, List<String> aiWordsRomanji, String fallbackRomanjiLine) {
         if (line == null) return;
         if (fallbackRomanjiLine != null && !fallbackRomanjiLine.trim().isEmpty()) {
-            line.romanji = fallbackRomanjiLine.trim();
+            line.romanji = ScriptDetector.stripNonLatinCharacters(fallbackRomanjiLine).trim();
         }
 
         if (line.words == null || line.words.isEmpty()) {
@@ -81,31 +81,84 @@ public class AiSyllableTransliterationService {
 
         int expectedCount = line.words.size();
 
-        if (aiWordsRomanji != null && aiWordsRomanji.size() == expectedCount) {
-            for (int i = 0; i < expectedCount; i++) {
-                String token = aiWordsRomanji.get(i);
-                line.words.get(i).romanji = ScriptDetector.stripNonLatinCharacters(token);
-            }
-            return;
-        }
-
         List<String> tokens = new ArrayList<>();
         if (aiWordsRomanji != null && !aiWordsRomanji.isEmpty()) {
             for (String tok : aiWordsRomanji) {
                 tokens.add(ScriptDetector.stripNonLatinCharacters(tok));
             }
-        } else if (fallbackRomanjiLine != null && !fallbackRomanjiLine.trim().isEmpty()) {
-            String cleanFallback = ScriptDetector.stripNonLatinCharacters(fallbackRomanjiLine);
-            String[] split = cleanFallback.trim().split("\\s+");
+        } else if (line.romanji != null && !line.romanji.isEmpty()) {
+            String[] split = line.romanji.split("\\s+");
             Collections.addAll(tokens, split);
         }
 
         for (int i = 0; i < expectedCount; i++) {
             if (i < tokens.size()) {
-                String tok = tokens.get(i);
-                line.words.get(i).romanji = ScriptDetector.stripNonLatinCharacters(tok);
+                line.words.get(i).romanji = tokens.get(i);
             } else {
                 line.words.get(i).romanji = "";
+            }
+        }
+
+        if (line.romanji == null || line.romanji.trim().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (LyricsData.Word w : line.words) {
+                if (w.romanji != null && !w.romanji.trim().isEmpty()) {
+                    if (sb.length() > 0) sb.append(" ");
+                    sb.append(w.romanji.trim());
+                }
+            }
+            line.romanji = sb.toString();
+        }
+
+        computeWordBoundaries(line);
+    }
+
+    public static void computeWordBoundaries(LyricsData.LyricsLine line) {
+        if (line == null || line.words == null || line.words.isEmpty()) return;
+        int n = line.words.size();
+        if (line.romanji != null && !line.romanji.isEmpty()) {
+            String full = line.romanji.trim();
+            int cursor = 0;
+            boolean matched = true;
+            for (int i = 0; i < n; i++) {
+                LyricsData.Word w = line.words.get(i);
+                String tok = (w.romanji != null) ? w.romanji.trim() : "";
+                if (tok.isEmpty()) {
+                    w.isPartOfWord = false;
+                    continue;
+                }
+                while (cursor < full.length() && Character.isWhitespace(full.charAt(cursor))) {
+                    cursor++;
+                }
+                if (cursor + tok.length() <= full.length()
+                        && full.substring(cursor, cursor + tok.length()).equalsIgnoreCase(tok)) {
+                    cursor += tok.length();
+                    if (cursor < full.length() && !Character.isWhitespace(full.charAt(cursor)) && i < n - 1) {
+                        w.isPartOfWord = true;
+                    } else {
+                        w.isPartOfWord = false;
+                    }
+                } else {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                line.words.get(n - 1).isPartOfWord = false;
+                return;
+            }
+        }
+
+        for (int i = 0; i < n; i++) {
+            LyricsData.Word w = line.words.get(i);
+            if (i == n - 1) {
+                w.isPartOfWord = false;
+            } else if (w.text != null && w.text.endsWith(" ")) {
+                w.isPartOfWord = false;
+            } else if (w.romanji != null && w.romanji.endsWith(" ")) {
+                w.isPartOfWord = false;
+            } else {
+                w.isPartOfWord = false;
             }
         }
     }
@@ -116,44 +169,56 @@ public class AiSyllableTransliterationService {
 
         try {
             String clean = jsonText.trim();
-            if (clean.startsWith("```json")) {
-                clean = clean.substring(7);
-            } else if (clean.startsWith("```")) {
-                clean = clean.substring(3);
-            }
-            if (clean.endsWith("```")) {
-                clean = clean.substring(0, clean.length() - 3);
-            }
-            clean = clean.trim();
-
-            int firstBrace = clean.indexOf('{');
-            int lastBrace = clean.lastIndexOf('}');
-            if (firstBrace >= 0 && lastBrace > firstBrace) {
-                clean = clean.substring(firstBrace, lastBrace + 1);
+            java.util.regex.Pattern fencePattern = java.util.regex.Pattern.compile(
+                    "```(?:json)?\\s*([\\s\\S]*?)\\s*```", java.util.regex.Pattern.CASE_INSENSITIVE);
+            java.util.regex.Matcher fenceMatcher = fencePattern.matcher(clean);
+            if (fenceMatcher.find()) {
+                clean = fenceMatcher.group(1).trim();
             }
 
-            JsonObject root = JsonParser.parseString(clean).getAsJsonObject();
-            if (!root.has("lines") || !root.get("lines").isJsonArray()) {
-                return list;
+            int firstObj = clean.indexOf('{');
+            int firstArr = clean.indexOf('[');
+            if (firstArr >= 0 && (firstObj < 0 || firstArr < firstObj)) {
+                int lastArr = clean.lastIndexOf(']');
+                if (lastArr > firstArr) clean = clean.substring(firstArr, lastArr + 1);
+            } else if (firstObj >= 0) {
+                int lastObj = clean.lastIndexOf('}');
+                if (lastObj > firstObj) clean = clean.substring(firstObj, lastObj + 1);
             }
 
-            JsonArray arr = root.getAsJsonArray("lines");
-            for (JsonElement el : arr) {
-                if (!el.isJsonObject()) continue;
-                JsonObject obj = el.getAsJsonObject();
-                LineTransliterationResult item = new LineTransliterationResult();
-                item.index = obj.has("index") ? obj.get("index").getAsInt() : -1;
-                item.romanji = obj.has("romanji") ? ScriptDetector.stripNonLatinCharacters(obj.get("romanji").getAsString()) : "";
-                item.translation = obj.has("translation") ? obj.get("translation").getAsString() : "";
+            clean = clean.replaceAll(",\\s*([}\\]])", "$1");
 
-                if (obj.has("wordsRomanji") && obj.get("wordsRomanji").isJsonArray()) {
-                    JsonArray wr = obj.getAsJsonArray("wordsRomanji");
-                    for (JsonElement elWord : wr) {
-                        String rawToken = elWord != null && !elWord.isJsonNull() ? elWord.getAsString() : "";
-                        item.wordsRomanji.add(ScriptDetector.stripNonLatinCharacters(rawToken));
-                    }
+            JsonElement parsed = JsonParser.parseString(clean);
+            JsonArray arr = null;
+            if (parsed.isJsonObject()) {
+                JsonObject root = parsed.getAsJsonObject();
+                if (root.has("lines") && root.get("lines").isJsonArray()) {
+                    arr = root.getAsJsonArray("lines");
                 }
-                list.add(item);
+            } else if (parsed.isJsonArray()) {
+                arr = parsed.getAsJsonArray();
+            }
+
+            if (arr != null) {
+                for (JsonElement el : arr) {
+                    if (!el.isJsonObject()) continue;
+                    JsonObject obj = el.getAsJsonObject();
+                    LineTransliterationResult item = new LineTransliterationResult();
+                    item.index = (obj.has("index") && !obj.get("index").isJsonNull()) ? obj.get("index").getAsInt() : -1;
+                    item.romanji = (obj.has("romanji") && !obj.get("romanji").isJsonNull())
+                            ? ScriptDetector.stripNonLatinCharacters(obj.get("romanji").getAsString()) : "";
+                    item.translation = (obj.has("translation") && !obj.get("translation").isJsonNull())
+                            ? obj.get("translation").getAsString() : "";
+
+                    if (obj.has("wordsRomanji") && !obj.get("wordsRomanji").isJsonNull() && obj.get("wordsRomanji").isJsonArray()) {
+                        JsonArray wr = obj.getAsJsonArray("wordsRomanji");
+                        for (JsonElement elWord : wr) {
+                            String rawToken = elWord != null && !elWord.isJsonNull() ? elWord.getAsString() : "";
+                            item.wordsRomanji.add(ScriptDetector.stripNonLatinCharacters(rawToken));
+                        }
+                    }
+                    list.add(item);
+                }
             }
         } catch (Exception e) {
             try {
@@ -379,7 +444,14 @@ public class AiSyllableTransliterationService {
                 return r;
             }
         }
-        if (index >= 0 && index < results.size()) {
+        boolean hasValidIndices = false;
+        for (LineTransliterationResult r : results) {
+            if (r.index >= 0) {
+                hasValidIndices = true;
+                break;
+            }
+        }
+        if (!hasValidIndices && index >= 0 && index < results.size()) {
             return results.get(index);
         }
         return null;

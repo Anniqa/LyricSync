@@ -172,6 +172,8 @@ public class FloatingOverlayService extends Service {
     private LyricsCacheManager lyricsCacheManager;
     private androidx.appcompat.widget.SwitchCompat overlayRomajiSwitch;
     private TextView overlayTransliterationLabel;
+    private View romajiRow;
+    private boolean isProgrammaticRomajiUpdate = false;
 
     // AI Insights UI & Subsystems
     private ImageView overlayAiButton;
@@ -287,6 +289,21 @@ public class FloatingOverlayService extends Service {
                     overlayResizeSwitch.setChecked(show);
                 }
                 updateResizeHandleVisibility();
+            }
+        } else if ("pref_romaji_enabled".equals(key)) {
+            boolean enabled = prefs.getBoolean(key, true);
+            if (highlighter != null) {
+                highlighter.setTransliterationEnabled(enabled);
+            }
+            if (overlayRomajiSwitch != null && overlayRomajiSwitch.isChecked() != enabled) {
+                isProgrammaticRomajiUpdate = true;
+                overlayRomajiSwitch.setChecked(enabled);
+                isProgrammaticRomajiUpdate = false;
+            }
+        } else if ("pref_original_script_enabled".equals(key)) {
+            boolean enabled = prefs.getBoolean(key, true);
+            if (highlighter != null) {
+                highlighter.setOriginalScriptEnabled(enabled);
             }
         }
     };
@@ -433,43 +450,34 @@ public class FloatingOverlayService extends Service {
                 }
             });
         }
-        if (overlaySettingsPanel != null) {
-            LinearLayout romajiRow = new LinearLayout(this);
-            romajiRow.setOrientation(LinearLayout.HORIZONTAL);
-            romajiRow.setGravity(Gravity.CENTER_VERTICAL);
-            romajiRow.setPadding(0, dpToPx(4), 0, dpToPx(8));
-
-            ImageView romajiIcon = new ImageView(this);
-            romajiIcon.setImageResource(R.drawable.ic_sparkles);
-            romajiIcon.setColorFilter(ContextCompat.getColor(this, R.color.accent));
-            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(18), dpToPx(18));
-            romajiRow.addView(romajiIcon, iconLp);
-
-            overlayTransliterationLabel = new TextView(this);
-            overlayTransliterationLabel.setText(R.string.toggle_romaji);
-            overlayTransliterationLabel.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-            overlayTransliterationLabel.setTextSize(13f);
-            overlayTransliterationLabel.setTypeface(null, Typeface.BOLD);
-            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
-            labelLp.setMarginStart(dpToPx(8));
-            romajiRow.addView(overlayTransliterationLabel, labelLp);
-
-            overlayRomajiSwitch = new androidx.appcompat.widget.SwitchCompat(this);
+        romajiRow = overlayView.findViewById(R.id.overlay_romaji_row);
+        overlayTransliterationLabel = overlayView.findViewById(R.id.overlay_transliteration_label);
+        overlayRomajiSwitch = overlayView.findViewById(R.id.overlay_romaji_switch);
+        if (overlayRomajiSwitch != null) {
             overlayRomajiSwitch.setShowText(false);
             overlayRomajiSwitch.setTextOn("");
             overlayRomajiSwitch.setTextOff("");
-            overlayRomajiSwitch.setChecked(highlighter.isTransliterationEnabled());
+            isProgrammaticRomajiUpdate = true;
+            boolean romajiPref = sharedPrefs.getBoolean("pref_romaji_enabled", true);
+            overlayRomajiSwitch.setChecked(romajiPref);
+            isProgrammaticRomajiUpdate = false;
             overlayRomajiSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
+                if (isProgrammaticRomajiUpdate) return;
                 if (highlighter != null) {
                     highlighter.setTransliterationEnabled(isChecked);
                 }
                 sharedPrefs.edit().putBoolean("pref_romaji_enabled", isChecked).apply();
+                if (isChecked && currentLyrics != null && isLyricsNonLatin(currentLyrics) && !currentLyrics.hasTransliteration) {
+                    performTransliteration();
+                }
                 String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
                         ? overlayTransliterationLabel.getText().toString()
                         : getString(R.string.toggle_romaji);
                 Toast.makeText(this, labelName + (isChecked ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
             });
-            romajiRow.setOnLongClickListener(v -> {
+        }
+        if (romajiRow != null) {
+            View.OnLongClickListener longClickListener = v -> {
                 Haptics.tick(v);
                 if (highlighter != null) {
                     boolean newOrig = !highlighter.isOriginalScriptEnabled();
@@ -478,19 +486,10 @@ public class FloatingOverlayService extends Service {
                     Toast.makeText(this, newOrig ? "Aksara asli ditampilkan" : "Aksara asli disembunyikan (Romaji Saja)", Toast.LENGTH_SHORT).show();
                 }
                 return true;
-            });
-            romajiRow.addView(overlayRomajiSwitch, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-
-            int insertIndex = -1;
-            if (overlayTranslateSwitch != null && overlayTranslateSwitch.getParent() instanceof View) {
-                View parentRow = (View) overlayTranslateSwitch.getParent();
-                insertIndex = overlaySettingsPanel.indexOfChild(parentRow);
-            }
-            if (insertIndex >= 0) {
-                overlaySettingsPanel.addView(romajiRow, insertIndex + 1);
-            } else {
-                overlaySettingsPanel.addView(romajiRow);
+            };
+            romajiRow.setOnLongClickListener(longClickListener);
+            if (overlayRomajiSwitch != null) {
+                overlayRomajiSwitch.setOnLongClickListener(longClickListener);
             }
         }
         overlayResizeContainer = overlayView.findViewById(R.id.overlay_resize_container);
@@ -1610,7 +1609,7 @@ public class FloatingOverlayService extends Service {
             if (line != null && !line.isInterlude && line.text != null) {
                 sb.append(line.text).append(" ");
                 count++;
-                if (count >= 5) break;
+                if (count >= 25) break;
             }
         }
         return ScriptDetector.isNonLatin(sb.toString());
@@ -1644,7 +1643,9 @@ public class FloatingOverlayService extends Service {
                     .putBoolean("pref_original_script_enabled", showOriginalScript)
                     .apply();
             if (overlayRomajiSwitch != null) {
+                isProgrammaticRomajiUpdate = true;
                 overlayRomajiSwitch.setChecked(true);
+                isProgrammaticRomajiUpdate = false;
             }
             updateTransliterationToggleUi();
             Toast.makeText(this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
@@ -1662,7 +1663,8 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
                         activeTransliterationCall = null;
-                        if (currentTrack == null || !java.util.Objects.equals(track.title, currentTrack.title)) return;
+                        if (currentTrack == null || !java.util.Objects.equals(track.title, currentTrack.title)
+                                || !java.util.Objects.equals(track.artist, currentTrack.artist)) return;
                         currentLyrics = enrichedData;
                         if (highlighter != null) {
                             for (int i = 0; i < enrichedData.lines.size(); i++) {
@@ -1689,12 +1691,21 @@ public class FloatingOverlayService extends Service {
                                 .putBoolean("pref_original_script_enabled", showOriginalScript)
                                 .apply();
                         if (overlayRomajiSwitch != null) {
+                            isProgrammaticRomajiUpdate = true;
                             overlayRomajiSwitch.setChecked(true);
+                            isProgrammaticRomajiUpdate = false;
                         }
                         if (lyricsCacheManager != null && currentTrack != null) {
                             lyricsCacheManager.cache(currentTrack, enrichedData);
                         }
                         updateTransliterationToggleUi();
+                        if (overlayScrollView != null) {
+                            overlayScrollView.post(() -> {
+                                if (highlighter != null && currentPosition >= 0) {
+                                    highlighter.updateProgress(currentPosition);
+                                }
+                            });
+                        }
                         Toast.makeText(FloatingOverlayService.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
                     }
 
@@ -1724,9 +1735,17 @@ public class FloatingOverlayService extends Service {
 
     private void updateTransliterationToggleUi() {
         if (overlayRomajiSwitch == null) return;
+        boolean isNonLatin = isLyricsNonLatin(currentLyrics);
+        if (romajiRow != null) {
+            romajiRow.setVisibility(isNonLatin ? View.VISIBLE : View.GONE);
+        }
+        if (!isNonLatin) return;
+
         boolean enabled = highlighter != null ? highlighter.isTransliterationEnabled()
                 : sharedPrefs.getBoolean("pref_romaji_enabled", true);
+        isProgrammaticRomajiUpdate = true;
         overlayRomajiSwitch.setChecked(enabled);
+        isProgrammaticRomajiUpdate = false;
 
         if (overlayTransliterationLabel != null) {
             ScriptDetector.ScriptType script = ScriptDetector.ScriptType.LATIN;
@@ -1737,7 +1756,7 @@ public class FloatingOverlayService extends Service {
             }
             if (script == ScriptDetector.ScriptType.LATIN && currentLyrics != null && currentLyrics.lines != null) {
                 StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < Math.min(5, currentLyrics.lines.size()); i++) {
+                for (int i = 0; i < Math.min(25, currentLyrics.lines.size()); i++) {
                     LyricsData.LyricsLine l = currentLyrics.lines.get(i);
                     if (l != null && l.text != null && !l.isInterlude) {
                         sb.append(l.text).append(" ");
@@ -1793,6 +1812,13 @@ public class FloatingOverlayService extends Service {
                             lyricsCacheManager.cache(track, enrichedData);
                         }
                         updateTransliterationToggleUi();
+                        if (overlayScrollView != null) {
+                            overlayScrollView.post(() -> {
+                                if (highlighter != null && currentPosition >= 0) {
+                                    highlighter.updateProgress(currentPosition);
+                                }
+                            });
+                        }
                     }
 
                     @Override
@@ -3195,12 +3221,14 @@ public class FloatingOverlayService extends Service {
         } else {
             List<LyricsData.LyricsLine> lines = currentLyrics.lines;
             end = activeIndex;
-            while (end < n && lines.get(end).startTime - position < 3000) {
+            while (end < n && end < lines.size() && lines.get(end).startTime - position < 3000) {
                 end++;
             }
             end = Math.min(n, end + 2);
         }
-        highlighter.updateHighlight(position, deltaTime, start, end);
+        if (highlighter != null) {
+            highlighter.updateHighlight(position, deltaTime, start, end);
+        }
 
         View activeView = lyricsContainer.getChildAt(activeIndex);
         if (activeView != null && springScroller != null) {

@@ -22,6 +22,8 @@ public final class ScriptDetector {
     private static final Pattern THAI = Pattern.compile("[\\u0E00-\\u0E7F]");
     private static final Pattern GREEK = Pattern.compile("[\\u0370-\\u03FF]");
 
+    private static final Pattern CJK_PUNCTUATION = Pattern.compile("[\\u3000-\\u303F\\uFE30-\\uFE4F\\uFF01-\\uFF60]");
+
     private ScriptDetector() {}
 
     public static ScriptType detectScript(String text) {
@@ -47,6 +49,9 @@ public final class ScriptDetector {
         if (ARABIC.matcher(text).find() || THAI.matcher(text).find() || GREEK.matcher(text).find()) {
             return ScriptType.OTHER_NON_LATIN;
         }
+        if (CJK_PUNCTUATION.matcher(text).find()) {
+            return ScriptType.JAPANESE;
+        }
 
         return ScriptType.LATIN;
     }
@@ -56,18 +61,21 @@ public final class ScriptDetector {
     }
 
     private static final Pattern NON_LATIN_CHARS = Pattern.compile(
-            "[\\u3040-\\u30FF\\u4E00-\\u9FAF\\uAC00-\\uD7AF\\u1100-\\u11FF\\u0400-\\u04FF\\u0600-\\u06FF\\u0E00-\\u0E7F\\u0370-\\u03FF]"
+            "[\\u3000-\\u303F\\u3040-\\u30FF\\u3400-\\u4DBF\\u4E00-\\u9FAF\\uF900-\\uFAFF\\uFE30-\\uFE4F\\uFF00-\\uFFEF" +
+            "\\uAC00-\\uD7AF\\u1100-\\u11FF\\u0400-\\u04FF\\u0600-\\u06FF\\u0E00-\\u0E7F\\u0370-\\u03FF]"
     );
 
     /**
-     * Strips all non-Latin characters (Kanji, Kana, Hanzi, Hangul, Cyrillic, etc.)
-     * and leftover wrapper punctuation, leaving strictly Latin transliteration text.
+     * Strips all non-Latin characters (Kanji, Kana, Hanzi, Hangul, Cyrillic, CJK punctuation)
+     * and wrapper punctuation, leaving strictly Latin transliteration text.
      */
     public static String stripNonLatinCharacters(String text) {
         if (text == null) return "";
-        String stripped = NON_LATIN_CHARS.matcher(text).replaceAll("").trim();
-        stripped = stripped.replace("()", "").replace("（）", "").replace("[]", "").replace("【】", "");
-        stripped = stripped.replaceAll("^[\\(\\（\\[\\【]+|[\\)\\）\\]\\】]+$", "").trim();
+        String normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC);
+        normalized = normalized.replace('\u3000', ' ');
+        String stripped = NON_LATIN_CHARS.matcher(normalized).replaceAll(" ");
+        stripped = stripped.replaceAll("[「」『』【】《》〈〉〔〕()（）\\[\\]{}〜〰、。・!?:;,.]", " ");
+        stripped = stripped.replaceAll("\\s+", " ").trim();
         return stripped;
     }
 }

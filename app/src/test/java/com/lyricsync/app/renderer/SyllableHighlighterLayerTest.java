@@ -210,4 +210,21 @@ public class SyllableHighlighterLayerTest {
         boolean showOriginal = highlighter.isOriginalScriptEnabled() || !highlighter.isTransliterationEnabled() || !hasRomanji;
         assertTrue("Original script must be shown if transliteration is disabled", showOriginal);
     }
+
+    @Test
+    public void testShowOriginalWhenNoRomajiLayoutToPreventBlankLines() {
+        SyllableHighlighter.LineView lv = new SyllableHighlighter.LineView();
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 2000, "前");
+        line.words.add(new LyricsData.Word(0, 2000, "前", "zen"));
+        lv.line = line;
+        lv.romajiWordFlowLayout = null;
+
+        highlighter.setOriginalScriptEnabled(false);
+        highlighter.setTransliterationEnabled(true);
+
+        boolean hasRomanji = lv.line != null && highlighter.hasAnyWordRomanji(lv.line);
+        boolean hasActiveRomaji = lv.romajiWordFlowLayout != null && highlighter.isTransliterationEnabled() && hasRomanji;
+        boolean showOriginal = highlighter.isOriginalScriptEnabled() || !hasActiveRomaji;
+        assertTrue("Original script must never be hidden if romaji layer is not present", showOriginal);
+    }
 }

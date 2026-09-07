@@ -68,6 +68,7 @@ public class LyricsData {
         public long endTime;
         public String text;
         public String romanji;
+        public boolean isPartOfWord;
 
         public Word() {}
 

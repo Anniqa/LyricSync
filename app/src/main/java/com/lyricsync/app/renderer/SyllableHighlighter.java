@@ -92,6 +92,7 @@ public class SyllableHighlighter {
         this.originalScriptEnabled = enabled;
         for (LineView lv : lineViews) {
             updateLineScriptVisibility(lv);
+            updateRomajiLayerStyle(lv);
         }
     }
 
@@ -99,10 +100,27 @@ public class SyllableHighlighter {
         return originalScriptEnabled;
     }
 
+    private void updateRomajiLayerStyle(LineView lv) {
+        if (lv == null || lv.romajiWordFlowLayout == null || lv.romajiWordViews == null) return;
+        boolean soloRomaji = !originalScriptEnabled;
+        int topPadding = soloRomaji ? dpToPx(6) : dpToPx(1);
+        lv.romajiWordFlowLayout.setPadding(0, topPadding, 0, dpToPx(2));
+
+        float romajiFontSize = soloRomaji ? fontSizeSp : (fontSizeSp * 0.82f);
+        Typeface tf = (soloRomaji && lv.lastState == STATE_ACTIVE) ? fontBold : fontMedium;
+        int color = lv.lastState == STATE_ACTIVE ? ACTIVE_COLOR : (lv.lastState == STATE_PAST ? PAST_COLOR : INACTIVE_COLOR);
+
+        for (GradientWordView rwv : lv.romajiWordViews) {
+            rwv.setWordStyle(romajiFontSize, color, tf);
+        }
+        lv.romajiWordFlowLayout.requestLayout();
+    }
+
     public void updateLineScriptVisibility(LineView lv) {
         if (lv == null) return;
         boolean hasRomanji = lv.line != null && hasAnyWordRomanji(lv.line);
-        boolean showOriginal = originalScriptEnabled || !transliterationEnabled || !hasRomanji;
+        boolean hasActiveRomaji = lv.romajiWordFlowLayout != null && transliterationEnabled && hasRomanji;
+        boolean showOriginal = originalScriptEnabled || !hasActiveRomaji;
         if (lv.wordFlowLayout != null) {
             lv.wordFlowLayout.setVisibility(showOriginal ? View.VISIBLE : View.GONE);
         }
@@ -155,11 +173,25 @@ public class SyllableHighlighter {
                     }
                     wv.setText(r);
                     if (w != null) {
+                        wv.setCompactPadding(w.isPartOfWord);
                         wv.initLetterEmphasis(r, w.startTime, w.endTime);
+                        if (wv.getLayoutParams() instanceof WordFlowLayout.LayoutParams) {
+                            WordFlowLayout.LayoutParams lp = (WordFlowLayout.LayoutParams) wv.getLayoutParams();
+                            if (i < lv.line.words.size() - 1) {
+                                lp.rightMargin = w.isPartOfWord ? dpToPx(1) : dpToPx(7);
+                            } else {
+                                lp.rightMargin = 0;
+                            }
+                            lp.isWordBoundary = !w.isPartOfWord;
+                            wv.setLayoutParams(lp);
+                        }
+                        wv.requestLayout();
                     }
                 }
+                lv.romajiWordFlowLayout.requestLayout();
             }
             updateLineScriptVisibility(lv);
+            updateRomajiLayerStyle(lv);
         }
     }
 
@@ -339,12 +371,14 @@ public class SyllableHighlighter {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         romajiFlow.setLayoutParams(romajiParams);
-        romajiFlow.setPadding(0, dpToPx(1), 0, dpToPx(2));
+        int topPadding = !originalScriptEnabled ? dpToPx(6) : dpToPx(1);
+        romajiFlow.setPadding(0, topPadding, 0, dpToPx(2));
         romajiFlow.setClipChildren(false);
         romajiFlow.setClipToPadding(false);
 
         List<GradientWordView> romajiWordViews = new ArrayList<>();
-        float romajiFontSize = fontSizeSp * 0.82f;
+        float romajiFontSize = !originalScriptEnabled ? fontSizeSp : (fontSizeSp * 0.82f);
+        Typeface tf = (!originalScriptEnabled && lv.lastState == STATE_ACTIVE) ? fontBold : fontMedium;
         int initialColor = lv.lastState == STATE_ACTIVE ? ACTIVE_COLOR : (lv.lastState == STATE_PAST ? PAST_COLOR : INACTIVE_COLOR);
         for (int i = 0; i < line.words.size(); i++) {
             LyricsData.Word word = line.words.get(i);
@@ -359,7 +393,8 @@ public class SyllableHighlighter {
             rwv.setWordIndex(i);
             rwv.setText(rText);
             rwv.setTiming(word.startTime, word.endTime);
-            rwv.setWordStyle(romajiFontSize, initialColor, fontMedium);
+            rwv.setWordStyle(romajiFontSize, initialColor, tf);
+            rwv.setCompactPadding(word.isPartOfWord);
             rwv.initLetterEmphasis(rText, word.startTime, word.endTime);
             if (lv.lastState == STATE_ACTIVE) {
                 rwv.setLineActive(true);
@@ -369,8 +404,9 @@ public class SyllableHighlighter {
                     WordFlowLayout.LayoutParams.WRAP_CONTENT,
                     WordFlowLayout.LayoutParams.WRAP_CONTENT);
             if (i < line.words.size() - 1) {
-                rwlp.rightMargin = dpToPx(2);
+                rwlp.rightMargin = word.isPartOfWord ? dpToPx(1) : dpToPx(7);
             }
+            rwlp.isWordBoundary = !word.isPartOfWord;
             rwv.setLayoutParams(rwlp);
 
             romajiFlow.addView(rwv);
@@ -641,13 +677,24 @@ public class SyllableHighlighter {
         if (stateChanged) {
             for (GradientWordView wv : lv.wordViews) {
                 wv.setLineActive(isActive);
+                if (!isActive) {
+                    wv.animate().cancel();
+                    wv.setTranslationY(0f);
+                    wv.setAlpha(1f);
+                }
             }
             if (lv.romajiWordViews != null) {
                 for (GradientWordView rwv : lv.romajiWordViews) {
                     rwv.setLineActive(isActive);
+                    if (!isActive) {
+                        rwv.animate().cancel();
+                        rwv.setTranslationY(0f);
+                        rwv.setAlpha(1f);
+                    }
                 }
             }
-            float romajiFontSize = fontSizeSp * 0.82f;
+            float romajiFontSize = !originalScriptEnabled ? fontSizeSp : (fontSizeSp * 0.82f);
+            Typeface romajiTf = (!originalScriptEnabled && isActive) ? fontBold : fontMedium;
             if (isActive) {
                 if (lv.rootView != null) {
                     lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
@@ -658,7 +705,7 @@ public class SyllableHighlighter {
                 }
                 if (lv.romajiWordViews != null) {
                     for (GradientWordView rwv : lv.romajiWordViews) {
-                        rwv.setWordStyle(romajiFontSize, ACTIVE_COLOR, fontMedium);
+                        rwv.setWordStyle(romajiFontSize, ACTIVE_COLOR, romajiTf);
                     }
                 }
                 if (lv.translationView != null) {
@@ -680,7 +727,7 @@ public class SyllableHighlighter {
                 }
                 if (lv.romajiWordViews != null) {
                     for (GradientWordView rwv : lv.romajiWordViews) {
-                        rwv.setWordStyle(romajiFontSize, PAST_COLOR, fontMedium);
+                        rwv.setWordStyle(romajiFontSize, PAST_COLOR, romajiTf);
                     }
                 }
                 if (lv.translationView != null) {
@@ -693,7 +740,7 @@ public class SyllableHighlighter {
                 }
                 if (lv.romajiWordViews != null) {
                     for (GradientWordView rwv : lv.romajiWordViews) {
-                        rwv.setWordStyle(romajiFontSize, INACTIVE_COLOR, fontMedium);
+                        rwv.setWordStyle(romajiFontSize, INACTIVE_COLOR, romajiTf);
                     }
                 }
                 if (lv.translationView != null) {

@@ -71,5 +71,10 @@ public class ScriptDetectorTest {
         assertEquals("", ScriptDetector.stripNonLatinCharacters("スパークル"));
         assertEquals("ka ra", ScriptDetector.stripNonLatinCharacters("ka ra"));
         assertEquals("", ScriptDetector.stripNonLatinCharacters(null));
+        // CJK punctuation, brackets, fullwidth space
+        assertEquals("kimi no na wa", ScriptDetector.stripNonLatinCharacters("「君の（kimi no na wa）」"));
+        assertEquals("anata", ScriptDetector.stripNonLatinCharacters("、anata。"));
+        assertEquals("sekai", ScriptDetector.stripNonLatinCharacters("〜sekai〜"));
+        assertEquals("kokoro", ScriptDetector.stripNonLatinCharacters("\u3000kokoro\u3000"));
     }
 }

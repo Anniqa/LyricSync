@@ -257,16 +257,38 @@ public class GradientWordView extends TextView {
         }
     }
 
+    @Override
+    protected void onTextChanged(CharSequence text, int start, int lengthBefore, int lengthAfter) {
+        super.onTextChanged(text, start, lengthBefore, lengthAfter);
+        cachedTextWidth = -1f;
+    }
+
+    public void setCompactPadding(boolean compact) {
+        int horizontalPad = compact ? Math.max(1, Math.round(getPaint().getTextSize() * 0.02f))
+                : Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
+        int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.16f));
+        setPadding(horizontalPad, verticalPad, horizontalPad, verticalPad);
+        cachedTextWidth = -1f;
+    }
+
     public void initLetterEmphasis(String wordText, long wordStart, long wordEnd) {
+        cachedTextWidth = -1f;
+        if (wordText == null || wordText.isEmpty()) {
+            clearLetterEmphasis();
+            return;
+        }
         long duration = wordEnd - wordStart - LETTER_SUBSTRACT_START - LETTER_SUBSTRACT_END;
-        if (!letterEmphasisEnabled
-                || !isLetterCapable(wordText.length(), duration)) {
-            letterCapable = false;
+        if (!letterEmphasisEnabled || !isLetterCapable(wordText.length(), duration)) {
+            clearLetterEmphasis();
+            return;
+        }
+        letters = splitLetters(wordText);
+        int n = letters.length;
+        if (n == 0) {
+            clearLetterEmphasis();
             return;
         }
         letterCapable = true;
-        letters = splitLetters(wordText);
-        int n = letters.length;
         letterStartTimes = new long[n];
         letterEndTimes = new long[n];
         letterProgress = new float[n];
@@ -275,19 +297,17 @@ public class GradientWordView extends TextView {
 
         long adjStart = wordStart + LETTER_SUBSTRACT_START;
         long adjEnd = wordEnd - LETTER_SUBSTRACT_END;
-        long letterDur = (adjEnd - adjStart) / n;
+        long totalDur = Math.max(1, adjEnd - adjStart);
 
         for (int i = 0; i < n; i++) {
-            letterStartTimes[i] = adjStart + i * letterDur;
-            letterEndTimes[i] = letterStartTimes[i] + letterDur;
+            letterStartTimes[i] = adjStart + (totalDur * i) / n;
+            letterEndTimes[i] = (i == n - 1) ? adjEnd : adjStart + (totalDur * (i + 1)) / n;
             letterProgress[i] = 0f;
             letterScaleSprings[i] = new Spring(LETTER_IDLE_SCALE, scaleDamp, scaleFreq);
             letterGlowSprings[i] = new Spring(0, GLOW_DAMP, GLOW_FREQ);
         }
 
         if (scatterStyle) {
-            // Deterministic per-letter amplitude spread (0.55..1.35): same word always
-            // scatters the same way, so the effect looks choreographed, not noisy.
             letterScatter = new float[n];
             for (int i = 0; i < n; i++) {
                 double h = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
@@ -297,6 +317,17 @@ public class GradientWordView extends TextView {
         } else {
             letterScatter = null;
         }
+    }
+
+    private void clearLetterEmphasis() {
+        letterCapable = false;
+        letters = null;
+        letterStartTimes = null;
+        letterEndTimes = null;
+        letterProgress = null;
+        letterScaleSprings = null;
+        letterGlowSprings = null;
+        letterScatter = null;
     }
 
     private boolean isLetterCapable(int letterCount, long duration) {
@@ -445,6 +476,7 @@ public class GradientWordView extends TextView {
 
         getPaint().setShader(shader);
         canvas.drawText(text, drawX, baseline, getPaint());
+        getPaint().setShader(null);
 
         drawEffects(canvas, text, drawX, baseline, shaderW, p, false);
     }
@@ -715,7 +747,7 @@ public class GradientWordView extends TextView {
     private void drawLetterEmphasis(Canvas canvas, float viewW) {
         float baseline = getBaseline();
         float totalTextW = cachedTextWidth;
-        float startX = getPaddingLeft() + Math.max(0f, (viewW - totalTextW) / 2f);
+        float startX = getPaddingLeft();
 
         // Continuous sweep position in the -0.20..1.0 space (matches drawWordGradient).
         float p = -0.20f + 1.20f * progress;
@@ -733,7 +765,7 @@ public class GradientWordView extends TextView {
 
         int activeIndex = -1;
         for (int i = 0; i < n; i++) {
-            if (letterProgress[i] > 0 && letterProgress[i] < 1) {
+            if (letterProgress[i] > 0 && (letterProgress[i] < 1 || i == n - 1)) {
                 activeIndex = i;
                 break;
             }
@@ -800,7 +832,7 @@ public class GradientWordView extends TextView {
 
             canvas.save();
             float cx = cursor + letterW / 2f;
-            float cy = baseline / 2f;
+            float cy = baseline + getPaint().ascent() * 0.45f;
             if (lYOffset != 0f) {
                 canvas.translate(0, lYOffset * getHeight());
             }

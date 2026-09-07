@@ -25,8 +25,14 @@ public class WordFlowLayout extends ViewGroup {
     }
 
     public static class LayoutParams extends MarginLayoutParams {
+        public boolean isWordBoundary = true;
+
         public LayoutParams(int width, int height) {
             super(width, height);
+        }
+
+        public LayoutParams(ViewGroup.LayoutParams source) {
+            super(source);
         }
     }
 
@@ -55,6 +61,8 @@ public class WordFlowLayout extends ViewGroup {
         int x = 0;
         int y = 0;
         int rowHeight = 0;
+        int maxBaseline = 0;
+        int maxDescender = 0;
 
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
@@ -64,27 +72,42 @@ public class WordFlowLayout extends ViewGroup {
             LayoutParams lp = (LayoutParams) child.getLayoutParams();
             int childW = child.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
             int childH = child.getMeasuredHeight() + lp.topMargin + lp.bottomMargin;
+            int bl = child.getBaseline();
 
             if (x + childW > availableWidth && x > 0) {
                 x = 0;
-                y += rowHeight;
+                int fullRowH = (maxBaseline > 0) ? Math.max(rowHeight, maxBaseline + maxDescender) : rowHeight;
+                y += fullRowH;
                 rowHeight = 0;
+                maxBaseline = 0;
+                maxDescender = 0;
             }
 
             x += childW;
             rowHeight = Math.max(rowHeight, childH);
+            if (bl > 0) {
+                maxBaseline = Math.max(maxBaseline, bl + lp.topMargin);
+                maxDescender = Math.max(maxDescender, (child.getMeasuredHeight() - bl) + lp.bottomMargin);
+            }
         }
 
-        int totalHeight = y + rowHeight + getPaddingTop() + getPaddingBottom();
+        int lastRowH = (maxBaseline > 0) ? Math.max(rowHeight, maxBaseline + maxDescender) : rowHeight;
+        int totalHeight = y + lastRowH + getPaddingTop() + getPaddingBottom();
         setMeasuredDimension(width, resolveSize(totalHeight, heightMeasureSpec));
     }
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         int availableWidth = r - l - getPaddingLeft() - getPaddingRight();
-        int x = getPaddingLeft();
-        int y = getPaddingTop();
+        int left = getPaddingLeft();
+        int top = getPaddingTop();
+
+        java.util.List<View> rowViews = new java.util.ArrayList<>();
+        java.util.List<Integer> rowLefts = new java.util.ArrayList<>();
+        int x = left;
         int rowHeight = 0;
+        int maxBaseline = 0;
+        int maxDescender = 0;
 
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
@@ -93,18 +116,47 @@ public class WordFlowLayout extends ViewGroup {
             LayoutParams lp = (LayoutParams) child.getLayoutParams();
             int childW = child.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
             int childH = child.getMeasuredHeight() + lp.topMargin + lp.bottomMargin;
+            int bl = child.getBaseline();
 
-            if (x + childW > getPaddingLeft() + availableWidth && x > getPaddingLeft()) {
-                x = getPaddingLeft();
-                y += rowHeight;
+            if (x + childW > left + availableWidth && x > left) {
+                layoutRow(rowViews, rowLefts, top, maxBaseline);
+                int fullRowH = (maxBaseline > 0) ? Math.max(rowHeight, maxBaseline + maxDescender) : rowHeight;
+                top += fullRowH;
+
+                rowViews.clear();
+                rowLefts.clear();
+                x = left;
                 rowHeight = 0;
+                maxBaseline = 0;
+                maxDescender = 0;
             }
 
-            child.layout(x + lp.leftMargin, y + lp.topMargin,
-                    x + lp.leftMargin + child.getMeasuredWidth(),
-                    y + lp.topMargin + child.getMeasuredHeight());
+            rowViews.add(child);
+            rowLefts.add(x + lp.leftMargin);
             x += childW;
             rowHeight = Math.max(rowHeight, childH);
+            if (bl > 0) {
+                maxBaseline = Math.max(maxBaseline, bl + lp.topMargin);
+                maxDescender = Math.max(maxDescender, (child.getMeasuredHeight() - bl) + lp.bottomMargin);
+            }
+        }
+
+        if (!rowViews.isEmpty()) {
+            layoutRow(rowViews, rowLefts, top, maxBaseline);
+        }
+    }
+
+    private void layoutRow(java.util.List<View> rowViews, java.util.List<Integer> rowLefts, int rowTop, int maxBaseline) {
+        for (int i = 0; i < rowViews.size(); i++) {
+            View child = rowViews.get(i);
+            int childLeft = rowLefts.get(i);
+            LayoutParams lp = (LayoutParams) child.getLayoutParams();
+            int bl = child.getBaseline();
+            int offset = (maxBaseline > 0 && bl > 0) ? (maxBaseline - (bl + lp.topMargin)) : 0;
+            int childTop = rowTop + lp.topMargin + offset;
+            child.layout(childLeft, childTop,
+                    childLeft + child.getMeasuredWidth(),
+                    childTop + child.getMeasuredHeight());
         }
     }
 }
