@@ -77,6 +77,9 @@ public class SpotifyColorLyricsProvider implements LyricsProvider {
 
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
+                if (response.code() == 401) {
+                    authMgr.invalidateToken();
+                }
                 throw new IOException("HTTP " + response.code());
             }
 

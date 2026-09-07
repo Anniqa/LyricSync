@@ -66,6 +66,9 @@ public class SpicyLyricsProvider implements LyricsProvider {
     public void invalidateEmbedToken() {
         cachedEmbedToken = null;
         embedTokenFetchedAt = 0;
+        try {
+            SpotifyAuthManager.getInstance(context).invalidateToken();
+        } catch (Exception ignored) {}
     }
 
     public SpicyLyricsProvider(Context context) {
