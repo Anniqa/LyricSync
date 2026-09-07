@@ -9,6 +9,11 @@ import com.lyricsync.app.util.AppLog;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -28,11 +33,18 @@ public class SpotifyAuthManager {
     public static final String PREF_TOKEN_TIME = "pref_spotify_token_time";
     public static final String PREF_USER_NAME = "pref_spotify_user_name";
 
-    private static final String GET_TOKEN_URL =
-            "https://open.spotify.com/get_access_token?reason=transport&productType=web_player";
+    private static final String TOKEN_API_BASE = "https://open.spotify.com/api/token";
     private static final String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36";
     private static final long TOKEN_VALIDITY_MS = 45 * 60 * 1000L; // 45 minutes
+
+    private static final byte[] FALLBACK_SECRET = new byte[]{
+            44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118, 80, 64, 78
+    };
+    private static final int DEFAULT_SECRET_VERSION = 61;
+    private static volatile byte[] cachedSecret = FALLBACK_SECRET;
+    private static volatile int cachedSecretVersion = DEFAULT_SECRET_VERSION;
+    private static volatile long secretCacheExpiry = 0;
 
     private static volatile SpotifyAuthManager instance;
     private final Context context;
@@ -101,11 +113,50 @@ public class SpotifyAuthManager {
         return null;
     }
 
+    public static String generateTotp(long timeSeconds) {
+        try {
+            byte[] secretBytes = cachedSecret;
+            StringBuilder sb = new StringBuilder();
+            for (int t = 0; t < secretBytes.length; t++) {
+                int val = (secretBytes[t] & 0xFF) ^ ((t % 33) + 9);
+                sb.append(val);
+            }
+            byte[] keyBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+
+            long counter = timeSeconds / 30;
+            byte[] counterBytes = ByteBuffer.allocate(8).putLong(counter).array();
+
+            Mac mac = Mac.getInstance("HmacSHA1");
+            mac.init(new SecretKeySpec(keyBytes, "HmacSHA1"));
+            byte[] hash = mac.doFinal(counterBytes);
+
+            int offset = hash[hash.length - 1] & 0x0F;
+            int binary = ((hash[offset] & 0x7F) << 24)
+                    | ((hash[offset + 1] & 0xFF) << 16)
+                    | ((hash[offset + 2] & 0xFF) << 8)
+                    | (hash[offset + 3] & 0xFF);
+
+            int otp = binary % 1000000;
+            return String.format(Locale.US, "%06d", otp);
+        } catch (Exception e) {
+            AppLog.w(TAG, "Failed to generate TOTP: " + e.getMessage());
+            return "000000";
+        }
+    }
+
+    private String buildTokenUrl() {
+        long nowSec = System.currentTimeMillis() / 1000L;
+        String totp = generateTotp(nowSec);
+        return TOKEN_API_BASE + "?reason=init&productType=web-player&totp="
+                + totp + "&totpVer=" + cachedSecretVersion + "&totpServer=" + totp;
+    }
+
     public String exchangeSpDcSync(String spDc) {
         if (spDc == null || spDc.trim().isEmpty()) return null;
         try {
+            String url = buildTokenUrl();
             Request request = new Request.Builder()
-                    .url(GET_TOKEN_URL)
+                    .url(url)
                     .get()
                     .header("User-Agent", USER_AGENT)
                     .header("Cookie", "sp_dc=" + spDc.trim())
@@ -143,8 +194,9 @@ public class SpotifyAuthManager {
         }
 
         final String cleanSpDc = spDc.trim();
+        String url = buildTokenUrl();
         Request request = new Request.Builder()
-                .url(GET_TOKEN_URL)
+                .url(url)
                 .get()
                 .header("User-Agent", USER_AGENT)
                 .header("Cookie", "sp_dc=" + cleanSpDc)

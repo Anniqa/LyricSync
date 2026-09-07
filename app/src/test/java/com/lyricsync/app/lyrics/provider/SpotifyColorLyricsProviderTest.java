@@ -97,6 +97,7 @@ public class SpotifyColorLyricsProviderTest {
                 "      }\n" +
                 "    ]\n" +
                 "  }\n" +
+
                 "}";
 
         LyricsData data = provider.parseColorLyricsJson(json);
@@ -105,5 +106,11 @@ public class SpotifyColorLyricsProviderTest {
         assertEquals(1, data.lines.size());
         assertEquals("line without syllables", data.lines.get(0).text);
         assertTrue(data.lines.get(0).words.isEmpty());
+    }
+
+    @Test
+    public void testGenerateTotp() {
+        String totp = com.lyricsync.app.lyrics.auth.SpotifyAuthManager.generateTotp(1788801879L);
+        assertEquals("767052", totp);
     }
 }
