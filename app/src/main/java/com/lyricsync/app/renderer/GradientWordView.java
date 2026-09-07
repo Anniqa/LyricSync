@@ -201,6 +201,14 @@ public class GradientWordView extends TextView {
         this.endTime = endTime;
     }
 
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public long getEndTime() {
+        return endTime;
+    }
+
     /** Index of this word within its line; the Wave variant uses it as ripple phase. */
     public void setWordIndex(int index) {
         wordIndex = index;

@@ -92,7 +92,163 @@ public class AiSyllableTransliterationService {
         return moras;
     }
 
+    private static class Anchor {
+        final int tokenIdx;
+        final int sylStart;
+        final int sylEnd;
+        Anchor(int tokenIdx, int sylStart, int sylEnd) {
+            this.tokenIdx = tokenIdx;
+            this.sylStart = sylStart;
+            this.sylEnd = sylEnd;
+        }
+    }
+
+    private static String getKanaRomaji(char c) {
+        switch (c) {
+            case 'あ': case 'ア': return "a";
+            case 'い': case 'イ': return "i";
+            case 'う': case 'ウ': return "u";
+            case 'え': case 'エ': return "e";
+            case 'お': case 'オ': return "o";
+            case 'か': case 'カ': return "ka";
+            case 'き': case 'キ': return "ki";
+            case 'く': case 'ク': return "ku";
+            case 'け': case 'ケ': return "ke";
+            case 'こ': case 'コ': return "ko";
+            case 'さ': case 'サ': return "sa";
+            case 'し': case 'シ': return "shi";
+            case 'す': case 'ス': return "su";
+            case 'せ': case 'セ': return "se";
+            case 'そ': case 'ソ': return "so";
+            case 'た': case 'タ': return "ta";
+            case 'ち': case 'チ': return "chi";
+            case 'つ': case 'ツ': return "tsu";
+            case 'て': case 'テ': return "te";
+            case 'と': case 'ト': return "to";
+            case 'な': case 'ナ': return "na";
+            case 'に': case 'ニ': return "ni";
+            case 'ぬ': case 'ヌ': return "nu";
+            case 'ね': case 'ネ': return "ne";
+            case 'の': case 'ノ': return "no";
+            case 'は': case 'ハ': return "ha";
+            case 'ひ': case 'ヒ': return "hi";
+            case 'ふ': case 'フ': return "fu";
+            case 'へ': case 'ヘ': return "he";
+            case 'ほ': case 'ホ': return "ho";
+            case 'ま': case 'マ': return "ma";
+            case 'み': case 'ミ': return "mi";
+            case 'む': case 'ム': return "mu";
+            case 'め': case 'メ': return "me";
+            case 'も': case 'モ': return "mo";
+            case 'や': case 'ヤ': return "ya";
+            case 'ゆ': case 'ユ': return "yu";
+            case 'よ': case 'ヨ': return "yo";
+            case 'ら': case 'ラ': return "ra";
+            case 'り': case 'リ': return "ri";
+            case 'る': case 'ル': return "ru";
+            case 'れ': case 'レ': return "re";
+            case 'ろ': case 'ロ': return "ro";
+            case 'わ': case 'ワ': return "wa";
+            case 'を': case 'ヲ': return "wo";
+            case 'ん': case 'ン': return "n";
+            case 'が': case 'ガ': return "ga";
+            case 'ぎ': case 'ギ': return "gi";
+            case 'ぐ': case 'グ': return "gu";
+            case 'げ': case 'ゲ': return "ge";
+            case 'ご': case 'ゴ': return "go";
+            case 'ざ': case 'ザ': return "za";
+            case 'じ': case 'ジ': return "ji";
+            case 'ず': case 'ズ': return "zu";
+            case 'ぜ': case 'ゼ': return "ze";
+            case 'ぞ': case 'ゾ': return "zo";
+            case 'だ': case 'ダ': return "da";
+            case 'ぢ': case 'ヂ': return "ji";
+            case 'づ': case 'ヅ': return "zu";
+            case 'で': case 'デ': return "de";
+            case 'ど': case 'ド': return "do";
+            case 'ば': case 'バ': return "ba";
+            case 'び': case 'ビ': return "bi";
+            case 'ぶ': case 'ブ': return "bu";
+            case 'べ': case 'ベ': return "be";
+            case 'ぼ': case 'ボ': return "bo";
+            case 'ぱ': case 'パ': return "pa";
+            case 'ぴ': case 'ピ': return "pi";
+            case 'ぷ': case 'プ': return "pu";
+            case 'ぺ': case 'ペ': return "pe";
+            case 'ぽ': case 'ポ': return "po";
+            case 'ぁ': case 'ァ': return "a";
+            case 'ぃ': case 'ィ': return "i";
+            case 'ぅ': case 'ゥ': return "u";
+            case 'ぇ': case 'ェ': return "e";
+            case 'ぉ': case 'ォ': return "o";
+            case 'ゃ': case 'ャ': return "ya";
+            case 'ゅ': case 'ュ': return "yu";
+            case 'ょ': case 'ョ': return "yo";
+            case 'っ': case 'ッ': return "";
+            default: return null;
+        }
+    }
+
+    private static boolean matchKanaOrText(String token, List<LyricsData.Word> syllables, int start, int end) {
+        if (token == null || token.isEmpty()) return false;
+        String cleanTok = token.replaceAll("[^a-zA-Z0-9]", "").toLowerCase(java.util.Locale.ROOT);
+        if (cleanTok.isEmpty()) return false;
+
+        // 1. Check direct Latin text concatenation
+        StringBuilder textSb = new StringBuilder();
+        for (int i = start; i <= end; i++) {
+            LyricsData.Word w = syllables.get(i);
+            if (w != null && w.text != null) {
+                textSb.append(w.text.replaceAll("[^a-zA-Z0-9]", ""));
+            }
+        }
+        if (cleanTok.equalsIgnoreCase(textSb.toString())) {
+            return true;
+        }
+
+        // 2. Check Kana phonetic concatenation
+        StringBuilder kanaSb = new StringBuilder();
+        boolean allKana = true;
+        for (int i = start; i <= end; i++) {
+            LyricsData.Word w = syllables.get(i);
+            if (w == null || w.text == null) {
+                allKana = false;
+                break;
+            }
+            String t = w.text.trim();
+            for (int k = 0; k < t.length(); k++) {
+                char c = t.charAt(k);
+                String r = getKanaRomaji(c);
+                if (r != null) {
+                    kanaSb.append(r);
+                } else if (!Character.isWhitespace(c)) {
+                    allKana = false;
+                    break;
+                }
+            }
+            if (!allKana) break;
+        }
+
+        if (allKana && kanaSb.length() > 0) {
+            String kanaStr = kanaSb.toString();
+            if (cleanTok.equals(kanaStr)) return true;
+            // Common particle readings: "は" -> "wa", "を" -> "o", "へ" -> "e"
+            if (start == end && syllables.get(start).text != null) {
+                String single = syllables.get(start).text.trim();
+                if ((single.equals("は") || single.equals("ハ")) && cleanTok.equals("wa")) return true;
+                if ((single.equals("を") || single.equals("ヲ")) && cleanTok.equals("o")) return true;
+                if ((single.equals("へ") || single.equals("ヘ")) && cleanTok.equals("e")) return true;
+            }
+        }
+
+        return false;
+    }
+
     public static List<String> alignTokens(List<String> rawTokens, int expectedCount) {
+        return alignTokens(rawTokens, expectedCount, null);
+    }
+
+    public static List<String> alignTokens(List<String> rawTokens, int expectedCount, List<LyricsData.Word> syllables) {
         if (expectedCount <= 0) return Collections.emptyList();
         if (rawTokens == null || rawTokens.isEmpty()) {
             List<String> res = new ArrayList<>();
@@ -105,77 +261,220 @@ public class AiSyllableTransliterationService {
             return new ArrayList<>(rawTokens);
         }
 
-        // 2. If fewer tokens than expectedCount, attempt mora-level decomposition
-        List<String> expanded = new ArrayList<>();
-        if (rawTokens.size() < expectedCount) {
-            for (String tok : rawTokens) {
-                if (tok == null || tok.isEmpty()) {
-                    expanded.add("");
-                    continue;
-                }
-                List<String> sub = splitRomajiIntoMoras(tok);
-                if (!sub.isEmpty()) {
-                    expanded.addAll(sub);
-                } else if (!tok.trim().isEmpty()) {
-                    expanded.add(tok.trim());
-                }
-            }
-        } else {
-            expanded.addAll(rawTokens);
-        }
-
-        if (expanded.isEmpty()) {
-            List<String> res = new ArrayList<>();
-            for (int i = 0; i < expectedCount; i++) res.add("");
-            return res;
-        }
-
-        // 3. If expanded matches expectedCount exactly: 1:1
-        if (expanded.size() == expectedCount) {
-            return expanded;
-        }
-
-        // 4. If more tokens than expectedCount: group proportionally into expectedCount buckets
-        if (expanded.size() > expectedCount) {
+        // 2. If more tokens than expectedCount: group proportionally into expectedCount buckets
+        if (rawTokens.size() > expectedCount) {
             List<String> result = new ArrayList<>();
-            int total = expanded.size();
+            int total = rawTokens.size();
             for (int i = 0; i < expectedCount; i++) {
                 int start = (i * total) / expectedCount;
                 int end = ((i + 1) * total) / expectedCount;
                 StringBuilder sb = new StringBuilder();
                 for (int k = start; k < end; k++) {
-                    sb.append(expanded.get(k));
+                    sb.append(rawTokens.get(k));
                 }
                 result.add(sb.toString());
             }
             return result;
         }
 
-        // 5. If still fewer tokens than expectedCount: distribute proportionally
-        List<String> result = new ArrayList<>();
-        int tokenCount = expanded.size();
-        for (int i = 0; i < expectedCount; i++) {
-            int tokIdx = (i * tokenCount) / expectedCount;
-            int spanStart = 0;
-            while ((spanStart * tokenCount) / expectedCount < tokIdx) {
-                spanStart++;
+        // 3. Anchor matching when syllables list is provided
+        if (syllables != null && syllables.size() == expectedCount) {
+            List<Anchor> anchors = new ArrayList<>();
+            int currentSyl = 0;
+            int prevToken = -1;
+            int n = rawTokens.size();
+            for (int t = 0; t < n; t++) {
+                String tok = rawTokens.get(t);
+                if (tok == null || tok.trim().isEmpty()) continue;
+                int foundStart = -1;
+                int foundEnd = -1;
+                for (int sStart = currentSyl; sStart < expectedCount; sStart++) {
+                    if (sStart - currentSyl < (t - prevToken - 1)) {
+                        continue;
+                    }
+                    for (int sEnd = sStart; sEnd < Math.min(expectedCount, sStart + 5); sEnd++) {
+                        int remainingSyl = expectedCount - 1 - sEnd;
+                        int remainingTok = n - 1 - t;
+                        if (remainingSyl < remainingTok) {
+                            break;
+                        }
+                        if (matchKanaOrText(tok, syllables, sStart, sEnd)) {
+                            foundStart = sStart;
+                            foundEnd = sEnd;
+                            break;
+                        }
+                    }
+                    if (foundStart != -1) break;
+                }
+                if (foundStart != -1) {
+                    anchors.add(new Anchor(t, foundStart, foundEnd));
+                    currentSyl = foundEnd + 1;
+                    prevToken = t;
+                }
             }
-            int spanEnd = spanStart;
-            while (spanEnd < expectedCount && (spanEnd * tokenCount) / expectedCount == tokIdx) {
-                spanEnd++;
-            }
-            int spanLen = Math.max(1, spanEnd - spanStart);
-            int subIdx = i - spanStart;
 
-            String tok = expanded.get(tokIdx);
-            if (tok.length() <= 1 || spanLen <= 1) {
-                result.add(subIdx == 0 ? tok : "");
-            } else {
-                int charStart = (subIdx * tok.length()) / spanLen;
-                int charEnd = ((subIdx + 1) * tok.length()) / spanLen;
-                result.add(tok.substring(charStart, charEnd));
+            if (!anchors.isEmpty()) {
+                String[] out = new String[expectedCount];
+                int lastSylEnd = -1;
+                int lastTokIdx = -1;
+                for (Anchor a : anchors) {
+                    // Fill gap before anchor
+                    int gapTokStart = lastTokIdx + 1;
+                    int gapTokEnd = a.tokenIdx;
+                    int gapSylStart = lastSylEnd + 1;
+                    int gapSylEnd = a.sylStart - 1;
+                    int numSyl = gapSylEnd - gapSylStart + 1;
+                    if (numSyl > 0) {
+                        List<String> gapToks = (gapTokStart < gapTokEnd)
+                                ? rawTokens.subList(gapTokStart, gapTokEnd)
+                                : Collections.emptyList();
+                        List<String> sub = alignTokens(gapToks, numSyl, null);
+                        for (int k = 0; k < numSyl; k++) {
+                            out[gapSylStart + k] = (k < sub.size()) ? sub.get(k) : "";
+                        }
+                    }
+                    // Fill anchor itself
+                    int span = a.sylEnd - a.sylStart + 1;
+                    String tok = rawTokens.get(a.tokenIdx);
+                    if (span == 1) {
+                        out[a.sylStart] = tok;
+                    } else {
+                        List<String> sub = alignTokens(tok.isEmpty() ? Collections.emptyList() : Collections.singletonList(tok), span, null);
+                        for (int k = 0; k < span; k++) {
+                            out[a.sylStart + k] = (k < sub.size()) ? sub.get(k) : "";
+                        }
+                    }
+                    lastSylEnd = a.sylEnd;
+                    lastTokIdx = a.tokenIdx;
+                }
+                // Fill trailing gap after last anchor
+                int trailTokStart = lastTokIdx + 1;
+                int trailTokEnd = n;
+                int trailSylStart = lastSylEnd + 1;
+                int trailSylEnd = expectedCount - 1;
+                int numTrailSyl = trailSylEnd - trailSylStart + 1;
+                if (numTrailSyl > 0) {
+                    List<String> gapToks = (trailTokStart < trailTokEnd)
+                            ? rawTokens.subList(trailTokStart, trailTokEnd)
+                            : Collections.emptyList();
+                    List<String> sub = alignTokens(gapToks, numTrailSyl, null);
+                    for (int k = 0; k < numTrailSyl; k++) {
+                        out[trailSylStart + k] = (k < sub.size()) ? sub.get(k) : "";
+                    }
+                }
+                List<String> finalRes = new ArrayList<>(expectedCount);
+                for (int i = 0; i < expectedCount; i++) {
+                    finalRes.add(out[i] != null ? out[i] : "");
+                }
+                return finalRes;
             }
         }
+
+        // 4. Fallback: allocate slots based on mora decomposition
+        int n = rawTokens.size();
+        List<List<String>> morasList = new ArrayList<>(n);
+        int totalMoras = 0;
+        for (String tok : rawTokens) {
+            List<String> m = (tok != null && !tok.isEmpty()) ? splitRomajiIntoMoras(tok) : Collections.emptyList();
+            morasList.add(m);
+            totalMoras += Math.max(1, m.size());
+        }
+
+        List<Integer> slots = new ArrayList<>(n);
+        for (List<String> m : morasList) {
+            slots.add(Math.max(1, m.size()));
+        }
+
+        if (totalMoras > expectedCount) {
+            int excess = totalMoras - expectedCount;
+            // First reduction: 2-mora words (e.g. 2-mora readings) kept as 1 slot
+            for (int i = 0; i < n && excess > 0; i++) {
+                if (slots.get(i) == 2) {
+                    slots.set(i, 1);
+                    excess--;
+                }
+            }
+            // Second reduction: largest multi-mora tokens
+            while (excess > 0) {
+                int maxIdx = -1;
+                int maxVal = 1;
+                for (int i = 0; i < n; i++) {
+                    if (slots.get(i) > maxVal) {
+                        maxVal = slots.get(i);
+                        maxIdx = i;
+                    }
+                }
+                if (maxIdx >= 0) {
+                    slots.set(maxIdx, maxVal - 1);
+                    excess--;
+                } else {
+                    break;
+                }
+            }
+        } else if (totalMoras < expectedCount) {
+            int needed = expectedCount - totalMoras;
+            while (needed > 0) {
+                int maxIdx = -1;
+                int maxLen = -1;
+                for (int i = 0; i < n; i++) {
+                    int len = rawTokens.get(i) != null ? rawTokens.get(i).length() : 0;
+                    if (len > maxLen) {
+                        maxLen = len;
+                        maxIdx = i;
+                    }
+                }
+                if (maxIdx >= 0) {
+                    slots.set(maxIdx, slots.get(maxIdx) + 1);
+                    needed--;
+                } else {
+                    slots.set(0, slots.get(0) + needed);
+                    break;
+                }
+            }
+        }
+
+        // Emit tokens into the allocated slots
+        List<String> result = new ArrayList<>(expectedCount);
+        for (int i = 0; i < n; i++) {
+            String tok = rawTokens.get(i);
+            if (tok == null) tok = "";
+            int targetSlots = slots.get(i);
+            List<String> moras = morasList.get(i);
+
+            if (targetSlots <= 1) {
+                result.add(tok);
+            } else if (moras.size() == targetSlots) {
+                result.addAll(moras);
+            } else if (moras.size() > targetSlots) {
+                int mTotal = moras.size();
+                for (int s = 0; s < targetSlots; s++) {
+                    int start = (s * mTotal) / targetSlots;
+                    int end = ((s + 1) * mTotal) / targetSlots;
+                    StringBuilder sb = new StringBuilder();
+                    for (int k = start; k < end; k++) {
+                        sb.append(moras.get(k));
+                    }
+                    result.add(sb.toString());
+                }
+            } else {
+                // moras.size() < targetSlots: split text proportionally
+                int tLen = tok.length();
+                for (int s = 0; s < targetSlots; s++) {
+                    int start = (s * tLen) / targetSlots;
+                    int end = ((s + 1) * tLen) / targetSlots;
+                    result.add(tok.substring(start, end));
+                }
+            }
+        }
+
+        // Safety fallback to ensure exact expectedCount size
+        while (result.size() < expectedCount) {
+            result.add("");
+        }
+        if (result.size() > expectedCount) {
+            return new ArrayList<>(result.subList(0, expectedCount));
+        }
+
         return result;
     }
 
@@ -215,7 +514,7 @@ public class AiSyllableTransliterationService {
             }
         }
 
-        List<String> aligned = alignTokens(rawTokens, expectedCount);
+        List<String> aligned = alignTokens(rawTokens, expectedCount, line.words);
 
         for (int i = 0; i < expectedCount; i++) {
             line.words.get(i).romanji = (i < aligned.size()) ? aligned.get(i) : "";
@@ -271,14 +570,36 @@ public class AiSyllableTransliterationService {
             }
         }
 
+        // Fallback: check text-level script continuity or whitespace
         for (int i = 0; i < n; i++) {
             LyricsData.Word w = line.words.get(i);
             if (i == n - 1) {
                 w.isPartOfWord = false;
-            } else if (w.text != null && w.text.endsWith(" ")) {
+                continue;
+            }
+            LyricsData.Word next = line.words.get(i + 1);
+            String t = w.text != null ? w.text.trim() : "";
+            String nt = next.text != null ? next.text.trim() : "";
+
+            if (w.text != null && (w.text.endsWith(" ") || w.text.endsWith("\u3000"))) {
                 w.isPartOfWord = false;
             } else if (w.romanji != null && w.romanji.endsWith(" ")) {
                 w.isPartOfWord = false;
+            } else if (!t.isEmpty() && !nt.isEmpty()) {
+                char c1 = t.charAt(t.length() - 1);
+                char c2 = nt.charAt(0);
+                boolean c1Kanji = (c1 >= 0x4E00 && c1 <= 0x9FAF) || (c1 >= 0x3400 && c1 <= 0x4DBF);
+                boolean c2Kanji = (c2 >= 0x4E00 && c2 <= 0x9FAF) || (c2 >= 0x3400 && c2 <= 0x4DBF);
+                boolean c1Kana = (c1 >= 0x3040 && c1 <= 0x309F) || (c1 >= 0x30A0 && c1 <= 0x30FF);
+                boolean c2Kana = (c2 >= 0x3040 && c2 <= 0x309F) || (c2 >= 0x30A0 && c2 <= 0x30FF);
+
+                if (c1Kanji && c2Kanji) {
+                    w.isPartOfWord = true;
+                } else if (c1Kana && c2Kana && t.length() == 1 && nt.length() == 1) {
+                    w.isPartOfWord = true;
+                } else {
+                    w.isPartOfWord = false;
+                }
             } else {
                 w.isPartOfWord = false;
             }

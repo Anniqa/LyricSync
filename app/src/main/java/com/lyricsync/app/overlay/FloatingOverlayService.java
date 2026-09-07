@@ -1666,26 +1666,6 @@ public class FloatingOverlayService extends Service {
                         if (currentTrack == null || !java.util.Objects.equals(track.title, currentTrack.title)
                                 || !java.util.Objects.equals(track.artist, currentTrack.artist)) return;
                         currentLyrics = enrichedData;
-                        if (highlighter != null) {
-                            for (int i = 0; i < enrichedData.lines.size(); i++) {
-                                LyricsData.LyricsLine line = enrichedData.lines.get(i);
-                                List<String> wordsRomanji = new ArrayList<>();
-                                if (line.words != null) {
-                                    for (LyricsData.Word w : line.words) {
-                                        wordsRomanji.add(w.romanji);
-                                    }
-                                }
-                                highlighter.updateLineTransliteration(i, wordsRomanji, line.romanji);
-                                if (includeTranslation && line.translation != null && !line.translation.trim().isEmpty()) {
-                                    highlighter.updateLineTranslation(i, line.translation);
-                                }
-                            }
-                            highlighter.setTransliterationEnabled(true);
-                            highlighter.setOriginalScriptEnabled(showOriginalScript);
-                            if (includeTranslation) {
-                                highlighter.setTranslationEnabled(true);
-                            }
-                        }
                         sharedPrefs.edit()
                                 .putBoolean("pref_romaji_enabled", true)
                                 .putBoolean("pref_original_script_enabled", showOriginalScript)
@@ -1698,14 +1678,7 @@ public class FloatingOverlayService extends Service {
                         if (lyricsCacheManager != null && currentTrack != null) {
                             lyricsCacheManager.cache(currentTrack, enrichedData);
                         }
-                        updateTransliterationToggleUi();
-                        if (scrollView != null) {
-                            scrollView.post(() -> {
-                                if (highlighter != null && sessionTracker != null) {
-                                    highlighter.updateProgress(sessionTracker.getCurrentPosition());
-                                }
-                            });
-                        }
+                        renderOverlayLyrics(currentLyrics);
                         Toast.makeText(FloatingOverlayService.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
                     }
 
@@ -1789,36 +1762,10 @@ public class FloatingOverlayService extends Service {
                         activeTransliterationCall = null;
                         if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
                         currentLyrics = enrichedData;
-                        if (highlighter != null) {
-                            for (int i = 0; i < enrichedData.lines.size(); i++) {
-                                LyricsData.LyricsLine line = enrichedData.lines.get(i);
-                                List<String> wordsRomanji = new ArrayList<>();
-                                if (line.words != null) {
-                                    for (LyricsData.Word w : line.words) {
-                                        wordsRomanji.add(w.romanji);
-                                    }
-                                }
-                                highlighter.updateLineTransliteration(i, wordsRomanji, line.romanji);
-                                if (line.translation != null && !line.translation.trim().isEmpty()) {
-                                    highlighter.updateLineTranslation(i, line.translation);
-                                }
-                            }
-                            highlighter.setTransliterationEnabled(true);
-                            if (translationEnabled) {
-                                highlighter.setTranslationEnabled(true);
-                            }
-                        }
                         if (lyricsCacheManager != null && track != null) {
                             lyricsCacheManager.cache(track, enrichedData);
                         }
-                        updateTransliterationToggleUi();
-                        if (scrollView != null) {
-                            scrollView.post(() -> {
-                                if (highlighter != null && sessionTracker != null) {
-                                    highlighter.updateProgress(sessionTracker.getCurrentPosition());
-                                }
-                            });
-                        }
+                        renderOverlayLyrics(currentLyrics);
                     }
 
                     @Override

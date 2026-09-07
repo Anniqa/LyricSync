@@ -9,6 +9,7 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.lyricsync.app.ai.transliteration.AiSyllableTransliterationService;
 import com.lyricsync.app.ai.transliteration.ScriptDetector;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.ui.Anim;
@@ -57,6 +58,58 @@ public class SyllableHighlighter {
         /** Line-level scale spring: the active line grows a touch, others rest at 1. */
         public Spring lineScale;
         public TextView translationView;
+    }
+
+    public static class DisplayWord {
+        public String text = "";
+        public String romanji = "";
+        public long startTime;
+        public long endTime;
+        public final List<LyricsData.Word> syllables = new ArrayList<>();
+    }
+
+    public static List<DisplayWord> buildDisplayWords(LyricsData.LyricsLine line) {
+        List<DisplayWord> list = new ArrayList<>();
+        if (line == null || line.words == null || line.words.isEmpty()) return list;
+
+        DisplayWord cur = null;
+        int n = line.words.size();
+        for (int i = 0; i < n; i++) {
+            LyricsData.Word w = line.words.get(i);
+            if (cur == null) {
+                cur = new DisplayWord();
+                cur.text = (w.text != null) ? w.text : "";
+                cur.romanji = (w.romanji != null) ? ScriptDetector.stripNonLatinCharacters(w.romanji) : "";
+                cur.startTime = w.startTime;
+                cur.endTime = w.endTime;
+                cur.syllables.add(w);
+            } else {
+                LyricsData.Word prev = line.words.get(i - 1);
+                if (prev.isPartOfWord) {
+                    cur.text += (w.text != null ? w.text : "");
+                    if (w.romanji != null && !w.romanji.trim().isEmpty()) {
+                        String r = ScriptDetector.stripNonLatinCharacters(w.romanji);
+                        if (!r.isEmpty()) {
+                            cur.romanji += r;
+                        }
+                    }
+                    cur.endTime = Math.max(cur.endTime, w.endTime);
+                    cur.syllables.add(w);
+                } else {
+                    list.add(cur);
+                    cur = new DisplayWord();
+                    cur.text = (w.text != null) ? w.text : "";
+                    cur.romanji = (w.romanji != null) ? ScriptDetector.stripNonLatinCharacters(w.romanji) : "";
+                    cur.startTime = w.startTime;
+                    cur.endTime = w.endTime;
+                    cur.syllables.add(w);
+                }
+            }
+        }
+        if (cur != null) {
+            list.add(cur);
+        }
+        return list;
     }
 
     public SyllableHighlighter(Context context, Typeface fontBold, Typeface fontMedium, float fontSizeSp) {
@@ -155,44 +208,20 @@ public class SyllableHighlighter {
                 lv.line.words.get(i).romanji = ScriptDetector.stripNonLatinCharacters(rToken);
             }
         }
+        AiSyllableTransliterationService.computeWordBoundaries(lv.line);
         boolean hasRomanji = hasAnyWordRomanji(lv.line);
-        if (lv.romajiWordFlowLayout == null) {
-            if (hasRomanji && lv.usePerWord && lv.rootView instanceof LinearLayout) {
-                setupRomajiLayer(lv.line, lv, (LinearLayout) lv.rootView);
+        if (lv.usePerWord && lv.rootView instanceof LinearLayout) {
+            LinearLayout container = (LinearLayout) lv.rootView;
+            if (hasRomanji) {
+                setupRomajiLayer(lv.line, lv, container);
+            } else if (lv.romajiWordFlowLayout != null) {
+                container.removeView(lv.romajiWordFlowLayout);
+                lv.romajiWordFlowLayout = null;
+                lv.romajiWordViews = null;
             }
-        } else {
-            if (lv.romajiWordViews != null && lv.line.words != null) {
-                for (int i = 0; i < lv.romajiWordViews.size(); i++) {
-                    GradientWordView wv = lv.romajiWordViews.get(i);
-                    LyricsData.Word w = (i < lv.line.words.size()) ? lv.line.words.get(i) : null;
-                    String r = "";
-                    if (w != null && w.romanji != null && !w.romanji.trim().isEmpty()) {
-                        r = ScriptDetector.stripNonLatinCharacters(w.romanji);
-                    } else if (w != null && w.text != null && !ScriptDetector.isNonLatin(w.text)) {
-                        r = w.text;
-                    }
-                    wv.setText(r);
-                    if (w != null) {
-                        wv.setCompactPadding(w.isPartOfWord);
-                        wv.initLetterEmphasis(r, w.startTime, w.endTime);
-                        if (wv.getLayoutParams() instanceof WordFlowLayout.LayoutParams) {
-                            WordFlowLayout.LayoutParams lp = (WordFlowLayout.LayoutParams) wv.getLayoutParams();
-                            if (i < lv.line.words.size() - 1) {
-                                lp.rightMargin = w.isPartOfWord ? dpToPx(1) : dpToPx(7);
-                            } else {
-                                lp.rightMargin = 0;
-                            }
-                            lp.isWordBoundary = !w.isPartOfWord;
-                            wv.setLayoutParams(lp);
-                        }
-                        wv.requestLayout();
-                    }
-                }
-                lv.romajiWordFlowLayout.requestLayout();
-            }
-            updateLineScriptVisibility(lv);
-            updateRomajiLayerStyle(lv);
         }
+        updateLineScriptVisibility(lv);
+        updateRomajiLayerStyle(lv);
     }
 
     private boolean translationEnabled = false;
@@ -302,23 +331,25 @@ public class SyllableHighlighter {
         flow.setClipChildren(false);
         flow.setClipToPadding(false);
 
+        List<DisplayWord> displayWords = buildDisplayWords(line);
         lv.wordViews = new ArrayList<>();
-        for (int i = 0; i < line.words.size(); i++) {
-            LyricsData.Word word = line.words.get(i);
+        for (int i = 0; i < displayWords.size(); i++) {
+            DisplayWord dw = displayWords.get(i);
             GradientWordView wv = new GradientWordView(context);
             wv.setAnimConfig(animConfig);
             wv.setWordIndex(i);
-            wv.setText(word.text);
-            wv.setTiming(word.startTime, word.endTime);
+            wv.setText(dw.text);
+            wv.setTiming(dw.startTime, dw.endTime);
             wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
-            wv.initLetterEmphasis(word.text, word.startTime, word.endTime);
+            wv.initLetterEmphasis(dw.text, dw.startTime, dw.endTime);
 
             WordFlowLayout.LayoutParams wlp = new WordFlowLayout.LayoutParams(
                     WordFlowLayout.LayoutParams.WRAP_CONTENT,
                     WordFlowLayout.LayoutParams.WRAP_CONTENT);
-            if (i < line.words.size() - 1) {
-                wlp.rightMargin = dpToPx(2);
+            if (i < displayWords.size() - 1) {
+                wlp.rightMargin = dpToPx(7);
             }
+            wlp.isWordBoundary = true;
             wv.setLayoutParams(wlp);
 
             flow.addView(wv);
@@ -376,26 +407,26 @@ public class SyllableHighlighter {
         romajiFlow.setClipChildren(false);
         romajiFlow.setClipToPadding(false);
 
+        List<DisplayWord> displayWords = buildDisplayWords(line);
         List<GradientWordView> romajiWordViews = new ArrayList<>();
         float romajiFontSize = !originalScriptEnabled ? fontSizeSp : (fontSizeSp * 0.82f);
         Typeface tf = (!originalScriptEnabled && lv.lastState == STATE_ACTIVE) ? fontBold : fontMedium;
         int initialColor = lv.lastState == STATE_ACTIVE ? ACTIVE_COLOR : (lv.lastState == STATE_PAST ? PAST_COLOR : INACTIVE_COLOR);
-        for (int i = 0; i < line.words.size(); i++) {
-            LyricsData.Word word = line.words.get(i);
+        for (int i = 0; i < displayWords.size(); i++) {
+            DisplayWord dw = displayWords.get(i);
             String rText = "";
-            if (word.romanji != null && !word.romanji.trim().isEmpty()) {
-                rText = ScriptDetector.stripNonLatinCharacters(word.romanji);
-            } else if (word.text != null && !ScriptDetector.isNonLatin(word.text)) {
-                rText = word.text;
+            if (dw.romanji != null && !dw.romanji.trim().isEmpty()) {
+                rText = dw.romanji;
+            } else if (dw.text != null && !ScriptDetector.isNonLatin(dw.text)) {
+                rText = dw.text;
             }
             GradientWordView rwv = new GradientWordView(context);
             rwv.setAnimConfig(animConfig);
             rwv.setWordIndex(i);
             rwv.setText(rText);
-            rwv.setTiming(word.startTime, word.endTime);
+            rwv.setTiming(dw.startTime, dw.endTime);
             rwv.setWordStyle(romajiFontSize, initialColor, tf);
-            rwv.setCompactPadding(word.isPartOfWord);
-            rwv.initLetterEmphasis(rText, word.startTime, word.endTime);
+            rwv.initLetterEmphasis(rText, dw.startTime, dw.endTime);
             if (lv.lastState == STATE_ACTIVE) {
                 rwv.setLineActive(true);
             }
@@ -403,14 +434,18 @@ public class SyllableHighlighter {
             WordFlowLayout.LayoutParams rwlp = new WordFlowLayout.LayoutParams(
                     WordFlowLayout.LayoutParams.WRAP_CONTENT,
                     WordFlowLayout.LayoutParams.WRAP_CONTENT);
-            if (i < line.words.size() - 1) {
-                rwlp.rightMargin = word.isPartOfWord ? dpToPx(1) : dpToPx(7);
+            if (i < displayWords.size() - 1) {
+                rwlp.rightMargin = dpToPx(7);
             }
-            rwlp.isWordBoundary = !word.isPartOfWord;
+            rwlp.isWordBoundary = true;
             rwv.setLayoutParams(rwlp);
 
             romajiFlow.addView(rwv);
             romajiWordViews.add(rwv);
+        }
+
+        if (lv.romajiWordFlowLayout != null && container != null) {
+            container.removeView(lv.romajiWordFlowLayout);
         }
 
         lv.romajiWordFlowLayout = romajiFlow;
@@ -618,13 +653,13 @@ public class SyllableHighlighter {
      * like it jumps back and re-advances.
      */
     private void playWordCascade(LineView lv, long position) {
-        if (lv.wordViews == null || lv.line == null || lv.line.words == null) return;
+        if (lv.wordViews == null || lv.wordViews.isEmpty()) return;
         int k = 0;
         for (int i = 0; i < lv.wordViews.size(); i++) {
             GradientWordView wv = lv.wordViews.get(i);
             wv.animate().cancel();
-            if (i < lv.line.words.size() && position >= lv.line.words.get(i).startTime) {
-                // Already being sung (or done): never hide it again.
+            if (position >= wv.getStartTime() - 300) {
+                // Already being sung (or starting within 300ms): never hide it.
                 wv.setAlpha(1f);
                 wv.setTranslationY(0f);
             } else {
@@ -642,7 +677,7 @@ public class SyllableHighlighter {
             if (lv.romajiWordViews != null && i < lv.romajiWordViews.size()) {
                 GradientWordView rwv = lv.romajiWordViews.get(i);
                 rwv.animate().cancel();
-                if (i < lv.line.words.size() && position >= lv.line.words.get(i).startTime) {
+                if (position >= rwv.getStartTime() - 300) {
                     rwv.setAlpha(1f);
                     rwv.setTranslationY(0f);
                 } else {

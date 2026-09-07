@@ -97,6 +97,35 @@ public class AiSyllableTransliterationServiceTest {
     }
 
     @Test
+    public void testAlignSyllablesKanjiAndKanaLineNoShift() {
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "君の前世から僕は");
+        line.words.add(new LyricsData.Word(0, 300, "君"));
+        line.words.add(new LyricsData.Word(300, 600, "の"));
+        line.words.add(new LyricsData.Word(600, 900, "前"));
+        line.words.add(new LyricsData.Word(900, 1200, "前"));
+        line.words.add(new LyricsData.Word(1200, 1500, "前"));
+        line.words.add(new LyricsData.Word(1500, 1800, "世"));
+        line.words.add(new LyricsData.Word(1800, 2100, "か"));
+        line.words.add(new LyricsData.Word(2100, 2400, "ら"));
+        line.words.add(new LyricsData.Word(2400, 2700, "僕"));
+        line.words.add(new LyricsData.Word(2700, 3000, "は"));
+
+        List<String> aiTokens = Arrays.asList("kimi", "no", "zenzenzense", "kara", "boku", "wa");
+        AiSyllableTransliterationService.alignSyllables(line, aiTokens, "kimi no zenzenzense kara boku wa");
+
+        assertEquals("kimi", line.words.get(0).romanji);
+        assertEquals("no", line.words.get(1).romanji);
+        assertEquals("zen", line.words.get(2).romanji);
+        assertEquals("zen", line.words.get(3).romanji);
+        assertEquals("zen", line.words.get(4).romanji);
+        assertEquals("se", line.words.get(5).romanji);
+        assertEquals("ka", line.words.get(6).romanji);
+        assertEquals("ra", line.words.get(7).romanji);
+        assertEquals("boku", line.words.get(8).romanji);
+        assertEquals("wa", line.words.get(9).romanji);
+    }
+
+    @Test
     public void testAlignSyllablesFallbackNullOrEmptyTokens() {
         LyricsData.LyricsLine line = new LyricsData.LyricsLine(0, 3000, "こんにちは");
         line.words.add(new LyricsData.Word(0, 1500, "こん"));
