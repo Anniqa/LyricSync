@@ -66,6 +66,9 @@ public class LyricsProviderManager {
             }
 
             if (bestLyrics != null) {
+                if (bestLyrics.type != LyricsData.Type.STATIC) {
+                    LyricsData.synthesizeWordTimings(bestLyrics);
+                }
                 final LyricsData result = bestLyrics;
                 AppLog.i(TAG, "Got lyrics from " + bestProvider
                         + " - type: " + result.type

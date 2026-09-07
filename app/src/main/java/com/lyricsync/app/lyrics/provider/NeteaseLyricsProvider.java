@@ -170,7 +170,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
     }
 
     private LyricsData fetchLyricById(long songId) throws IOException {
-        String url = LYRIC_URL + "?id=" + songId + "&lv=1&tv=1&rv=1";
+        String url = LYRIC_URL + "?id=" + songId + "&lv=1&tv=1&rv=1&yv=1";
 
         Request request = new Request.Builder()
                 .url(url)

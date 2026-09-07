@@ -113,4 +113,20 @@ public class SpotifyColorLyricsProviderTest {
         String totp = com.lyricsync.app.lyrics.auth.SpotifyAuthManager.generateTotp(1788801879L);
         assertEquals("767052", totp);
     }
+
+    @Test
+    public void testSynthesizeWordTimings() {
+        LyricsData data = new LyricsData(LyricsData.Type.LINE);
+        LyricsData.LyricsLine line = new LyricsData.LyricsLine(1000, 5000, "hello world test");
+        data.lines.add(line);
+
+        LyricsData.synthesizeWordTimings(data);
+        assertEquals(LyricsData.Type.SYLLABLE, data.type);
+        assertEquals(3, line.words.size());
+        assertEquals("hello", line.words.get(0).text);
+        assertEquals(1000L, line.words.get(0).startTime);
+        assertTrue(line.words.get(0).endTime > 1000L);
+        assertEquals("test", line.words.get(2).text);
+        assertEquals(5000L, line.words.get(2).endTime);
+    }
 }
