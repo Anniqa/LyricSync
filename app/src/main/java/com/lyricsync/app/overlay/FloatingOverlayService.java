@@ -107,9 +107,14 @@ public class FloatingOverlayService extends Service {
 
     /** Read by MainActivity to render Start vs Stop without binding to the service. */
     private static volatile boolean running = false;
+    private static volatile FloatingOverlayService activeInstance = null;
 
     public static boolean isRunning() {
         return running;
+    }
+
+    public static FloatingOverlayService getInstance() {
+        return activeInstance;
     }
 
     private WindowManager windowManager;
@@ -324,6 +329,7 @@ public class FloatingOverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        activeInstance = this;
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
@@ -2172,7 +2178,7 @@ public class FloatingOverlayService extends Service {
         }
         if (changed) {
             ed.apply();
-            applyOverlayDimensions(true);
+            applyRuntimeSettings(true);
             if (callback != null) callback.onSuccess("Tampilan overlay berhasil diperbarui!");
         } else {
             if (callback != null) callback.onError("Tidak ada parameter tampilan yang diubah.");
@@ -3834,6 +3840,7 @@ public class FloatingOverlayService extends Service {
     public void onDestroy() {
         isDestroyed = true;
         running = false;
+        if (activeInstance == this) activeInstance = null;
         super.onDestroy();
         if (aiTranslationService != null) {
             aiTranslationService.cancel();

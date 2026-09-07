@@ -2271,44 +2271,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
     public void controlPlaybackStudio(String action, int lineIndex, long positionMs,
                                       AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (sessionTracker == null) {
-            if (callback != null) callback.onError("Pemutar musik tidak aktif");
-            return;
-        }
-        String act = action != null ? action.trim().toLowerCase(java.util.Locale.ROOT) : "";
-        if ("seek_to_line".equals(act)) {
-            if (lyricsData == null || lyricsData.lines == null || lyricsData.lines.isEmpty()) {
-                if (callback != null) callback.onError("Tidak ada lirik aktif");
-                return;
-            }
-            if (lineIndex < 0 || lineIndex >= lyricsData.lines.size()) {
-                if (callback != null) callback.onError("Indeks baris di luar batas: " + lineIndex);
-                return;
-            }
-            LyricsData.LyricsLine target = lyricsData.lines.get(lineIndex);
-            if (target != null) {
-                sessionTracker.seekTo(target.startTime);
-                if (callback != null) callback.onSuccess("Berhasil melompat ke baris " + (lineIndex + 1));
-            }
-        } else if ("seek_to_position".equals(act)) {
-            sessionTracker.seekTo(Math.max(0, positionMs));
-            long s = positionMs / 1000;
-            String timeStr = String.format(java.util.Locale.ROOT, "%02d:%02d", s / 60, s % 60);
-            if (callback != null) callback.onSuccess("Berhasil melompat ke " + timeStr);
-        } else if ("play".equals(act)) {
-            sessionTracker.play();
-            if (callback != null) callback.onSuccess("Pemutaran lagu dilanjutkan.");
-        } else if ("pause".equals(act)) {
-            sessionTracker.pause();
-            if (callback != null) callback.onSuccess("Lagu dijeda.");
-        } else if ("skip_next".equals(act)) {
-            sessionTracker.skipNext();
-            if (callback != null) callback.onSuccess("Beralih ke lagu berikutnya.");
-        } else if ("skip_previous".equals(act)) {
-            sessionTracker.skipPrevious();
-            if (callback != null) callback.onSuccess("Beralih ke lagu sebelumnya.");
+        FloatingOverlayService service = FloatingOverlayService.getInstance();
+        if (service != null) {
+            service.controlPlaybackLive(action, lineIndex, positionMs, callback);
         } else {
-            if (callback != null) callback.onError("Aksi pemutaran tidak dikenal: " + action);
+            if (callback != null) callback.onError("Floating overlay service tidak sedang berjalan");
         }
     }
 
