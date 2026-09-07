@@ -32,8 +32,8 @@ public class LyricsProviderManager {
 
     public LyricsProviderManager(Context context) {
         cacheManager = new LyricsCacheManager(context);
-        providers.add(new SpotifyColorLyricsProvider(context));
         providers.add(new SpicyLyricsProvider(context));
+        providers.add(new SpotifyColorLyricsProvider(context));
         providers.add(new NeteaseLyricsProvider());
         providers.add(new LRCLIBProvider());
     }
@@ -66,9 +66,6 @@ public class LyricsProviderManager {
             }
 
             if (bestLyrics != null) {
-                if (bestLyrics.type != LyricsData.Type.STATIC) {
-                    LyricsData.synthesizeWordTimings(bestLyrics);
-                }
                 final LyricsData result = bestLyrics;
                 AppLog.i(TAG, "Got lyrics from " + bestProvider
                         + " - type: " + result.type

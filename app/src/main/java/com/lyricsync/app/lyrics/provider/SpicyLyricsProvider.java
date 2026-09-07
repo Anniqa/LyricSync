@@ -35,7 +35,8 @@ public class SpicyLyricsProvider implements LyricsProvider {
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private static final String SPICY_VERSION = "6.3.12";
     private static final String SPICY_ORIGIN = "https://xpui.app.spotify.com";
-    private static final String SPICY_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Spotify/1.2.63 Chrome/132.0.6834.210 Electron/34.3.1 Safari/537.36";
+    private static final String SPICY_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Spotify/1.2.52.442";
     private static final String EMBED_URL = "https://open.spotify.com/embed/track/";
     private static final String SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";
     // Web-player internal search. Unlike /v1/search (which rejects the anonymous embed
