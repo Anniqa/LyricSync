@@ -50,8 +50,8 @@ public class SongChatManager {
         boolean isIndo = "id".equalsIgnoreCase(langCode) || "in".equalsIgnoreCase(langCode);
         if (isIndo) {
             return Collections.unmodifiableList(Arrays.asList(
-                    new PromptTemplate("what_can_you_do", "💡 Apa yang Bisa Kamu Lakukan?", "Lihat kemampuan kontrol penuh: terjemahan, edit teks, romaji, timing", "Apa saja yang bisa kamu lakukan untuk mengontrol dan mengedit lirik lagu ini? Berikan daftar fitur dan contoh perintahnya.", "ic_sparkles"),
-                    new PromptTemplate("translate_all", "🌐 Terjemahkan Lirik Lengkap", "Terjemahkan seluruh lirik secara puitis dan terapkan ke overlay", "Terjemahkan seluruh baris lirik lagu ini ke Bahasa Indonesia dengan gaya puitis dan langsung terapkan ke overlay.", "ic_lyrics_lines"),
+                    new PromptTemplate("what_can_you_do", "Apa yang Bisa Kamu Lakukan?", "Lihat kemampuan kontrol penuh: terjemahan, edit teks, romaji, timing", "Apa saja yang bisa kamu lakukan untuk mengontrol dan mengedit lirik lagu ini? Berikan daftar fitur dan contoh perintahnya.", "ic_sparkles"),
+                    new PromptTemplate("translate_all", "Terjemahkan Lirik Lengkap", "Terjemahkan seluruh lirik secara puitis dan terapkan ke overlay", "Terjemahkan seluruh baris lirik lagu ini ke Bahasa Indonesia dengan gaya puitis dan langsung terapkan ke overlay.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Makna & Kisah Lagu", "Eksplorasi cerita, tema utama, dan narasi lagu", "Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.", "ic_sparkles"),
                     new PromptTemplate("breakdown", "Bedah Lirik & Metafora", "Analisis baris lirik penting dan bahasa kiasan", "Bedah baris-baris lirik penting dan metafora yang digunakan dalam lagu ini.", "ic_lyrics_lines"),
                     new PromptTemplate("intent", "Tujuan & Inspirasi Penulis", "Inspirasi artis dan pesan yang ingin disampaikan", "Apa yang menginspirasi pencipta lagu ini dan apa pesan yang ingin disampaikan?", "ic_person_artist"),
@@ -61,8 +61,8 @@ public class SongChatManager {
             ));
         } else {
             return Collections.unmodifiableList(Arrays.asList(
-                    new PromptTemplate("what_can_you_do", "💡 What Can You Do?", "See full control capabilities: translation, text editing, romaji, timing", "What can you do to control and edit the lyrics of this song? List your features and example prompts.", "ic_sparkles"),
-                    new PromptTemplate("translate_all", "🌐 Translate All Lyrics", "Translate all lines poetically and apply directly to overlay", "Translate all lyric lines of this song poetically and apply the translation directly to the overlay.", "ic_lyrics_lines"),
+                    new PromptTemplate("what_can_you_do", "What Can You Do?", "See full control capabilities: translation, text editing, romaji, timing", "What can you do to control and edit the lyrics of this song? List your features and example prompts.", "ic_sparkles"),
+                    new PromptTemplate("translate_all", "Translate All Lyrics", "Translate all lines poetically and apply directly to overlay", "Translate all lyric lines of this song poetically and apply the translation directly to the overlay.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Song Meaning & Story", "Deep dive into themes and narrative", "Explain the story, themes, and deeper meaning behind this song.", "ic_sparkles"),
                     new PromptTemplate("breakdown", "Line-by-Line Breakdown", "Analyze metaphors and poetic lyrics", "Break down the key lines and metaphors in these lyrics.", "ic_lyrics_lines"),
                     new PromptTemplate("intent", "Songwriter's Intent", "Artist inspiration and backstory", "What inspired the artist to write this song and what was their intent?", "ic_person_artist"),

@@ -2491,11 +2491,19 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
 
         TextView card = new TextView(this);
-        card.setText("⚡ " + info.runningText);
+        card.setText(info.runningText);
         card.setTextSize(11f);
         card.setTextColor(ContextCompat.getColor(this, R.color.accent));
         card.setBackgroundResource(R.drawable.bg_tool_status_pill);
         card.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
+        android.graphics.drawable.Drawable runningIcon = ContextCompat.getDrawable(this, info.iconRes != 0 ? info.iconRes : R.drawable.ic_bolt);
+        if (runningIcon != null) {
+            runningIcon = runningIcon.mutate();
+            runningIcon.setBounds(0, 0, dpToPx(13), dpToPx(13));
+            runningIcon.setTint(ContextCompat.getColor(this, R.color.accent));
+            card.setCompoundDrawables(runningIcon, null, null, null);
+            card.setCompoundDrawablePadding(dpToPx(6));
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.START;
@@ -2516,8 +2524,17 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (activeStudioToolCard instanceof TextView) {
             CleanMarkdownFormatter.ToolDisplayInfo info =
                     CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
-            ((TextView) activeStudioToolCard).setText("✓ " + info.doneText);
-            ((TextView) activeStudioToolCard).setTextColor(0xFF81C784);
+            TextView tv = (TextView) activeStudioToolCard;
+            android.graphics.drawable.Drawable checkIcon = ContextCompat.getDrawable(this, R.drawable.ic_check);
+            if (checkIcon != null) {
+                checkIcon = checkIcon.mutate();
+                checkIcon.setBounds(0, 0, dpToPx(13), dpToPx(13));
+                checkIcon.setTint(0xFF81C784);
+                tv.setCompoundDrawables(checkIcon, null, null, null);
+                tv.setCompoundDrawablePadding(dpToPx(6));
+            }
+            tv.setText(info.doneText);
+            tv.setTextColor(0xFF81C784);
             activeStudioToolCard = null;
         }
     }

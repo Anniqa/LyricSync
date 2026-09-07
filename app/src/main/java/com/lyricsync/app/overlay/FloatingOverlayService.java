@@ -2321,11 +2321,19 @@ public class FloatingOverlayService extends Service {
                 com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
 
         TextView card = new TextView(this);
-        card.setText("⚡ " + info.runningText);
+        card.setText(info.runningText);
         card.setTextSize(11f);
         card.setTextColor(getResources().getColor(R.color.accent));
         card.setBackgroundResource(R.drawable.bg_tool_status_pill);
         card.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
+        android.graphics.drawable.Drawable runningIcon = androidx.core.content.ContextCompat.getDrawable(this, info.iconRes != 0 ? info.iconRes : R.drawable.ic_bolt);
+        if (runningIcon != null) {
+            runningIcon = runningIcon.mutate();
+            runningIcon.setBounds(0, 0, dpToPx(13), dpToPx(13));
+            runningIcon.setTint(getResources().getColor(R.color.accent));
+            card.setCompoundDrawables(runningIcon, null, null, null);
+            card.setCompoundDrawablePadding(dpToPx(6));
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.START;
@@ -2346,7 +2354,15 @@ public class FloatingOverlayService extends Service {
         if (activeOverlayToolCard != null) {
             com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
                     com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
-            activeOverlayToolCard.setText("✓ " + info.doneText);
+            android.graphics.drawable.Drawable checkIcon = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_check);
+            if (checkIcon != null) {
+                checkIcon = checkIcon.mutate();
+                checkIcon.setBounds(0, 0, dpToPx(13), dpToPx(13));
+                checkIcon.setTint(0xFF81C784);
+                activeOverlayToolCard.setCompoundDrawables(checkIcon, null, null, null);
+                activeOverlayToolCard.setCompoundDrawablePadding(dpToPx(6));
+            }
+            activeOverlayToolCard.setText(info.doneText);
             activeOverlayToolCard.setTextColor(0xFF81C784);
             activeOverlayToolCard = null;
         }
