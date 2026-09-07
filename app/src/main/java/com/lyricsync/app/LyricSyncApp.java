@@ -4,6 +4,8 @@ import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 
+import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
+
 public class LyricSyncApp extends Application {
     public static final String CHANNEL_ID = "lyricsync_overlay";
     public static final String CHANNEL_NAME = "Lyrics Overlay";
@@ -12,6 +14,7 @@ public class LyricSyncApp extends Application {
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+        CleanMarkdownFormatter.init(this);
     }
 
     private void createNotificationChannel() {

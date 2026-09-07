@@ -1,12 +1,87 @@
 package com.lyricsync.app.ai.util;
 
+import android.content.Context;
 import android.text.Html;
 import android.text.Spanned;
+import android.widget.TextView;
+
+import io.noties.markwon.Markwon;
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin;
+import io.noties.markwon.ext.tables.TableAwareMovementMethod;
+import io.noties.markwon.ext.tables.TablePlugin;
+import io.noties.markwon.linkify.LinkifyPlugin;
 
 import java.util.regex.Pattern;
 
 public final class CleanMarkdownFormatter {
     private CleanMarkdownFormatter() {}
+
+    private static volatile Markwon markwonInstance = null;
+
+    /**
+     * Initializes the global Markwon renderer singleton using application context.
+     */
+    public static void init(Context context) {
+        if (context != null && markwonInstance == null) {
+            getMarkwon(context);
+        }
+    }
+
+    /**
+     * Retrieves or builds the Markwon instance with strikethrough, tables, and linkify plugins.
+     */
+    public static Markwon getMarkwon(Context context) {
+        if (markwonInstance == null && context != null) {
+            synchronized (CleanMarkdownFormatter.class) {
+                if (markwonInstance == null) {
+                    try {
+                        Context appCtx = context.getApplicationContext() != null
+                                ? context.getApplicationContext()
+                                : context;
+                        markwonInstance = Markwon.builder(appCtx)
+                                .usePlugin(StrikethroughPlugin.create())
+                                .usePlugin(TablePlugin.create(appCtx))
+                                .usePlugin(LinkifyPlugin.create())
+                                .build();
+                    } catch (Throwable ignored) {
+                        // Safe fallback for non-Android / headless JVM test environments
+                    }
+                }
+            }
+        }
+        return markwonInstance;
+    }
+
+    public static void setMarkwonInstance(Markwon markwon) {
+        markwonInstance = markwon;
+    }
+
+    /**
+     * Applies markdown formatting directly to a TextView using Markwon,
+     * configuring TableAwareMovementMethod for clickable links and tables.
+     */
+    public static void applyMarkdown(TextView textView, String markdown, boolean isStreaming) {
+        if (textView == null) return;
+        if (markdown == null || markdown.trim().isEmpty()) {
+            textView.setText("");
+            return;
+        }
+        String safeText = isStreaming ? cleanStreamingTail(markdown) : markdown;
+        try {
+            Context ctx = textView.getContext();
+            Markwon markwon = getMarkwon(ctx);
+            if (markwon != null) {
+                markwon.setMarkdown(textView, safeText);
+                if (!(textView.getMovementMethod() instanceof TableAwareMovementMethod)) {
+                    textView.setMovementMethod(TableAwareMovementMethod.create());
+                }
+                return;
+            }
+        } catch (Throwable ignored) {}
+
+        // Graceful fallback if Markwon cannot be built in current environment
+        textView.setText(formatClean(safeText, false));
+    }
 
     private static final Pattern CODE_FENCE_PATTERN = Pattern.compile("```[a-zA-Z0-9_-]*\n?([\\s\\S]*?)```");
     private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`([^`\n]+)`");
@@ -158,10 +233,10 @@ public final class CleanMarkdownFormatter {
 
     /**
      * Formats markdown into a rich CharSequence for Android TextView.
-     * Gracefully falls back to stripMarkdown in JVM testing environments.
+     * Uses Markwon when initialized, falling back to semantic HTML and stripMarkdown.
      */
     public static CharSequence formatClean(String text) {
-        return formatClean(text, false);
+        return formatClean(null, text, false);
     }
 
     /**
@@ -169,12 +244,31 @@ public final class CleanMarkdownFormatter {
      * When isStreaming is true, tail guards prevent partial syntax flicker.
      */
     public static CharSequence formatClean(String text, boolean isStreaming) {
+        return formatClean(null, text, isStreaming);
+    }
+
+    /**
+     * Formats markdown with optional Context to initialize/leverage Markwon if available.
+     */
+    public static CharSequence formatClean(Context context, String text, boolean isStreaming) {
         if (text == null || text.trim().isEmpty()) return "";
+        String safeText = isStreaming ? cleanStreamingTail(text) : text;
+        if (context != null) {
+            try {
+                Markwon markwon = getMarkwon(context);
+                if (markwon != null) {
+                    return markwon.toMarkdown(safeText);
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (markwonInstance != null) {
+            try {
+                return markwonInstance.toMarkdown(safeText);
+            } catch (Throwable ignored) {}
+        }
         try {
-            String safeText = isStreaming ? cleanStreamingTail(text) : text;
             String html = markdownToHtml(safeText);
             Spanned spanned = Html.fromHtml(html);
-            // Trim trailing newlines produced by Html.fromHtml
             int len = spanned.length();
             while (len > 0 && Character.isWhitespace(spanned.charAt(len - 1))) {
                 len--;
@@ -182,7 +276,7 @@ public final class CleanMarkdownFormatter {
             return (len == spanned.length()) ? spanned : spanned.subSequence(0, len);
         } catch (Throwable t) {
             // Safe fallback for JVM unit tests without Android runtime
-            return stripMarkdown(isStreaming ? cleanStreamingTail(text) : text);
+            return stripMarkdown(safeText);
         }
     }
 

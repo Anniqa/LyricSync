@@ -1389,8 +1389,8 @@ public class FloatingOverlayService extends Service {
         AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
         if (auth == null || !auth.isAuthenticated()) {
             if (aiEmptyHintText != null) {
-                aiEmptyHintText.setText(CleanMarkdownFormatter.formatClean(
-                        "Please login to Google Antigravity in LyricSync to use AI features."));
+                CleanMarkdownFormatter.applyMarkdown(aiEmptyHintText,
+                        "Please login to Google Antigravity in LyricSync to use AI features.", false);
             }
             return;
         }
@@ -1401,7 +1401,7 @@ public class FloatingOverlayService extends Service {
         }
 
         if (aiEmptyHintText != null) {
-            aiEmptyHintText.setText(CleanMarkdownFormatter.formatClean(getString(R.string.ai_empty_hint)));
+            CleanMarkdownFormatter.applyMarkdown(aiEmptyHintText, getString(R.string.ai_empty_hint), false);
         }
         if (aiMoodBadge != null) {
             aiMoodBadge.setVisibility(View.GONE);
@@ -1454,8 +1454,8 @@ public class FloatingOverlayService extends Service {
                     public void onError(Exception e) {
                         handler.post(() -> {
                             if (aiEmptyHintText != null) {
-                                aiEmptyHintText.setText(CleanMarkdownFormatter.formatClean(
-                                        "Error: " + (e != null ? e.getMessage() : "Unknown error")));
+                                CleanMarkdownFormatter.applyMarkdown(aiEmptyHintText,
+                                        "Error: " + (e != null ? e.getMessage() : "Unknown error"), false);
                             }
                         });
                     }
@@ -1987,7 +1987,7 @@ public class FloatingOverlayService extends Service {
     private void addUserChatBubble(String text) {
         if (aiChatMessages == null) return;
         TextView bubble = new TextView(this);
-        bubble.setText(CleanMarkdownFormatter.formatClean(text));
+        CleanMarkdownFormatter.applyMarkdown(bubble, text, false);
         bubble.setTextColor(getResources().getColor(R.color.text_primary));
         bubble.setTextSize(12f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
@@ -2008,12 +2008,12 @@ public class FloatingOverlayService extends Service {
     private TextView addAiChatBubble(String initialText) {
         if (aiChatMessages == null) return null;
         TextView bubble = new TextView(this);
-        bubble.setText(CleanMarkdownFormatter.formatClean(initialText));
+        CleanMarkdownFormatter.applyMarkdown(bubble, initialText, false);
         bubble.setTextColor(getResources().getColor(R.color.text_secondary));
         bubble.setTextSize(12f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
         bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
-        bubble.setMovementMethod(LinkMovementMethod.getInstance());
+        bubble.setMovementMethod(io.noties.markwon.ext.tables.TableAwareMovementMethod.create());
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -2098,7 +2098,7 @@ public class FloatingOverlayService extends Service {
                         addUserChatBubble(msg.content);
                     } else {
                         TextView bubble = addAiChatBubble("");
-                        bubble.setText(CleanMarkdownFormatter.formatClean(msg.content, false));
+                        CleanMarkdownFormatter.applyMarkdown(bubble, msg.content, false);
                     }
                 }
             }

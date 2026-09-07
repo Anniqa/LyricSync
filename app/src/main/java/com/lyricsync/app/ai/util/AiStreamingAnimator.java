@@ -1,5 +1,6 @@
 package com.lyricsync.app.ai.util;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.SpannableStringBuilder;
@@ -87,7 +88,8 @@ public class AiStreamingAnimator {
             handler.postDelayed(cursorBlinkRunnable, 480);
         }
 
-        lastFormattedContent = CleanMarkdownFormatter.formatClean(rawMarkdown, true);
+        Context ctx = targetView != null ? targetView.getContext() : null;
+        lastFormattedContent = CleanMarkdownFormatter.formatClean(ctx, rawMarkdown, true);
         renderStreamingText();
     }
 
@@ -113,7 +115,7 @@ public class AiStreamingAnimator {
     public void complete(String finalMarkdown) {
         stopAll();
         if (targetView != null) {
-            targetView.setText(CleanMarkdownFormatter.formatClean(finalMarkdown, false));
+            CleanMarkdownFormatter.applyMarkdown(targetView, finalMarkdown, false);
         }
     }
 
@@ -123,7 +125,7 @@ public class AiStreamingAnimator {
     public void error(String errorMessage) {
         stopAll();
         if (targetView != null) {
-            targetView.setText(CleanMarkdownFormatter.formatClean("Error: " + errorMessage, false));
+            CleanMarkdownFormatter.applyMarkdown(targetView, "Error: " + errorMessage, false);
         }
     }
 

@@ -57,5 +57,12 @@ dependencies {
     implementation 'androidx.palette:palette:1.0.0'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     implementation 'androidx.core:core:1.12.0'
+
+    // Markwon Markdown Renderer
+    implementation 'io.noties.markwon:core:4.6.2'
+    implementation 'io.noties.markwon:ext-strikethrough:4.6.2'
+    implementation 'io.noties.markwon:ext-tables:4.6.2'
+    implementation 'io.noties.markwon:linkify:4.6.2'
+
     testImplementation 'junit:junit:4.13.2'
 }

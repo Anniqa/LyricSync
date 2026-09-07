@@ -1789,7 +1789,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (songMeaningService == null) return;
 
         if (aiStudioSummary != null) {
-            aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(getString(R.string.ai_thinking)));
+            CleanMarkdownFormatter.applyMarkdown(aiStudioSummary, getString(R.string.ai_thinking), false);
         }
         if (aiStudioMoodBadge != null) {
             aiStudioMoodBadge.setVisibility(View.GONE);
@@ -1816,7 +1816,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                                 }
                             }
                             if (aiStudioSummary != null && meaning.summary != null) {
-                                aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(meaning.summary));
+                                CleanMarkdownFormatter.applyMarkdown(aiStudioSummary, meaning.summary, false);
                             }
                             if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
                                 displayWebSources(meaning.webSources);
@@ -1834,8 +1834,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             if (isFinishing() || isDestroyed()) return;
                             if (title == null || !title.equals(currentTrackTitle)) return;
                             if (aiStudioSummary != null) {
-                                aiStudioSummary.setText(CleanMarkdownFormatter.formatClean(
-                                        "Error: " + (e != null ? e.getMessage() : "Failed to analyze")));
+                                CleanMarkdownFormatter.applyMarkdown(aiStudioSummary,
+                                        "Error: " + (e != null ? e.getMessage() : "Failed to analyze"), false);
                             }
                         });
                     }
@@ -2116,7 +2116,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private void addUserChatBubble(String text) {
         if (aiStudioChatContainer == null) return;
         TextView bubble = new TextView(this);
-        bubble.setText(CleanMarkdownFormatter.formatClean(text));
+        CleanMarkdownFormatter.applyMarkdown(bubble, text, false);
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
         bubble.setTextSize(12f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
@@ -2137,12 +2137,12 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private TextView addAiChatBubble(String initialText) {
         if (aiStudioChatContainer == null) return null;
         TextView bubble = new TextView(this);
-        bubble.setText(CleanMarkdownFormatter.formatClean(initialText));
+        CleanMarkdownFormatter.applyMarkdown(bubble, initialText, false);
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
         bubble.setTextSize(12f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
         bubble.setPadding(dpToPx(12), dpToPx(7), dpToPx(12), dpToPx(7));
-        bubble.setMovementMethod(LinkMovementMethod.getInstance());
+        bubble.setMovementMethod(io.noties.markwon.ext.tables.TableAwareMovementMethod.create());
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -2222,7 +2222,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         addUserChatBubble(msg.content);
                     } else {
                         TextView bubble = addAiChatBubble("");
-                        bubble.setText(CleanMarkdownFormatter.formatClean(msg.content, false));
+                        CleanMarkdownFormatter.applyMarkdown(bubble, msg.content, false);
                     }
                 }
             }

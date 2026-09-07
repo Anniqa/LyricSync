@@ -150,4 +150,25 @@ public class CleanMarkdownFormatterTest {
         assertFalse("Display label must never contain vertex", chip.displayLabel.toLowerCase().contains("vertex"));
         assertEquals("Web Source", chip.displayLabel);
     }
+
+    @Test
+    public void testApplyMarkdownNullAndEmptySafety() {
+        // Should safely no-op when TextView is null
+        CleanMarkdownFormatter.applyMarkdown(null, "**test**", false);
+        CleanMarkdownFormatter.applyMarkdown(null, null, false);
+    }
+
+    @Test
+    public void testFormatCleanWithContextNullFallback() {
+        CharSequence res = CleanMarkdownFormatter.formatClean(null, "**Bold** text", false);
+        assertNotNull(res);
+        assertFalse("Should format without raw **", res.toString().contains("**"));
+        assertTrue("Should retain text content", res.toString().contains("Bold"));
+    }
+
+    @Test
+    public void testMarkwonInstanceGetterSetter() {
+        CleanMarkdownFormatter.setMarkwonInstance(null);
+        assertNull("getMarkwon with null context should return null", CleanMarkdownFormatter.getMarkwon(null));
+    }
 }
