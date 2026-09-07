@@ -494,6 +494,26 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         }
     }
 
+    public void play() {
+        MediaController controller = currentController;
+        if (controller == null) return;
+        try {
+            controller.getTransportControls().play();
+        } catch (Exception e) {
+            AppLog.w(TAG, "play failed: " + e.getMessage());
+        }
+    }
+
+    public void pause() {
+        MediaController controller = currentController;
+        if (controller == null) return;
+        try {
+            controller.getTransportControls().pause();
+        } catch (Exception e) {
+            AppLog.w(TAG, "pause failed: " + e.getMessage());
+        }
+    }
+
     public void skipNext() {
         MediaController controller = currentController;
         if (controller == null) return;

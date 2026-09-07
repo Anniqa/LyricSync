@@ -421,6 +421,18 @@ public final class CleanMarkdownFormatter {
             icon = com.lyricsync.app.R.drawable.ic_sparkles;
             running = "Menerapkan lirik (" + queryOrUrl + ")…";
             done = "Lirik berhasil diterapkan!";
+        } else if ("control_playback".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_play;
+            running = "Mengontrol pemutaran musik (" + queryOrUrl + ")…";
+            done = "Pemutaran musik diperbarui!";
+        } else if ("adjust_overlay_appearance".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_settings;
+            running = "Menyesuaikan tampilan overlay…";
+            done = "Tampilan overlay diperbarui!";
+        } else if ("manage_lyric_lines".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_lyrics_lines;
+            running = "Mengatur baris lirik (" + queryOrUrl + ")…";
+            done = "Baris lirik berhasil diperbarui!";
         } else {
             String query = queryOrUrl != null ? queryOrUrl : "";
             if (query.length() > 50) query = query.substring(0, 50) + "…";

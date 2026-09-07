@@ -66,10 +66,10 @@ public class AntigravityApiClientToolLoopTest {
     public void testBuildToolDeclarationsStructure() {
         JsonArray declarations = AntigravityApiClient.buildToolDeclarations();
         assertNotNull("Tool declarations array should not be null", declarations);
-        assertEquals("Must declare exactly 10 tools with web search", 10, declarations.size());
+        assertEquals("Must declare exactly 13 tools with web search", 13, declarations.size());
 
         JsonArray declarationsNoWeb = AntigravityApiClient.buildToolDeclarations(false);
-        assertEquals("Must declare 8 lyric tools without web search", 8, declarationsNoWeb.size());
+        assertEquals("Must declare 11 lyric tools without web search", 11, declarationsNoWeb.size());
 
         // 1. web_search
         JsonObject searchTool = declarations.get(0).getAsJsonObject();
@@ -103,35 +103,38 @@ public class AntigravityApiClientToolLoopTest {
         JsonArray fetchRequired = fetchParams.getAsJsonArray("required");
         assertEquals(1, fetchRequired.size());
         assertEquals("url", fetchRequired.get(0).getAsString());
-        // Check fetch_external_syllable_lyrics
+        // Check fetch_external_syllable_lyrics, parse_and_apply_lyrics, and 3 full control tools
         boolean foundFetchExternal = false;
         boolean foundParseAndApply = false;
+        boolean foundControlPlayback = false;
+        boolean foundAdjustAppearance = false;
+        boolean foundManageLines = false;
         for (JsonElement el : declarations) {
             JsonObject obj = el.getAsJsonObject();
             String name = obj.get("name").getAsString();
             if ("fetch_external_syllable_lyrics".equals(name)) {
                 foundFetchExternal = true;
-                JsonObject p = obj.getAsJsonObject("parameters");
-                JsonObject props = p.getAsJsonObject("properties");
-                assertTrue(props.has("title"));
-                assertTrue(props.has("artist"));
-                assertTrue(props.has("provider"));
-                JsonArray req = p.getAsJsonArray("required");
-                assertTrue(req.contains(new JsonPrimitive("title")));
-                assertTrue(req.contains(new JsonPrimitive("artist")));
             } else if ("parse_and_apply_lyrics".equals(name)) {
                 foundParseAndApply = true;
+            } else if ("control_playback".equals(name)) {
+                foundControlPlayback = true;
                 JsonObject p = obj.getAsJsonObject("parameters");
-                JsonObject props = p.getAsJsonObject("properties");
-                assertTrue(props.has("raw_lyrics"));
-                assertTrue(props.has("format"));
-                JsonArray req = p.getAsJsonArray("required");
-                assertTrue(req.contains(new JsonPrimitive("raw_lyrics")));
-                assertTrue(req.contains(new JsonPrimitive("format")));
+                assertTrue(p.getAsJsonObject("properties").has("action"));
+            } else if ("adjust_overlay_appearance".equals(name)) {
+                foundAdjustAppearance = true;
+                JsonObject p = obj.getAsJsonObject("parameters");
+                assertTrue(p.getAsJsonObject("properties").has("font_scale"));
+            } else if ("manage_lyric_lines".equals(name)) {
+                foundManageLines = true;
+                JsonObject p = obj.getAsJsonObject("parameters");
+                assertTrue(p.getAsJsonObject("properties").has("action"));
             }
         }
         assertTrue("fetch_external_syllable_lyrics must be declared", foundFetchExternal);
         assertTrue("parse_and_apply_lyrics must be declared", foundParseAndApply);
+        assertTrue("control_playback must be declared", foundControlPlayback);
+        assertTrue("adjust_overlay_appearance must be declared", foundAdjustAppearance);
+        assertTrue("manage_lyric_lines must be declared", foundManageLines);
     }
 
     @Test
@@ -150,7 +153,7 @@ public class AntigravityApiClientToolLoopTest {
         assertFalse("tool object must NOT have built-in googleSearch", tool0.has("googleSearch"));
 
         JsonArray decls = tool0.getAsJsonArray("functionDeclarations");
-        assertEquals(10, decls.size());
+        assertEquals(13, decls.size());
         assertEquals("web_search", decls.get(0).getAsJsonObject().get("name").getAsString());
         assertEquals("web_fetch", decls.get(1).getAsJsonObject().get("name").getAsString());
     }
@@ -836,6 +839,99 @@ public class AntigravityApiClientToolLoopTest {
         assertEquals("executing:parse_and_apply_lyrics:format:krc", toolEvents.get(0));
         assertEquals("completed:parse_and_apply_lyrics", toolEvents.get(1));
         assertNotNull(completedText.get());
+    }
+
+    @Test
+    public void testSimulationControlPlaybackAppearanceAndManageLines() throws InterruptedException {
+        final AtomicReference<String> lastPlaybackAction = new AtomicReference<>();
+        final AtomicInteger lastPlaybackLine = new AtomicInteger(-1);
+        final AtomicReference<Float> lastFontScale = new AtomicReference<>();
+        final AtomicReference<String> lastAnimStyle = new AtomicReference<>();
+        final AtomicReference<String> lastManageAction = new AtomicReference<>();
+        final AtomicInteger lastManageLine = new AtomicInteger(-1);
+
+        apiClient.setLyricActionDelegate(new AntigravityApiClient.LyricActionDelegate() {
+            @Override public void translateLyrics(String targetLang, ActionCallback callback) { callback.onSuccess("OK"); }
+            @Override public void transliterateLyrics(String mode, ActionCallback callback) { callback.onSuccess("OK"); }
+            @Override public void setSyncOffset(int offsetMs, ActionCallback callback) { callback.onSuccess("OK"); }
+            @Override public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) { callback.onSuccess("OK"); }
+            @Override public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) { callback.onSuccess("OK"); }
+            @Override public void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) { callback.onSuccess("OK"); }
+            @Override public void applyLyrics(LyricsData lyrics, ActionCallback callback) { callback.onSuccess("OK"); }
+
+            @Override
+            public void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback) {
+                lastPlaybackAction.set(action);
+                lastPlaybackLine.set(lineIndex);
+                callback.onSuccess("Seek to line " + (lineIndex + 1) + " success");
+            }
+
+            @Override
+            public void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent, ActionCallback callback) {
+                lastFontScale.set(fontScale);
+                lastAnimStyle.set(animStyle);
+                callback.onSuccess("Appearance updated");
+            }
+
+            @Override
+            public void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
+                lastManageAction.set(action);
+                lastManageLine.set(lineIndex);
+                callback.onSuccess("Line managed");
+            }
+        });
+
+        // Turn 1: Model calls control_playback
+        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_ctrl_1\",\"functionCall\": {\"name\": \"control_playback\",\"id\": \"call_ctrl_1\",\"args\": {\"action\": \"seek_to_line\",\"line_index\": 4}}}]}}]}}\n\n";
+        // Turn 2: Model calls adjust_overlay_appearance
+        String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_adj_1\",\"functionCall\": {\"name\": \"adjust_overlay_appearance\",\"id\": \"call_adj_1\",\"args\": {\"font_scale\": 1.3,\"anim_style\": \"glow\"}}}]}}]}}\n\n";
+        // Turn 3: Model calls manage_lyric_lines
+        String turn3Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_man_1\",\"functionCall\": {\"name\": \"manage_lyric_lines\",\"id\": \"call_man_1\",\"args\": {\"action\": \"delete\",\"line_index\": 2}}}]}}]}}\n\n";
+        // Turn 4: Final user text
+        String turn4Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Semua perintah kontrol berhasil dieksekusi.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 50,\"candidatesTokenCount\": 25}}}\n\n";
+
+        mockInterceptor.enqueueSseResponse(turn1Response);
+        mockInterceptor.enqueueSseResponse(turn2Response);
+        mockInterceptor.enqueueSseResponse(turn3Response);
+        mockInterceptor.enqueueSseResponse(turn4Response);
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final List<String> toolEvents = new ArrayList<>();
+        final AtomicReference<String> completedText = new AtomicReference<>();
+
+        apiClient.generateContentStream("gemini-3.8-flash-high", new ArrayList<>(),
+                "lompat ke baris 5, besarin font dan hapus baris 3", false, new AntigravityApiClient.StreamListener() {
+                    @Override
+                    public void onToolExecuting(String toolName, String queryOrUrl) {
+                        toolEvents.add("executing:" + toolName + ":" + queryOrUrl);
+                    }
+
+                    @Override
+                    public void onToolCompleted(String toolName, int resultsCount) {
+                        toolEvents.add("completed:" + toolName);
+                    }
+
+                    @Override
+                    public void onComplete(String fullResponse, List<String> webSources) {
+                        completedText.set(fullResponse);
+                        latch.countDown();
+                    }
+
+                    @Override
+                    public void onError(Exception error) {
+                        latch.countDown();
+                    }
+                });
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertEquals("seek_to_line", lastPlaybackAction.get());
+        assertEquals(4, lastPlaybackLine.get());
+        assertEquals(Float.valueOf(1.3f), lastFontScale.get());
+        assertEquals("glow", lastAnimStyle.get());
+        assertEquals("delete", lastManageAction.get());
+        assertEquals(2, lastManageLine.get());
+        assertEquals(6, toolEvents.size());
+        assertEquals("Semua perintah kontrol berhasil dieksekusi.", completedText.get());
     }
 
     static class FakeToolExecutor extends AntigravityToolExecutor {

@@ -321,6 +321,9 @@ public class SongChatManager {
             sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
             sb.append("- 'fetch_external_syllable_lyrics': Gunakan jika lirik lagu saat ini tidak sinkron suku kata/karaoke, kosong, atau pengguna meminta mengambil lirik dari provider internet (NetEase/Kugou/Spotify/LRCLIB).\n");
             sb.append("- 'parse_and_apply_lyrics': Gunakan jika Anda atau pengguna memiliki teks mentah lirik berformat suku kata (YRC, KRC, TTML, ELRC, atau LRC) untuk langsung diterapkan ke overlay.\n");
+            sb.append("- 'control_playback': Gunakan jika pengguna meminta melompat ke baris tertentu ('seek_to_line'), lompat ke waktu tertentu ('seek_to_position'), atau mengontrol pemutaran ('play', 'pause', 'skip_next', 'skip_previous').\n");
+            sb.append("- 'adjust_overlay_appearance': Gunakan jika pengguna meminta mengubah ukuran font lirik ('font_scale': misal 0.8 kecil, 1.2 besar), gaya animasi teks ('anim_style': glow/scale/pop/fade), atau ukuran overlay ('width_percent', 'height_percent').\n");
+            sb.append("- 'manage_lyric_lines': Gunakan jika pengguna meminta menghapus baris tertentu ('delete'), menyisipkan baris baru ('insert'), atau menggeser timing baris ('shift_timing').\n");
             sb.append("Jika permintaan pengguna berkaitan dengan tindakan di atas, SEGERA panggil alat tersebut!\n");
             sb.append("\n[PANDUAN KONTROL PENUH EDITING & MODIFIKASI LIRIK]\n");
             sb.append("Anda memiliki KONTROL PENUH (FULL CONTROL) untuk mengedit, memodifikasi, dan mengatur tampilan lirik lagu (baik lirik suku kata/syllable, lirik per baris/line-by-line, maupun lirik biasa):\n");

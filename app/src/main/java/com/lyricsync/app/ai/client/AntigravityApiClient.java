@@ -114,8 +114,21 @@ public class AntigravityApiClient {
             callback.onSuccess(edits.size() + " baris berhasil diperbarui.");
         }
         void toggleDisplay(String feature, boolean enabled, ActionCallback callback);
-        void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback);
-        void applyLyrics(LyricsData lyrics, ActionCallback callback);
+        default void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) {
+            if (callback != null) callback.onError("fetchSyllableLyrics belum didukung");
+        }
+        default void applyLyrics(LyricsData lyrics, ActionCallback callback) {
+            if (callback != null) callback.onError("applyLyrics belum didukung");
+        }
+        default void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback) {
+            if (callback != null) callback.onError("controlPlayback belum didukung");
+        }
+        default void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent, ActionCallback callback) {
+            if (callback != null) callback.onError("adjustAppearance belum didukung");
+        }
+        default void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
+            if (callback != null) callback.onError("manageLines belum didukung");
+        }
         interface ActionCallback {
             void onSuccess(String message);
             void onError(String error);
@@ -366,6 +379,30 @@ public class AntigravityApiClient {
                 new String[]{"raw_lyrics", "format"},
                 "raw_lyrics", "STRING", "Konten mentah lirik (format YRC, KRC, TTML, ELRC, atau LRC).",
                 "format", "STRING", "Format lirik: 'yrc', 'krc', 'ttml', 'elrc', 'lrc', atau 'auto'."));
+        declarations.add(makeTool("control_playback",
+                "Mengontrol pemutaran musik di pemutar pengguna (lompat ke baris lirik tertentu/seek to line, lompat ke milidetik tertentu, jeda/pause, putar/play, lagu berikutnya/sebelumnya).",
+                new String[]{"action"},
+                "action", "STRING", "Aksi: 'seek_to_line', 'seek_to_position', 'play', 'pause', 'skip_next', atau 'skip_previous'.",
+                "line_index", "INTEGER", "Indeks baris lirik sasaran untuk 'seek_to_line' (mulai dari 0).",
+                "position_ms", "INTEGER", "Posisi audio dalam milidetik untuk 'seek_to_position'."));
+        declarations.add(makeTool("adjust_overlay_appearance",
+                "Menyesuaikan tampilan visual overlay pemutar lirik (skala ukuran font teks, gaya animasi suku kata, lebar jendela, dan tinggi jendela overlay).",
+                null,
+                "font_scale", "NUMBER", "Skala ukuran font (misal: 0.8 lebih kecil, 1.0 normal, 1.3 lebih besar, 1.6 sangat besar).",
+                "anim_style", "STRING", "Gaya efek animasi teks ('glow', 'scale', 'float', 'pop', 'fade').",
+                "width_percent", "INTEGER", "Persentase lebar overlay (45 sampai 100).",
+                "height_percent", "INTEGER", "Persentase tinggi overlay (20 sampai 70)."));
+        declarations.add(makeTool("manage_lyric_lines",
+                "Menambah, menghapus, atau memindahkan timing baris lirik tertentu di overlay secara langsung.",
+                new String[]{"action", "line_index"},
+                "action", "STRING", "Aksi: 'delete' (hapus baris), 'insert' (sisipkan baris baru), atau 'shift_timing' (geser waktu baris).",
+                "line_index", "INTEGER", "Indeks baris sasaran (mulai dari 0).",
+                "text", "STRING", "Teks baris lirik baru (untuk aksi 'insert').",
+                "start_time_ms", "INTEGER", "Waktu mulai baris dalam milidetik (untuk aksi 'insert').",
+                "end_time_ms", "INTEGER", "Waktu akhir baris dalam milidetik (untuk aksi 'insert').",
+                "translation", "STRING", "Terjemahan baris baru (opsional untuk aksi 'insert').",
+                "romanji", "STRING", "Bacaan romaji baris baru (opsional untuk aksi 'insert').",
+                "shift_ms", "INTEGER", "Pergeseran waktu dalam milidetik (+/-) untuk aksi 'shift_timing'."));
         return declarations;
     }
 
@@ -1013,6 +1050,19 @@ public class AntigravityApiClient {
             String fmt = toolArgs.has("format") && !toolArgs.get("format").isJsonNull()
                     ? toolArgs.get("format").getAsString() : "auto";
             queryOrUrl = "format:" + fmt;
+        } else if ("control_playback".equals(toolName)) {
+            String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "playback";
+            if ("seek_to_line".equals(act) && toolArgs.has("line_index")) {
+                queryOrUrl = "Lompat ke baris " + (toolArgs.get("line_index").getAsInt() + 1);
+            } else {
+                queryOrUrl = act;
+            }
+        } else if ("adjust_overlay_appearance".equals(toolName)) {
+            queryOrUrl = "Tampilan overlay";
+        } else if ("manage_lyric_lines".equals(toolName)) {
+            String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "baris";
+            int idx = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull() ? toolArgs.get("line_index").getAsInt() + 1 : 0;
+            queryOrUrl = act + " baris " + idx;
         } else {
             queryOrUrl = toolArgs.toString();
         }
@@ -1232,6 +1282,45 @@ public class AntigravityApiClient {
                     lyricActionDelegate.applyLyrics(parsed,
                             wrapActionCallback(callback, "Gagal menerapkan lirik"));
                 }
+            } else if ("control_playback".equals(toolName)) {
+                String action = toolArgs.has("action") && !toolArgs.get("action").isJsonNull()
+                        ? toolArgs.get("action").getAsString() : "";
+                int lineIndex = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
+                        ? toolArgs.get("line_index").getAsInt() : -1;
+                long positionMs = toolArgs.has("position_ms") && !toolArgs.get("position_ms").isJsonNull()
+                        ? toolArgs.get("position_ms").getAsLong() : 0L;
+                lyricActionDelegate.controlPlayback(action, lineIndex, positionMs,
+                        wrapActionCallback(callback, "Gagal mengontrol pemutaran"));
+            } else if ("adjust_overlay_appearance".equals(toolName)) {
+                Float fontScale = toolArgs.has("font_scale") && !toolArgs.get("font_scale").isJsonNull()
+                        ? toolArgs.get("font_scale").getAsFloat() : null;
+                String animStyle = toolArgs.has("anim_style") && !toolArgs.get("anim_style").isJsonNull()
+                        ? toolArgs.get("anim_style").getAsString() : null;
+                Integer widthPercent = toolArgs.has("width_percent") && !toolArgs.get("width_percent").isJsonNull()
+                        ? toolArgs.get("width_percent").getAsInt() : null;
+                Integer heightPercent = toolArgs.has("height_percent") && !toolArgs.get("height_percent").isJsonNull()
+                        ? toolArgs.get("height_percent").getAsInt() : null;
+                lyricActionDelegate.adjustAppearance(fontScale, animStyle, widthPercent, heightPercent,
+                        wrapActionCallback(callback, "Gagal mengubah tampilan"));
+            } else if ("manage_lyric_lines".equals(toolName)) {
+                String action = toolArgs.has("action") && !toolArgs.get("action").isJsonNull()
+                        ? toolArgs.get("action").getAsString() : "";
+                int lineIndex = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
+                        ? toolArgs.get("line_index").getAsInt() : -1;
+                long startMs = toolArgs.has("start_time_ms") && !toolArgs.get("start_time_ms").isJsonNull()
+                        ? toolArgs.get("start_time_ms").getAsLong() : 0L;
+                long endMs = toolArgs.has("end_time_ms") && !toolArgs.get("end_time_ms").isJsonNull()
+                        ? toolArgs.get("end_time_ms").getAsLong() : 0L;
+                String text = toolArgs.has("text") && !toolArgs.get("text").isJsonNull()
+                        ? toolArgs.get("text").getAsString() : null;
+                String translation = toolArgs.has("translation") && !toolArgs.get("translation").isJsonNull()
+                        ? toolArgs.get("translation").getAsString() : null;
+                String romanji = toolArgs.has("romanji") && !toolArgs.get("romanji").isJsonNull()
+                        ? toolArgs.get("romanji").getAsString() : null;
+                long shiftMs = toolArgs.has("shift_ms") && !toolArgs.get("shift_ms").isJsonNull()
+                        ? toolArgs.get("shift_ms").getAsLong() : 0L;
+                lyricActionDelegate.manageLines(action, lineIndex, startMs, endMs, text, translation, romanji, shiftMs,
+                        wrapActionCallback(callback, "Gagal mengelola baris lirik"));
             } else {
                 callback.onResult(new ToolResult(true, "Unknown tool: " + toolName, Collections.<SourceItem>emptyList()));
                 return;
