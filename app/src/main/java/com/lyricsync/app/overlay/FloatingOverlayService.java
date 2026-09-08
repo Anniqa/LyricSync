@@ -395,6 +395,19 @@ public class FloatingOverlayService extends Service {
             public void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
                 handler.post(() -> manageLinesLive(action, lineIndex, startMs, endMs, text, translation, romanji, shiftMs, callback));
             }
+
+            @Override
+            public void getCurrentPlayingTrack(com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.TrackInfoCallback callback) {
+                handler.post(() -> {
+                    String t = currentTrack != null ? currentTrack.title : "";
+                    String a = currentTrack != null ? currentTrack.artist : "";
+                    String l = songChatManager != null ? songChatManager.getFullLyrics() : "";
+                    boolean playing = isPlaying;
+                    if (callback != null) {
+                        callback.onSuccess(t, a, l, playing, lastPlaybackPosition);
+                    }
+                });
+            }
         });
         aiTranslationService = new com.lyricsync.app.lyrics.translation.AiTranslationService(
                 this, authManager, apiClient, translateService);

@@ -433,6 +433,10 @@ public final class CleanMarkdownFormatter {
             icon = com.lyricsync.app.R.drawable.ic_lyrics_lines;
             running = "Mengatur baris lirik (" + queryOrUrl + ")…";
             done = "Baris lirik berhasil diperbarui!";
+        } else if ("get_current_playing_track".equals(toolName)) {
+            icon = com.lyricsync.app.R.drawable.ic_music_note;
+            running = "Memeriksa lagu yang sedang diputar…";
+            done = "Info lagu aktif berhasil didapatkan!";
         } else {
             String query = queryOrUrl != null ? queryOrUrl : "";
             if (query.length() > 50) query = query.substring(0, 50) + "…";

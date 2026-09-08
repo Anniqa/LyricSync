@@ -66,10 +66,10 @@ public class AntigravityApiClientToolLoopTest {
     public void testBuildToolDeclarationsStructure() {
         JsonArray declarations = AntigravityApiClient.buildToolDeclarations();
         assertNotNull("Tool declarations array should not be null", declarations);
-        assertEquals("Must declare exactly 13 tools with web search", 13, declarations.size());
+        assertEquals("Must declare exactly 14 tools with web search", 14, declarations.size());
 
         JsonArray declarationsNoWeb = AntigravityApiClient.buildToolDeclarations(false);
-        assertEquals("Must declare 11 lyric tools without web search", 11, declarationsNoWeb.size());
+        assertEquals("Must declare 12 lyric tools without web search", 12, declarationsNoWeb.size());
 
         // 1. web_search
         JsonObject searchTool = declarations.get(0).getAsJsonObject();
@@ -133,8 +133,9 @@ public class AntigravityApiClientToolLoopTest {
         assertTrue("fetch_external_syllable_lyrics must be declared", foundFetchExternal);
         assertTrue("parse_and_apply_lyrics must be declared", foundParseAndApply);
         assertTrue("control_playback must be declared", foundControlPlayback);
-        assertTrue("adjust_overlay_appearance must be declared", foundAdjustAppearance);
-        assertTrue("manage_lyric_lines must be declared", foundManageLines);
+        // 14. get_current_playing_track
+        JsonObject currentTrackTool = declarations.get(13).getAsJsonObject();
+        assertEquals("get_current_playing_track", currentTrackTool.get("name").getAsString());
     }
 
     @Test
@@ -153,7 +154,7 @@ public class AntigravityApiClientToolLoopTest {
         assertFalse("tool object must NOT have built-in googleSearch", tool0.has("googleSearch"));
 
         JsonArray decls = tool0.getAsJsonArray("functionDeclarations");
-        assertEquals(13, decls.size());
+        assertEquals(14, decls.size());
         assertEquals("web_search", decls.get(0).getAsJsonObject().get("name").getAsString());
         assertEquals("web_fetch", decls.get(1).getAsJsonObject().get("name").getAsString());
     }

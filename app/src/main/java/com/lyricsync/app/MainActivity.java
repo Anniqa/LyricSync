@@ -1239,6 +1239,19 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 public void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
                     runOnUiThread(() -> manageLinesStudio(action, lineIndex, startMs, endMs, text, translation, romanji, shiftMs, callback));
                 }
+
+                @Override
+                public void getCurrentPlayingTrack(AntigravityApiClient.LyricActionDelegate.TrackInfoCallback callback) {
+                    runOnUiThread(() -> {
+                        String t = currentTrackTitle;
+                        String a = currentTrackArtist;
+                        String l = songChatManager != null ? songChatManager.getFullLyrics() : "";
+                        boolean playing = currentTrack != null && currentTrack.hasTrack;
+                        if (callback != null) {
+                            callback.onSuccess(t, a, l, playing, 0);
+                        }
+                    });
+                }
             });
         }
         if (songMeaningService == null) {

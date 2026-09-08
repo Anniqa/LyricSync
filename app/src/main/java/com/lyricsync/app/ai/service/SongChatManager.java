@@ -325,6 +325,7 @@ public class SongChatManager {
             sb.append("- 'control_playback': Gunakan jika pengguna meminta melompat ke baris tertentu ('seek_to_line'), lompat ke waktu tertentu ('seek_to_position'), atau mengontrol pemutaran ('play', 'pause', 'skip_next', 'skip_previous').\n");
             sb.append("- 'adjust_overlay_appearance': Gunakan jika pengguna meminta mengubah ukuran font lirik ('font_scale': misal 0.8 kecil, 1.2 besar), gaya animasi teks ('anim_style': glow/scale/pop/fade), atau ukuran overlay ('width_percent', 'height_percent').\n");
             sb.append("- 'manage_lyric_lines': Gunakan jika pengguna meminta menghapus baris tertentu ('delete'), menyisipkan baris baru ('insert'), atau menggeser timing baris ('shift_timing').\n");
+            sb.append("- 'get_current_playing_track': Gunakan jika ingin mengetahui lagu apa yang saat ini sedang diputar di pemutar musik pengguna secara real-time (judul, artis, lirik aktif, status pemutaran). Panggil alat ini untuk memastikan lagu yang aktif jika pengguna bertanya tentang lagu saat ini!\n");
             sb.append("Jika permintaan pengguna berkaitan dengan tindakan di atas, SEGERA panggil alat tersebut!\n");
             sb.append("\n[PANDUAN KONTROL PENUH EDITING & MODIFIKASI LIRIK]\n");
             sb.append("Anda memiliki KONTROL PENUH (FULL CONTROL) untuk mengedit, memodifikasi, dan mengatur tampilan lirik lagu (baik lirik suku kata/syllable, lirik per baris/line-by-line, maupun lirik biasa):\n");
@@ -383,6 +384,17 @@ public class SongChatManager {
                         prev.content = prev.content + "\n\n" + msg.content;
                     }
                 }
+            }
+        }
+        // If we have history and an active song, ensure the LAST user message contains the current track hint
+        // so the model NEVER confuses past song discussions with the currently playing track!
+        if (!sanitizedHistory.isEmpty() && title != null && !title.trim().isEmpty()) {
+            AiChatMessage lastMsg = sanitizedHistory.get(sanitizedHistory.size() - 1);
+            if ("user".equals(lastMsg.role)) {
+                String trackHint = "\n\n[Lagu yang SEDANG DIPUTAR sekarang di pemutar musik pengguna: \""
+                        + title.trim() + "\"" + (artist != null && !artist.trim().isEmpty() ? " oleh \"" + artist.trim() + "\"" : "")
+                        + "]\n(Catatan: Jika pertanyaan pengguna di atas merujuk pada 'lagu ini', 'lagu sekarang', atau hal musik tanpa menyebut judul secara spesifik, jawablah mengenai lagu yang SEDANG DIPUTAR ini! Gunakan alat get_current_playing_track jika membutuhkan info pemutar lebih lanjut.)";
+                lastMsg.content = lastMsg.content + trackHint;
             }
         }
 

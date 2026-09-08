@@ -129,6 +129,13 @@ public class AntigravityApiClient {
         default void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
             if (callback != null) callback.onError("manageLines belum didukung");
         }
+        default void getCurrentPlayingTrack(TrackInfoCallback callback) {
+            if (callback != null) callback.onError("getCurrentPlayingTrack belum didukung");
+        }
+        interface TrackInfoCallback {
+            void onSuccess(String title, String artist, String lyrics, boolean isPlaying, long positionMs);
+            void onError(String error);
+        }
         interface ActionCallback {
             void onSuccess(String message);
             void onError(String error);
@@ -368,6 +375,9 @@ public class AntigravityApiClient {
                 "translation", "STRING", "Terjemahan baris baru (opsional untuk aksi 'insert').",
                 "romanji", "STRING", "Bacaan romaji baris baru (opsional untuk aksi 'insert').",
                 "shift_ms", "INTEGER", "Pergeseran waktu dalam milidetik (+/-) untuk aksi 'shift_timing'."));
+        declarations.add(makeTool("get_current_playing_track",
+                "Mendapatkan informasi lagu yang sedang diputar di pemutar musik pengguna saat ini (judul, artis, lirik aktif, status pemutaran). Panggil alat ini untuk memastikan lagu yang sedang aktif jika pengguna bertanya tentang lagu saat ini.",
+                null));
         return declarations;
     }
 
@@ -1028,6 +1038,8 @@ public class AntigravityApiClient {
             String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "baris";
             int idx = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull() ? toolArgs.get("line_index").getAsInt() + 1 : 0;
             queryOrUrl = act + " baris " + idx;
+        } else if ("get_current_playing_track".equals(toolName)) {
+            queryOrUrl = "Status lagu aktif";
         } else {
             queryOrUrl = toolArgs.toString();
         }
@@ -1286,6 +1298,25 @@ public class AntigravityApiClient {
                         ? toolArgs.get("shift_ms").getAsLong() : 0L;
                 lyricActionDelegate.manageLines(action, lineIndex, startMs, endMs, text, translation, romanji, shiftMs,
                         wrapActionCallback(callback, "Gagal mengelola baris lirik"));
+            } else if ("get_current_playing_track".equals(toolName)) {
+                lyricActionDelegate.getCurrentPlayingTrack(new LyricActionDelegate.TrackInfoCallback() {
+                    @Override
+                    public void onSuccess(String title, String artist, String lyrics, boolean isPlaying, long positionMs) {
+                        com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+                        obj.addProperty("title", title != null ? title : "");
+                        obj.addProperty("artist", artist != null ? artist : "");
+                        obj.addProperty("is_playing", isPlaying);
+                        obj.addProperty("position_ms", positionMs);
+                        if (lyrics != null && !lyrics.isEmpty()) {
+                            obj.addProperty("lyrics", lyrics.length() > 3000 ? lyrics.substring(0, 3000) + "..." : lyrics);
+                        }
+                        callback.onResult(new ToolResult(false, obj.toString(), Collections.<SourceItem>emptyList()));
+                    }
+                    @Override
+                    public void onError(String error) {
+                        callback.onResult(new ToolResult(true, "Gagal mendapatkan info lagu: " + error, Collections.<SourceItem>emptyList()));
+                    }
+                });
             } else {
                 callback.onResult(new ToolResult(true, "Unknown tool: " + toolName, Collections.<SourceItem>emptyList()));
                 return;
