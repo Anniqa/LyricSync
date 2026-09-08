@@ -39,6 +39,7 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -50,6 +51,7 @@ import com.lyricsync.app.ai.client.AntigravityQuotaClient;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.QuotaSummary;
+import com.lyricsync.app.ai.service.AiLyricsAgentService;
 import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.service.SongMeaningService;
 import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
@@ -147,6 +149,28 @@ public class FloatingOverlayService extends Service {
     private View overlayEmpty;
     private TextView overlayEmptyTitle;
     private TextView overlayEmptyDesc;
+    // Retry & AI retrieval state machine
+    public static final int RETRY_STATE_IDLE = 0;
+    public static final int RETRY_STATE_STANDARD = 1;
+    public static final int RETRY_STATE_AI = 2;
+
+    public static final int STATE_IDLE = RETRY_STATE_IDLE;
+    public static final int STATE_STANDARD_RETRYING = RETRY_STATE_STANDARD;
+    public static final int STATE_AI_SEARCHING = RETRY_STATE_AI;
+    public static final int STATE_LOADED = 3;
+    public static final int STATE_FAILED = 4;
+
+    private int currentRetryState = RETRY_STATE_IDLE;
+    private View overlayRetryActionsContainer;
+    private TextView btnRetryStandard;
+    private TextView btnRetryAi;
+    private View overlayAiProgressContainer;
+    private ProgressBar pbAiProgress;
+    private TextView tvAiProgressStep;
+    private TextView btnAiCancel;
+    private TextView btnAiExpandChat;
+    private AiLyricsAgentService aiLyricsAgentService;
+    private AntigravityApiClient.Cancellable activeAiLyricsCall;
     private WindowManager.LayoutParams overlayParams;
     private SharedPreferences sharedPrefs;
 
@@ -418,6 +442,7 @@ public class FloatingOverlayService extends Service {
         songChatManager.setHistoryManager(aiChatHistoryManager);
         aiTransliterationService = new AiSyllableTransliterationService(this, apiClient);
         lyricsCacheManager = new LyricsCacheManager(this);
+        aiLyricsAgentService = new AiLyricsAgentService(this);
         quotaClient = new AntigravityQuotaClient(authManager);
         AntigravityToolExecutor.setChatModelSupplier(() ->
                 sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
@@ -597,6 +622,15 @@ public class FloatingOverlayService extends Service {
         overlayEmpty = overlayView.findViewById(R.id.overlay_empty);
         overlayEmptyTitle = overlayView.findViewById(R.id.overlay_empty_title);
         overlayEmptyDesc = overlayView.findViewById(R.id.overlay_empty_desc);
+        overlayRetryActionsContainer = overlayView.findViewById(R.id.overlay_retry_actions_container);
+        btnRetryStandard = overlayView.findViewById(R.id.btn_retry_standard);
+        btnRetryAi = overlayView.findViewById(R.id.btn_retry_ai);
+        overlayAiProgressContainer = overlayView.findViewById(R.id.overlay_ai_progress_container);
+        pbAiProgress = overlayView.findViewById(R.id.pb_ai_progress);
+        tvAiProgressStep = overlayView.findViewById(R.id.tv_ai_progress_step);
+        btnAiCancel = overlayView.findViewById(R.id.btn_ai_cancel);
+        btnAiExpandChat = overlayView.findViewById(R.id.btn_ai_expand_chat);
+        setupRetryViews();
 
         lyricsVisible = sharedPrefs.getBoolean("lyrics_visible", true);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
@@ -3367,7 +3401,14 @@ public class FloatingOverlayService extends Service {
         if (overlaySkeleton == null) return;
         stopSkeletonShimmer();
         overlaySkeleton.setVisibility(View.GONE);
-        overlayEmpty.setVisibility(View.GONE);
+        setRetryState(STATE_LOADED);
+        if (overlayEmpty != null && overlayEmpty.getVisibility() == View.VISIBLE) {
+            overlayEmpty.animate().alpha(0f).setDuration(Anim.D_FAST).withEndAction(() -> {
+                if (overlayEmpty != null) overlayEmpty.setVisibility(View.GONE);
+            }).start();
+        } else if (overlayEmpty != null) {
+            overlayEmpty.setVisibility(View.GONE);
+        }
         if (scrollView.getVisibility() != View.VISIBLE) {
             scrollView.setVisibility(View.VISIBLE);
             scrollView.setAlpha(0f);
@@ -3391,6 +3432,10 @@ public class FloatingOverlayService extends Service {
         stopSkeletonShimmer();
         overlaySkeleton.setVisibility(View.GONE);
         scrollView.setVisibility(View.INVISIBLE);
+        setRetryState(RETRY_STATE_IDLE);
+        if (overlayRetryActionsContainer != null) {
+            overlayRetryActionsContainer.setVisibility(titleRes == R.string.nothing_playing ? View.GONE : View.VISIBLE);
+        }
         overlayEmpty.setVisibility(View.VISIBLE);
         overlayEmpty.setAlpha(0f);
         overlayEmpty.animate().alpha(1f).setDuration(Anim.D_MED).start();
@@ -3422,12 +3467,185 @@ public class FloatingOverlayService extends Service {
         lineViews.clear();
     }
 
+    // ── Retry & AI Retrieval ────────────────────────────────────────────────
+
+    private void setupRetryViews() {
+        if (btnRetryStandard != null) {
+            btnRetryStandard.setOnClickListener(v -> {
+                Haptics.tick(v);
+                if (currentTrack == null || !currentTrack.isValid()) return;
+                setRetryState(RETRY_STATE_STANDARD);
+                showLoadingState();
+                fetchLyrics(currentTrack);
+            });
+        }
+        if (btnRetryAi != null) {
+            btnRetryAi.setOnClickListener(v -> {
+                Haptics.tick(v);
+                triggerAiLyricsRetrieval();
+            });
+        }
+        if (btnAiCancel != null) {
+            btnAiCancel.setOnClickListener(v -> {
+                Haptics.tick(v);
+                cancelAiLyricsRetrieval();
+                if (overlayEmptyDesc != null) {
+                    overlayEmptyDesc.setText(R.string.lyrics_none_desc);
+                }
+            });
+        }
+        if (btnAiExpandChat != null) {
+            btnAiExpandChat.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showAiChatOverlay();
+            });
+        }
+        setRetryState(RETRY_STATE_IDLE);
+    }
+
+    public void setRetryState(int state) {
+        this.currentRetryState = state;
+        if (overlayRetryActionsContainer == null || overlayAiProgressContainer == null) return;
+        switch (state) {
+            case RETRY_STATE_AI:
+                overlayRetryActionsContainer.setVisibility(View.GONE);
+                overlayAiProgressContainer.setVisibility(View.VISIBLE);
+                if (pbAiProgress != null) pbAiProgress.setVisibility(View.VISIBLE);
+                if (tvAiProgressStep != null) {
+                    tvAiProgressStep.setText(R.string.ai_step_searching_syllable);
+                }
+                break;
+            case RETRY_STATE_STANDARD:
+                overlayRetryActionsContainer.setVisibility(View.VISIBLE);
+                overlayAiProgressContainer.setVisibility(View.GONE);
+                if (btnRetryStandard != null) btnRetryStandard.setEnabled(false);
+                if (btnRetryAi != null) btnRetryAi.setEnabled(false);
+                break;
+            case STATE_LOADED:
+                overlayRetryActionsContainer.setVisibility(View.GONE);
+                overlayAiProgressContainer.setVisibility(View.GONE);
+                break;
+            case STATE_FAILED:
+            case RETRY_STATE_IDLE:
+            default:
+                overlayRetryActionsContainer.setVisibility(View.VISIBLE);
+                overlayAiProgressContainer.setVisibility(View.GONE);
+                if (btnRetryStandard != null) btnRetryStandard.setEnabled(true);
+                if (btnRetryAi != null) btnRetryAi.setEnabled(true);
+                break;
+        }
+    }
+
+    public int getRetryState() {
+        return currentRetryState;
+    }
+
+    private void cancelAiLyricsRetrieval() {
+        if (activeAiLyricsCall != null) {
+            activeAiLyricsCall.cancel();
+            activeAiLyricsCall = null;
+        }
+        setRetryState(RETRY_STATE_IDLE);
+    }
+
+    private void triggerAiLyricsRetrieval() {
+        if (currentTrack == null || !currentTrack.isValid()) return;
+        if (aiLyricsAgentService == null) {
+            aiLyricsAgentService = new AiLyricsAgentService(this);
+        }
+        cancelAiLyricsRetrieval();
+        final TrackInfo track = currentTrack;
+        final String fetchKey = track.title + "|||" + track.artist;
+        pendingFetchKey = fetchKey;
+
+        setRetryState(RETRY_STATE_AI);
+        if (overlayEmptyDesc != null) {
+            overlayEmptyDesc.setText(R.string.ai_step_searching_syllable);
+        }
+
+        activeAiLyricsCall = aiLyricsAgentService.retrieveLyrics(track, new AiLyricsAgentService.AiLyricsCallback() {
+            @Override
+            public void onStepChanged(int stepCode, String message) {
+                handler.post(() -> {
+                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
+                    if (tvAiProgressStep != null) {
+                        if (message != null && !message.isEmpty()) {
+                            tvAiProgressStep.setText(message);
+                        } else if (stepCode == AiLyricsAgentService.STEP_FETCHING_SYLLABLE) {
+                            tvAiProgressStep.setText(R.string.ai_step_searching_syllable);
+                        } else if (stepCode == AiLyricsAgentService.STEP_FALLBACK_LRC) {
+                            tvAiProgressStep.setText(R.string.ai_step_fallback_lrc);
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void onSuccess(LyricsData lyrics) {
+                handler.post(() -> {
+                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
+                    activeAiLyricsCall = null;
+                    if (lyrics == null || lyrics.isEmpty()) {
+                        setRetryState(STATE_FAILED);
+                        if (overlayEmptyDesc != null) {
+                            overlayEmptyDesc.setText(R.string.ai_error_not_found);
+                        }
+                        return;
+                    }
+                    AppLog.i(TAG, "AI Lyrics retrieved: " + lyrics.lines.size()
+                            + " lines from " + lyrics.provider
+                            + " type=" + lyrics.type);
+                    currentLyrics = lyrics;
+                    lyricsStatusText = describeLyrics(lyrics);
+                    if (currentTrack != null) updateTrackInfo(currentTrack);
+                    showLyricsState();
+                    renderOverlayLyrics(lyrics);
+                    setupAiPromptTemplates();
+                    publishNowPlaying();
+                    if (songChatManager != null && track != null) {
+                        StringBuilder sb = new StringBuilder();
+                        if (lyrics.lines != null) {
+                            for (int i = 0; i < lyrics.lines.size(); i++) {
+                                LyricsData.LyricsLine l = lyrics.lines.get(i);
+                                if (l != null && l.text != null && !l.isInterlude) {
+                                    sb.append("[").append(i).append("] ").append(l.text);
+                                    if (l.romanji != null && !l.romanji.trim().isEmpty()) {
+                                        sb.append(" (romaji: ").append(l.romanji.trim()).append(")");
+                                    }
+                                    if (l.translation != null && !l.translation.trim().isEmpty()) {
+                                        sb.append(" (arti: ").append(l.translation.trim()).append(")");
+                                    }
+                                    sb.append("\n");
+                                }
+                            }
+                        }
+                        songChatManager.setCurrentSong(track.title, track.artist, sb.toString().trim(), null);
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                handler.post(() -> {
+                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
+                    activeAiLyricsCall = null;
+                    setRetryState(STATE_FAILED);
+                    if (overlayEmptyDesc != null) {
+                        overlayEmptyDesc.setText(message != null && !message.isEmpty()
+                                ? message : getString(R.string.ai_error_not_found));
+                    }
+                });
+            }
+        });
+    }
+
     // ── Lyrics ─────────────────────────────────────────────────────────────
 
     private void fetchLyrics(TrackInfo track) {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
         final String fetchKey = track.title + "|||" + track.artist;
         pendingFetchKey = fetchKey;
+        cancelAiLyricsRetrieval();
         if (translateService != null) {
             translateService.cancel();
         }
@@ -3858,6 +4076,7 @@ public class FloatingOverlayService extends Service {
         running = false;
         if (activeInstance == this) activeInstance = null;
         super.onDestroy();
+        cancelAiLyricsRetrieval();
         if (aiTranslationService != null) {
             aiTranslationService.cancel();
         }
