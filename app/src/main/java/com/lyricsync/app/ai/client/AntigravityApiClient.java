@@ -341,11 +341,11 @@ public class AntigravityApiClient {
                 + "\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"lines\":{\"type\":\"ARRAY\",\"description\":\"Daftar baris lirik yang diedit/diterjemahkan.\",\"items\":{\"type\":\"OBJECT\",\"properties\":{\"line_index\":{\"type\":\"INTEGER\",\"description\":\"Indeks baris lirik (mulai dari 0).\"},\"translation\":{\"type\":\"STRING\",\"description\":\"Terjemahan baru untuk baris tersebut.\"},\"text\":{\"type\":\"STRING\",\"description\":\"Teks lirik baru (opsional).\"},\"romanji\":{\"type\":\"STRING\",\"description\":\"Bacaan romaji baru (opsional).\"}},\"required\":[\"line_index\"]}}},\"required\":[\"lines\"]}}"
         ).getAsJsonObject());
         declarations.add(makeTool("fetch_external_syllable_lyrics",
-                "Mencari dan mengambil lirik suku kata (syllable/karaoke) dari berbagai provider internet (NetEase YRC, Kugou KRC, Spotify, LRCLIB) dan langsung menerapkannya ke overlay pemutar lirik.",
+                "Mencari dan mengambil lirik suku kata (syllable/karaoke YRC/KRC) dari provider internet dan langsung menerapkannya ke overlay. Panduan rate suku kata tertinggi: untuk lagu Jepang/Anime/K-Pop gunakan provider 'kugou' atau 'netease' (rate syllable tertinggi); untuk lagu Barat/English gunakan 'spotify' atau 'netease'; gunakan 'all' untuk pencarian otomatis terbaik. Catatan: jangan gunakan 'lrclib' jika butuh suku kata.",
                 new String[]{"title", "artist"},
                 "title", "STRING", "Judul lagu.",
                 "artist", "STRING", "Nama penyanyi / artis.",
-                "provider", "STRING", "Provider tujuan: 'all' (default), 'netease', 'kugou', 'spotify', atau 'lrclib'."));
+                "provider", "STRING", "Provider tujuan: 'all' (default), 'kugou' (terbaik untuk anime/J-Pop/K-Pop/Asia), 'netease' (YRC Barat/Asia), atau 'spotify' (word-by-word Barat)."));
         declarations.add(makeTool("parse_and_apply_lyrics",
                 "Mem-parsing teks lirik mentah dalam berbagai format suku kata (YRC/KRC/TTML/ELRC/LRC) dan langsung menerapkannya ke overlay lirik.",
                 new String[]{"raw_lyrics", "format"},

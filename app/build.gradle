@@ -10,8 +10,8 @@ android {
         applicationId "com.lyricsync.app"
         minSdk 26
         targetSdk 35
-        versionCode 79
-        versionName "16.4.25"
+        versionCode 80
+        versionName "16.4.26"
     }
 
     signingConfigs {
