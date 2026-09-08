@@ -219,6 +219,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private String voiceBaseText = "";
     private ObjectAnimator micPulse;
     private static final int REQ_VOICE_INPUT = 91;
+    private static final int REQ_VOICE_INTENT = 92;
     private ImageView aiStudioBtnNewChat;
     private ImageView aiStudioBtnHistory;
     private AiChatHistoryManager aiChatHistoryManager;
@@ -1510,13 +1511,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     }
 
     private void startVoiceInput() {
-        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(this, R.string.ai_voice_error, Toast.LENGTH_SHORT).show();
-            return;
-        }
         stopVoiceInput();
         voiceBaseText = aiStudioChatInput != null ? aiStudioChatInput.getText().toString() : "";
-        speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+        try {
+            speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+        } catch (Exception e) {
+            startVoiceIntentFallback();
+            return;
+        }
         speechRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
             @Override public void onReadyForSpeech(Bundle params) {}
             @Override public void onBeginningOfSpeech() {}
@@ -1525,10 +1527,16 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             @Override public void onEndOfSpeech() { stopVoiceUi(); }
             @Override public void onError(int error) {
                 stopVoiceUi();
+                if (error == android.speech.SpeechRecognizer.ERROR_CLIENT
+                        || error == android.speech.SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) {
+                    startVoiceIntentFallback();
+                    return;
+                }
                 int msg = (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH
                         || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                         ? R.string.ai_voice_no_result : R.string.ai_voice_error;
-                Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, getString(msg) + " (E" + error + ")",
+                        Toast.LENGTH_SHORT).show();
             }
             @Override public void onResults(Bundle results) {
                 applyVoiceText(results.getStringArrayList(
@@ -1551,8 +1559,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         try {
             speechRecognizer.startListening(intent);
         } catch (Exception e) {
-            Toast.makeText(this, R.string.ai_voice_error, Toast.LENGTH_SHORT).show();
             stopVoiceInput();
+            startVoiceIntentFallback();
             return;
         }
         voiceListening = true;
@@ -1563,6 +1571,33 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             micPulse.setRepeatMode(ValueAnimator.REVERSE);
             micPulse.setRepeatCount(ValueAnimator.INFINITE);
             micPulse.start();
+        }
+    }
+
+    /** Fallback: Google voice dialog UI (RecognizerIntent activity) when the
+     *  in-app SpeechRecognizer service path fails on this device. */
+    private void startVoiceIntentFallback() {
+        try {
+            android.content.Intent intent = new android.content.Intent(
+                    android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,
+                    LocaleHelper.getLanguage(this));
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,
+                    getString(R.string.ai_voice_listening));
+            startActivityForResult(intent, REQ_VOICE_INTENT);
+        } catch (Exception e) {
+            Toast.makeText(this, R.string.ai_voice_error, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_VOICE_INTENT && resultCode == RESULT_OK && data != null) {
+            applyVoiceText(data.getStringArrayListExtra(
+                    android.speech.RecognizerIntent.EXTRA_RESULTS));
         }
     }
 
