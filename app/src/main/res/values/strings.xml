@@ -218,4 +218,16 @@
     <string name="cancel">Cancel</string>
     <string name="romaji_enabled">Romaji enabled</string>
     <string name="romaji_disabled">Romaji disabled</string>
+
+    <!-- Lyric Retry & AI Retrieval -->
+    <string name="btn_retry_standard">Retry</string>
+    <string name="btn_retry_ai">Find with AI</string>
+    <string name="ai_step_searching_syllable">Searching syllable lyrics (KRC / YRC / TTML)…</string>
+    <string name="ai_step_fetching_web">Querying provider databases…</string>
+    <string name="ai_step_fallback_lrc">Syllable not found, searching line format (LRC)…</string>
+    <string name="ai_step_syncing">Syncing lyrics…</string>
+    <string name="ai_error_not_found">No synced lyrics found for this version.</string>
+    <string name="ai_error_auth_required">AI authentication required. Open settings.</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_view_details">Details</string>
 </resources>

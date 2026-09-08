@@ -532,6 +532,122 @@
                 android:textSize="11sp"
                 android:gravity="center"
                 android:layout_marginTop="3dp" />
+
+            <!-- Action buttons container (Default Empty State) -->
+            <LinearLayout
+                android:id="@+id/overlay_retry_actions_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginTop="12dp">
+
+                <TextView
+                    android:id="@+id/btn_retry_standard"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:minWidth="100dp"
+                    android:gravity="center"
+                    android:text="@string/btn_retry_standard"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <Space
+                    android:layout_width="10dp"
+                    android:layout_height="1dp" />
+
+                <TextView
+                    android:id="@+id/btn_retry_ai"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:minWidth="120dp"
+                    android:gravity="center"
+                    android:text="@string/btn_retry_ai"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_btn_primary"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </LinearLayout>
+
+            <!-- In-place progress container (Initially GONE) -->
+            <LinearLayout
+                android:id="@+id/overlay_ai_progress_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_marginTop="12dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <ProgressBar
+                        android:id="@+id/pb_ai_progress"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:indeterminate="true"
+                        style="?android:attr/progressBarStyleSmall" />
+
+                    <TextView
+                        android:id="@+id/tv_ai_progress_step"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="@string/ai_step_searching_syllable"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginTop="8dp">
+
+                    <TextView
+                        android:id="@+id/btn_ai_cancel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:gravity="center"
+                        android:text="@string/action_cancel"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp" />
+
+                    <Space
+                        android:layout_width="8dp"
+                        android:layout_height="1dp" />
+
+                    <TextView
+                        android:id="@+id/btn_ai_expand_chat"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:gravity="center"
+                        android:text="@string/action_view_details"
+                        android:textColor="@color/accent"
+                        android:textSize="11sp"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </FrameLayout>
 

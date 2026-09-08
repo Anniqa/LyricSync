@@ -212,4 +212,16 @@
     <string name="cancel">Batal</string>
     <string name="romaji_enabled">Romaji diaktifkan</string>
     <string name="romaji_disabled">Romaji dinonaktifkan</string>
+
+    <!-- Lyric Retry & AI Retrieval -->
+    <string name="btn_retry_standard">Coba Lagi</string>
+    <string name="btn_retry_ai">Bantu Cari via AI</string>
+    <string name="ai_step_searching_syllable">Menelusuri format suku kata (KRC / YRC / TTML)…</string>
+    <string name="ai_step_fetching_web">Menghubungi database provider lirik…</string>
+    <string name="ai_step_fallback_lrc">Suku kata tidak ditemukan, mencari format baris (LRC)…</string>
+    <string name="ai_step_syncing">Menyelaraskan lirik…</string>
+    <string name="ai_error_not_found">Lirik tersinkron tidak ditemukan untuk versi ini.</string>
+    <string name="ai_error_auth_required">Diperlukan autentikasi AI. Buka pengaturan.</string>
+    <string name="action_cancel">Batal</string>
+    <string name="action_view_details">Lihat Detail</string>
 </resources>
