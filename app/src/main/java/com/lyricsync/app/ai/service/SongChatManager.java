@@ -176,10 +176,19 @@ public class SongChatManager {
     }
 
     /**
-     * Initializes or resets the active song context, cancels any in-flight stream,
-     * increments session ID to prevent cross-song response contamination, and clears history.
+     * Sets the active song context. Same-song calls only refresh lyrics/meaning data
+     * and keep the chat session intact. On a real song change, restores the latest
+     * saved session for that track (1 session per song) or starts a fresh one.
      */
     public synchronized void setCurrentSong(String title, String artist, String fullLyrics, SongMeaning meaning) {
+        boolean sameSong = title != null
+                && title.equals(this.title)
+                && java.util.Objects.equals(artist != null ? artist : "", this.artist != null ? this.artist : "");
+        if (sameSong) {
+            if (fullLyrics != null && !fullLyrics.trim().isEmpty()) this.fullLyrics = fullLyrics;
+            if (meaning != null) this.meaning = meaning;
+            return;
+        }
         if (activeCall != null) {
             try {
                 activeCall.cancel();
@@ -190,9 +199,18 @@ public class SongChatManager {
         this.artist = artist;
         this.fullLyrics = fullLyrics;
         this.meaning = meaning;
-        this.activeSessionUuid = UUID.randomUUID().toString();
         this.currentSessionId++;
         clearHistory();
+
+        AiChatHistoryManager.ChatSession existing = (title != null && historyManager != null)
+                ? historyManager.findLatestSessionForTrack(title, artist) : null;
+        if (existing != null) {
+            this.activeSessionUuid = existing.id;
+            if (existing.messages != null) this.history.addAll(existing.messages);
+            if (existing.webSources != null) this.lastWebSources.addAll(existing.webSources);
+        } else {
+            this.activeSessionUuid = UUID.randomUUID().toString();
+        }
     }
 
     /**

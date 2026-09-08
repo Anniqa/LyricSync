@@ -137,6 +137,13 @@
     <string name="ai_chat_input_hint">Ask anything about this song…</string>
     <string name="ai_send">Send</string>
     <string name="ai_toggle_web_search">Toggle Web Search</string>
+    <string name="ai_chat_open_fullscreen">Open AI Chat</string>
+    <string name="cd_expand_chat">Expand chat</string>
+    <string name="cd_voice_input">Voice input</string>
+    <string name="ai_voice_no_result">No speech recognized</string>
+    <string name="ai_voice_error">Voice input unavailable</string>
+    <string name="ai_voice_permission">Microphone permission needed for voice input</string>
+    <string name="ai_voice_listening">Listening…</string>
     <string name="ai_tool_searching">Searching Google…</string>
     <string name="ai_tool_fetching">Reading article…</string>
     <string name="ai_tool_search_done">Found %1$d sources</string>

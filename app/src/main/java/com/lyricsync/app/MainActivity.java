@@ -208,6 +208,17 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private ImageView aiStudioModelPillIcon;
     private TextView aiStudioModelPillName;
     private TextView aiStudioModelDescBadge;
+    private android.app.Dialog aiChatDialog;
+    private ImageView aiStudioVoiceBtn;
+    private View aiChatEmptyState;
+    private TextView dlgTrackInfo;
+    private TextView dlgMoodBadge;
+    private TextView dlgQuotaBadge;
+    private android.speech.SpeechRecognizer speechRecognizer;
+    private boolean voiceListening;
+    private String voiceBaseText = "";
+    private ObjectAnimator micPulse;
+    private static final int REQ_VOICE_INPUT = 91;
     private ImageView aiStudioBtnNewChat;
     private ImageView aiStudioBtnHistory;
     private AiChatHistoryManager aiChatHistoryManager;
@@ -314,6 +325,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (activeTransliterationCall != null) {
             activeTransliterationCall.cancel();
             activeTransliterationCall = null;
+        }
+        stopVoiceInput();
+        if (aiChatDialog != null) {
+            try { aiChatDialog.dismiss(); } catch (Exception ignored) {}
+            aiChatDialog = null;
         }
         if (activeStudioAnimator != null) {
             activeStudioAnimator.stopAll();
@@ -472,6 +488,13 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             boolean granted = grantResults.length > 0
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED;
             AppLog.i(TAG, "POST_NOTIFICATIONS " + (granted ? "granted" : "denied"));
+        }
+        if (requestCode == REQ_VOICE_INPUT) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startVoiceInput();
+            } else {
+                Toast.makeText(this, R.string.ai_voice_permission, Toast.LENGTH_SHORT).show();
+            }
         }
     }
 
@@ -1245,21 +1268,15 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         aiStudioSummary = findViewById(R.id.ai_studio_summary);
         aiStudioWebSourcesScroll = findViewById(R.id.ai_studio_web_sources_scroll);
         aiStudioWebSourcesContainer = findViewById(R.id.ai_studio_web_sources_container);
-        aiStudioQuickChips = findViewById(R.id.ai_studio_quick_chips);
-        aiStudioQuickChipsContainer = findViewById(R.id.ai_studio_quick_chips_container);
-        aiStudioChatScroll = findViewById(R.id.ai_studio_chat_scroll);
-        aiStudioChatContainer = findViewById(R.id.ai_studio_chat_container);
-        aiStudioWebSearchChip = findViewById(R.id.ai_studio_web_search_chip);
-        aiStudioChatInput = findViewById(R.id.ai_studio_chat_input);
-        aiStudioChatSend = findViewById(R.id.ai_studio_chat_send);
-        aiStudioToolStatusContainer = findViewById(R.id.ai_tool_status_container);
-        aiStudioToolStatusIcon = findViewById(R.id.ai_tool_status_icon);
-        aiStudioToolStatusText = findViewById(R.id.ai_tool_status_text);
+        View aiStudioOpenChat = findViewById(R.id.ai_studio_open_chat);
+        if (aiStudioOpenChat != null) {
+            aiStudioOpenChat.setOnClickListener(v -> {
+                Haptics.tick(v);
+                openAiChatFullscreen();
+            });
+        }
 
-        aiStudioModelSelectorPill = findViewById(R.id.ai_studio_model_selector_pill);
-        aiStudioModelPillIcon = findViewById(R.id.ai_studio_model_pill_icon);
-        aiStudioModelPillName = findViewById(R.id.ai_studio_model_pill_name);
-        aiStudioModelDescBadge = findViewById(R.id.ai_studio_model_desc_badge);
+        ensureAiChatDialog();
 
         String savedModel = prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
         updateAiStudioModelUi(savedModel);
@@ -1340,6 +1357,243 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 }
                 return false;
             });
+        }
+    }
+
+    // ── Fullscreen AI chat dialog ─────────────────────────────────────────
+
+    private void ensureAiChatDialog() {
+        if (aiChatDialog != null) return;
+        aiChatDialog = new android.app.Dialog(this, R.style.Theme_LyricSync_FullScreenDialog);
+        View root = LayoutInflater.from(this).inflate(R.layout.dialog_ai_chat_fullscreen, null);
+        aiChatDialog.setContentView(root);
+        android.view.Window w = aiChatDialog.getWindow();
+        if (w != null) {
+            w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT);
+        }
+        aiChatDialog.setOnDismissListener(d -> stopVoiceInput());
+
+        aiStudioModelSelectorPill = root.findViewById(R.id.ai_studio_model_selector_pill);
+        aiStudioModelPillIcon = root.findViewById(R.id.ai_studio_model_pill_icon);
+        aiStudioModelPillName = root.findViewById(R.id.ai_studio_model_pill_name);
+        aiStudioModelDescBadge = root.findViewById(R.id.ai_studio_model_desc_badge);
+        aiStudioQuickChips = root.findViewById(R.id.ai_studio_quick_chips);
+        aiStudioQuickChipsContainer = root.findViewById(R.id.ai_studio_quick_chips_container);
+        aiStudioChatScroll = root.findViewById(R.id.ai_studio_chat_scroll);
+        aiStudioChatContainer = root.findViewById(R.id.ai_studio_chat_container);
+        aiStudioWebSearchChip = root.findViewById(R.id.ai_studio_web_search_chip);
+        aiStudioVoiceBtn = root.findViewById(R.id.ai_studio_voice_btn);
+        aiStudioChatInput = root.findViewById(R.id.ai_studio_chat_input);
+        aiStudioChatSend = root.findViewById(R.id.ai_studio_chat_send);
+        aiStudioToolStatusContainer = root.findViewById(R.id.ai_tool_status_container);
+        aiStudioToolStatusIcon = root.findViewById(R.id.ai_tool_status_icon);
+        aiStudioToolStatusText = root.findViewById(R.id.ai_tool_status_text);
+        aiChatEmptyState = root.findViewById(R.id.ai_chat_empty_state);
+        dlgTrackInfo = root.findViewById(R.id.ai_chat_dialog_track_info);
+        dlgMoodBadge = root.findViewById(R.id.ai_chat_dialog_mood_badge);
+        dlgQuotaBadge = root.findViewById(R.id.ai_chat_dialog_quota_badge);
+
+        View back = root.findViewById(R.id.ai_chat_btn_back);
+        if (back != null) back.setOnClickListener(v -> {
+            Haptics.tick(v);
+            aiChatDialog.dismiss();
+        });
+        View dlgNew = root.findViewById(R.id.ai_chat_btn_new_chat);
+        if (dlgNew != null) dlgNew.setOnClickListener(v -> {
+            Haptics.tick(v);
+            handleAiNewChat();
+        });
+        View dlgHist = root.findViewById(R.id.ai_chat_btn_history);
+        if (dlgHist != null) dlgHist.setOnClickListener(v -> {
+            Haptics.tick(v);
+            showAiHistoryDialog();
+        });
+        if (aiStudioVoiceBtn != null) aiStudioVoiceBtn.setOnClickListener(v -> {
+            Haptics.tick(v);
+            toggleVoiceInput();
+        });
+
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            androidx.core.graphics.Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            View header = v.findViewById(R.id.ai_chat_dialog_header);
+            if (header != null) {
+                header.setPadding(header.getPaddingLeft(), bars.top + dpToPx(6),
+                        header.getPaddingRight(), header.getPaddingBottom());
+            }
+            View bar = v.findViewById(R.id.ai_chat_input_bar);
+            if (bar != null) {
+                android.view.ViewGroup.MarginLayoutParams lp =
+                        (android.view.ViewGroup.MarginLayoutParams) bar.getLayoutParams();
+                lp.bottomMargin = bars.bottom + dpToPx(8);
+                bar.setLayoutParams(lp);
+            }
+            return insets;
+        });
+    }
+
+    private void openAiChatFullscreen() {
+        ensureAiChatDialog();
+        syncAiChatDialogHeader();
+        updateAiStudioModelUi(prefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
+        setupAiQuickChips();
+        updateChatEmptyState();
+        if (!aiChatDialog.isShowing()) aiChatDialog.show();
+        if (aiStudioChatScroll != null) {
+            aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    private void syncAiChatDialogHeader() {
+        if (dlgTrackInfo != null && aiStudioTrackInfo != null) {
+            dlgTrackInfo.setText(aiStudioTrackInfo.getText());
+            dlgTrackInfo.setVisibility(aiStudioTrackInfo.getVisibility());
+        }
+        if (dlgMoodBadge != null && aiStudioMoodBadge != null) {
+            dlgMoodBadge.setText(aiStudioMoodBadge.getText());
+            dlgMoodBadge.setVisibility(aiStudioMoodBadge.getVisibility());
+        }
+        if (dlgQuotaBadge != null && aiStudioQuotaBadge != null) {
+            dlgQuotaBadge.setText(aiStudioQuotaBadge.getText());
+            dlgQuotaBadge.setVisibility(aiStudioQuotaBadge.getVisibility());
+        }
+    }
+
+    private void updateChatEmptyState() {
+        boolean empty = aiStudioChatContainer == null || aiStudioChatContainer.getChildCount() == 0;
+        if (aiChatEmptyState != null) aiChatEmptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (aiStudioChatScroll != null) aiStudioChatScroll.setVisibility(empty ? View.GONE : View.VISIBLE);
+    }
+
+    /** Rebuilds chat bubbles from a message list (used on track change + history restore). */
+    private void renderChatHistory(List<AiChatMessage> messages, List<String> webSources) {
+        if (aiStudioChatContainer == null) return;
+        aiStudioChatContainer.removeAllViews();
+        if (messages != null) {
+            restoringChat = true;
+            for (AiChatMessage msg : messages) {
+                if (msg == null || msg.content == null || msg.content.trim().isEmpty()) continue;
+                if ("user".equalsIgnoreCase(msg.role)) {
+                    addUserChatBubble(msg.content);
+                } else {
+                    TextView bubble = addAiChatBubble("");
+                    CleanMarkdownFormatter.applyMarkdown(bubble, msg.content, false);
+                }
+            }
+            restoringChat = false;
+        }
+        if (webSources != null && !webSources.isEmpty()) {
+            addSourceChipsBelowBubble(null, webSources);
+        }
+        boolean has = aiStudioChatContainer.getChildCount() > 0;
+        if (aiStudioQuickChips != null) aiStudioQuickChips.setVisibility(has ? View.GONE : View.VISIBLE);
+        updateChatEmptyState();
+        if (has && aiStudioChatScroll != null) {
+            aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
+    // ── Voice input (framework SpeechRecognizer, zero dependency) ────────
+
+    private void toggleVoiceInput() {
+        if (voiceListening) {
+            stopVoiceInput();
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.RECORD_AUDIO}, REQ_VOICE_INPUT);
+            return;
+        }
+        startVoiceInput();
+    }
+
+    private void startVoiceInput() {
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            Toast.makeText(this, R.string.ai_voice_error, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        stopVoiceInput();
+        voiceBaseText = aiStudioChatInput != null ? aiStudioChatInput.getText().toString() : "";
+        speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+        speechRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) {}
+            @Override public void onBeginningOfSpeech() {}
+            @Override public void onRmsChanged(float rmsdB) {}
+            @Override public void onBufferReceived(byte[] buffer) {}
+            @Override public void onEndOfSpeech() { stopVoiceUi(); }
+            @Override public void onError(int error) {
+                stopVoiceUi();
+                int msg = (error == android.speech.SpeechRecognizer.ERROR_NO_MATCH
+                        || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+                        ? R.string.ai_voice_no_result : R.string.ai_voice_error;
+                Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+            }
+            @Override public void onResults(Bundle results) {
+                applyVoiceText(results.getStringArrayList(
+                        android.speech.SpeechRecognizer.RESULTS_RECOGNITION));
+                stopVoiceUi();
+            }
+            @Override public void onPartialResults(Bundle partialResults) {
+                applyVoiceText(partialResults.getStringArrayList(
+                        android.speech.SpeechRecognizer.RESULTS_RECOGNITION));
+            }
+            @Override public void onEvent(int eventType, Bundle params) {}
+        });
+        android.content.Intent intent = new android.content.Intent(
+                android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,
+                LocaleHelper.getLanguage(this));
+        try {
+            speechRecognizer.startListening(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, R.string.ai_voice_error, Toast.LENGTH_SHORT).show();
+            stopVoiceInput();
+            return;
+        }
+        voiceListening = true;
+        if (aiStudioVoiceBtn != null) {
+            aiStudioVoiceBtn.setColorFilter(ContextCompat.getColor(this, R.color.accent));
+            micPulse = ObjectAnimator.ofFloat(aiStudioVoiceBtn, View.ALPHA, 0.35f, 1f);
+            micPulse.setDuration(700);
+            micPulse.setRepeatMode(ValueAnimator.REVERSE);
+            micPulse.setRepeatCount(ValueAnimator.INFINITE);
+            micPulse.start();
+        }
+    }
+
+    private void applyVoiceText(List<String> texts) {
+        if (aiStudioChatInput == null || texts == null || texts.isEmpty()) return;
+        String piece = texts.get(0);
+        if (piece == null) return;
+        String base = voiceBaseText != null ? voiceBaseText : "";
+        String merged = base.isEmpty() ? piece : (base.endsWith(" ") ? base + piece : base + " " + piece);
+        aiStudioChatInput.setText(merged);
+        aiStudioChatInput.setSelection(aiStudioChatInput.getText().length());
+    }
+
+    private void stopVoiceInput() {
+        if (speechRecognizer != null) {
+            try { speechRecognizer.stopListening(); } catch (Exception ignored) {}
+            try { speechRecognizer.destroy(); } catch (Exception ignored) {}
+            speechRecognizer = null;
+        }
+        stopVoiceUi();
+    }
+
+    private void stopVoiceUi() {
+        voiceListening = false;
+        if (micPulse != null) {
+            micPulse.cancel();
+            micPulse = null;
+        }
+        if (aiStudioVoiceBtn != null) {
+            aiStudioVoiceBtn.setAlpha(1f);
+            aiStudioVoiceBtn.setColorFilter(ContextCompat.getColor(this, R.color.text_secondary));
         }
     }
 
@@ -1807,6 +2061,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 if (aiStudioTrackInfo != null) {
                     aiStudioTrackInfo.setVisibility(View.GONE);
                 }
+                syncAiChatDialogHeader();
             }
             return;
         }
@@ -1816,6 +2071,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             aiStudioTrackInfo.setText(track.title.trim() + artistStr);
             aiStudioTrackInfo.setVisibility(View.VISIBLE);
         }
+        syncAiChatDialogHeader();
 
         boolean sameTrack = currentTrackTitle != null
                 && currentTrackTitle.equals(track.title)
@@ -1849,11 +2105,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             songChatManager.setCurrentSong(currentTrackTitle, currentTrackArtist, "", null);
         }
 
-        if (aiStudioChatContainer != null) {
-            aiStudioChatContainer.removeAllViews();
-        }
-        if (aiStudioChatScroll != null) {
-            aiStudioChatScroll.setVisibility(View.GONE);
+        if (songChatManager != null) {
+            AiChatHistoryManager.ChatSession snap = songChatManager.createSessionSnapshot();
+            renderChatHistory(snap.messages, snap.webSources);
+        } else {
+            renderChatHistory(null, null);
         }
         if (aiStudioWebSourcesContainer != null) {
             aiStudioWebSourcesContainer.removeAllViews();
@@ -1861,6 +2117,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (aiStudioWebSourcesScroll != null) {
             aiStudioWebSourcesScroll.setVisibility(View.GONE);
         }
+        syncAiChatDialogHeader();
 
         if (aiStudioSummary != null) {
             aiStudioSummary.setText(R.string.ai_empty_hint);
@@ -2653,20 +2910,21 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, text, false);
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-        bubble.setTextSize(13f);
-        bubble.setLineSpacing(0f, 1.2f);
+        bubble.setTextSize(12.5f);
+        bubble.setLineSpacing(0f, 1.35f);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
-        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
-        bubble.setMaxWidth(dpToPx(280));
+        bubble.setPadding(dpToPx(11), dpToPx(7), dpToPx(11), dpToPx(7));
+        bubble.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.82f));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.END;
-        lp.setMargins(dpToPx(36), dpToPx(4), 0, dpToPx(4));
+        lp.setMargins(dpToPx(36), dpToPx(3), 0, dpToPx(3));
         bubble.setLayoutParams(lp);
 
         aiStudioChatContainer.addView(bubble);
         animateBubbleIn(bubble);
+        updateChatEmptyState();
         if (aiStudioChatScroll != null) {
             aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
         }
@@ -2677,20 +2935,21 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, initialText, false);
         bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-        bubble.setTextSize(13f);
-        bubble.setLineSpacing(0f, 1.2f);
-        bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
-        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+        bubble.setTextSize(12.5f);
+        bubble.setLineSpacing(0f, 1.38f);
+        bubble.setLetterSpacing(0.01f);
+        bubble.setPadding(dpToPx(2), 0, dpToPx(2), 0);
         bubble.setMovementMethod(io.noties.markwon.ext.tables.TableAwareMovementMethod.create());
         bubble.setTextIsSelectable(true);
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dpToPx(4), 0, dpToPx(4));
+        lp.setMargins(0, dpToPx(2), 0, dpToPx(12));
         bubble.setLayoutParams(lp);
 
         aiStudioChatContainer.addView(bubble);
         animateBubbleIn(bubble);
+        updateChatEmptyState();
         if (aiStudioChatScroll != null) {
             aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
         }
@@ -2727,9 +2986,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (aiStudioChatContainer != null) {
             aiStudioChatContainer.removeAllViews();
         }
-        if (aiStudioChatScroll != null) {
-            aiStudioChatScroll.setVisibility(View.GONE);
-        }
+        updateChatEmptyState();
         if (aiStudioQuickChips != null) {
             aiStudioQuickChips.setVisibility(View.VISIBLE);
         }
@@ -2754,39 +3011,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         hideToolStatusNow();
 
         songChatManager.loadSession(session);
-
-        if (aiStudioChatContainer != null) {
-            aiStudioChatContainer.removeAllViews();
-            if (aiStudioChatScroll != null) {
-                aiStudioChatScroll.setVisibility(View.VISIBLE);
-            }
-            if (aiStudioQuickChips != null) {
-                aiStudioQuickChips.setVisibility(View.GONE);
-            }
-
-            if (session.messages != null) {
-                restoringChat = true;
-                for (AiChatMessage msg : session.messages) {
-                    if (msg == null || msg.content == null || msg.content.trim().isEmpty()) continue;
-                    boolean isUser = "user".equalsIgnoreCase(msg.role);
-                    if (isUser) {
-                        addUserChatBubble(msg.content);
-                    } else {
-                        TextView bubble = addAiChatBubble("");
-                        CleanMarkdownFormatter.applyMarkdown(bubble, msg.content, false);
-                    }
-                }
-                restoringChat = false;
-            }
-
-            if (session.webSources != null && !session.webSources.isEmpty()) {
-                addSourceChipsBelowBubble(null, session.webSources);
-            }
-
-            if (aiStudioChatScroll != null) {
-                aiStudioChatScroll.post(() -> aiStudioChatScroll.fullScroll(View.FOCUS_DOWN));
-            }
-        }
+        renderChatHistory(session.messages, session.webSources);
         Toast.makeText(this, R.string.ai_history_restore, Toast.LENGTH_SHORT).show();
     }
 

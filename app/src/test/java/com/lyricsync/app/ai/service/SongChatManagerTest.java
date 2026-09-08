@@ -70,6 +70,58 @@ public class SongChatManagerTest {
     }
 
     @Test
+    public void testSetCurrentSongRestoresSessionForTrack() {
+        AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession();
+        saved.songTitle = "Idol";
+        saved.songArtist = "YOASOBI";
+        saved.messages.add(AiChatMessage.user("what is this song about"));
+        saved.messages.add(AiChatMessage.model("It is about the idol industry."));
+        historyManager.saveSession(saved);
+
+        chatManager.setCurrentSong("Idol", "YOASOBI", "", null);
+
+        assertEquals(saved.id, chatManager.getActiveSessionId());
+        assertEquals(2, chatManager.getHistory().size());
+        assertEquals("what is this song about", chatManager.getHistory().get(0).content);
+    }
+
+    @Test
+    public void testSetCurrentSongSameSongKeepsSession() {
+        AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession();
+        saved.songTitle = "Idol";
+        saved.songArtist = "YOASOBI";
+        saved.messages.add(AiChatMessage.user("hi"));
+        historyManager.saveSession(saved);
+
+        chatManager.setCurrentSong("Idol", "YOASOBI", "", null);
+        String sessionAfterRestore = chatManager.getActiveSessionId();
+
+        // Same-song update (e.g. meaning arrives later) must not nuke the chat.
+        chatManager.setCurrentSong("Idol", "YOASOBI", "full lyrics here", null);
+
+        assertEquals(sessionAfterRestore, chatManager.getActiveSessionId());
+        assertEquals(1, chatManager.getHistory().size());
+        assertEquals("full lyrics here", chatManager.getFullLyrics());
+    }
+
+    @Test
+    public void testSetCurrentSongDifferentSongGetsFreshSession() {
+        AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession();
+        saved.songTitle = "Idol";
+        saved.songArtist = "YOASOBI";
+        saved.messages.add(AiChatMessage.user("hi"));
+        historyManager.saveSession(saved);
+
+        chatManager.setCurrentSong("Idol", "YOASOBI", "", null);
+        String idolSession = chatManager.getActiveSessionId();
+
+        chatManager.setCurrentSong("BBB", "Creepy Nuts", "", null);
+
+        assertNotEquals(idolSession, chatManager.getActiveSessionId());
+        assertTrue(chatManager.getHistory().isEmpty());
+    }
+
+    @Test
     public void testLoadSession() {
         AiChatHistoryManager.ChatSession session = new AiChatHistoryManager.ChatSession(
                 "saved-id-123",

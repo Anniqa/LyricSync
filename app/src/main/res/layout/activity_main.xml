@@ -306,70 +306,6 @@
                         android:orientation="vertical"
                         android:layout_marginTop="12dp">
 
-                        <!-- Model Selector & Control Row -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:layout_marginBottom="10dp">
-
-                            <LinearLayout
-                                android:id="@+id/ai_studio_model_selector_pill"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:gravity="center_vertical"
-                                android:background="@drawable/bg_prompt_card"
-                                android:paddingStart="10dp"
-                                android:paddingEnd="10dp"
-                                android:paddingTop="5dp"
-                                android:paddingBottom="5dp"
-                                android:clickable="true"
-                                android:focusable="true">
-
-                                <ImageView
-                                    android:id="@+id/ai_studio_model_pill_icon"
-                                    android:layout_width="15dp"
-                                    android:layout_height="15dp"
-                                    android:src="@drawable/ic_model_gemini"
-                                    android:contentDescription="@null" />
-
-                                <TextView
-                                    android:id="@+id/ai_studio_model_pill_name"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginStart="6dp"
-                                    android:text="Gemini 2.5 Flash"
-                                    android:textColor="@color/text_primary"
-                                    android:textSize="12sp"
-                                    android:textStyle="bold" />
-
-                                <ImageView
-                                    android:layout_width="12dp"
-                                    android:layout_height="12dp"
-                                    android:layout_marginStart="4dp"
-                                    android:src="@drawable/ic_chevron_down"
-                                    app:tint="@color/text_secondary"
-                                    android:contentDescription="@null" />
-                            </LinearLayout>
-
-                            <View
-                                android:layout_width="0dp"
-                                android:layout_height="1dp"
-                                android:layout_weight="1" />
-
-                            <TextView
-                                android:id="@+id/ai_studio_model_desc_badge"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/ai_model_gemini_flash_desc"
-                                android:textColor="@color/text_dim"
-                                android:textSize="10sp"
-                                android:maxLines="1"
-                                android:ellipsize="end" />
-                        </LinearLayout>
-
                         <!-- Song meaning summary -->
                         <TextView
                             android:id="@+id/ai_studio_summary"
@@ -398,140 +334,46 @@
                                 android:orientation="horizontal" />
                         </HorizontalScrollView>
 
-                        <!-- Quick prompt suggestion chips -->
-                        <HorizontalScrollView
-                            android:id="@+id/ai_studio_quick_chips"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:scrollbars="none"
-                            android:overScrollMode="never"
-                            android:layout_marginTop="10dp">
-
-                            <LinearLayout
-                                android:id="@+id/ai_studio_quick_chips_container"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal" />
-                        </HorizontalScrollView>
-
-                        <!-- Divider -->
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="1dp"
-                            android:background="@color/divider"
-                            android:layout_marginTop="10dp"
-                            android:layout_marginBottom="8dp" />
-
-                        <!-- Chat messages container inside ScrollView -->
-                        <ScrollView
-                            android:id="@+id/ai_studio_chat_scroll"
-                            android:layout_width="match_parent"
-                            android:layout_height="220dp"
-                            android:scrollbars="vertical"
-                            android:fadeScrollbars="true"
-                            android:fillViewport="true"
-                            android:nestedScrollingEnabled="true"
-                            android:visibility="gone">
-
-                            <LinearLayout
-                                android:id="@+id/ai_studio_chat_container"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="vertical" />
-                        </ScrollView>
-
-                        <!-- AI Tool Status Pill -->
+                        <!-- Open fullscreen chat row -->
                         <LinearLayout
-                            android:id="@+id/ai_tool_status_container"
-                            android:layout_width="wrap_content"
+                            android:id="@+id/ai_studio_open_chat"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:gravity="center_vertical"
-                            android:background="@drawable/bg_tool_status_pill"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
-                            android:paddingTop="5dp"
-                            android:paddingBottom="5dp"
-                            android:layout_marginTop="6dp"
-                            android:layout_gravity="center_horizontal"
-                            android:visibility="gone">
+                            android:background="@drawable/bg_prompt_card"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
+                            android:paddingTop="9dp"
+                            android:paddingBottom="9dp"
+                            android:layout_marginTop="12dp"
+                            android:clickable="true"
+                            android:focusable="true">
 
                             <ImageView
-                                android:id="@+id/ai_tool_status_icon"
                                 android:layout_width="16dp"
                                 android:layout_height="16dp"
-                                android:src="@drawable/ic_search_globe"
-                                app:tint="#64B5F6"
+                                android:src="@drawable/ic_sparkles"
+                                app:tint="@color/accent"
                                 android:contentDescription="@null" />
 
                             <TextView
-                                android:id="@+id/ai_tool_status_text"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="6dp"
-                                android:textColor="#B8C4E0"
-                                android:textSize="12sp"
-                                android:maxLines="1"
-                                android:singleLine="true"
-                                android:ellipsize="end"
-                                android:maxWidth="240dp" />
-                        </LinearLayout>
-
-                        <!-- Chat input row -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:background="@drawable/bg_chat_input_pill"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="4dp"
-                            android:paddingTop="4dp"
-                            android:paddingBottom="4dp"
-                            android:layout_marginTop="8dp">
-
-                            <ImageView
-                                android:id="@+id/ai_studio_web_search_chip"
-                                android:layout_width="36dp"
-                                android:layout_height="36dp"
-                                android:padding="7dp"
-                                android:background="@drawable/bg_icon_button"
-                                android:src="@drawable/ic_search_globe"
-                                app:tint="@color/text_secondary"
-                                android:contentDescription="@string/ai_toggle_web_search"
-                                android:alpha="0.55" />
-
-                            <EditText
-                                android:id="@+id/ai_studio_chat_input"
+                                android:id="@+id/ai_studio_open_chat_label"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:minHeight="38dp"
                                 android:layout_weight="1"
-                                android:layout_marginStart="6dp"
-                                android:layout_marginEnd="6dp"
-                                android:hint="@string/ai_chat_input_hint"
-                                android:textColorHint="@color/text_dim"
+                                android:layout_marginStart="8dp"
+                                android:text="@string/ai_chat_open_fullscreen"
                                 android:textColor="@color/text_primary"
                                 android:textSize="13sp"
-                                android:background="@null"
-                                android:paddingStart="6dp"
-                                android:paddingEnd="6dp"
-                                android:paddingTop="8dp"
-                                android:paddingBottom="8dp"
-                                android:gravity="center_vertical"
-                                android:inputType="textCapSentences|textMultiLine"
-                                android:imeOptions="actionSend"
-                                android:maxLines="4" />
+                                android:textStyle="bold" />
 
                             <ImageView
-                                android:id="@+id/ai_studio_chat_send"
-                                android:layout_width="36dp"
-                                android:layout_height="36dp"
-                                android:padding="7dp"
-                                android:background="@drawable/bg_icon_button"
-                                android:src="@drawable/ic_send_arrow"
-                                app:tint="@color/accent"
-                                android:contentDescription="@string/ai_send" />
+                                android:layout_width="16dp"
+                                android:layout_height="16dp"
+                                android:src="@drawable/ic_expand"
+                                app:tint="@color/text_secondary"
+                                android:contentDescription="@string/cd_expand_chat" />
                         </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>

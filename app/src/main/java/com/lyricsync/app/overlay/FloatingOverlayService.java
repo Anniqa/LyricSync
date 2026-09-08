@@ -2552,14 +2552,13 @@ public class FloatingOverlayService extends Service {
         CleanMarkdownFormatter.applyMarkdown(bubble, initialText, false);
         bubble.setTextColor(getResources().getColor(R.color.text_secondary));
         bubble.setTextSize(12f);
-        bubble.setBackgroundResource(R.drawable.bg_chat_bubble_assistant);
-        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+        bubble.setLineSpacing(0f, 1.35f);
+        bubble.setPadding(dpToPx(2), 0, dpToPx(2), 0);
         bubble.setMovementMethod(io.noties.markwon.ext.tables.TableAwareMovementMethod.create());
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.START;
-        lp.setMargins(0, dpToPx(4), dpToPx(32), dpToPx(4));
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dpToPx(2), 0, dpToPx(12));
         bubble.setLayoutParams(lp);
 
         aiChatMessages.addView(bubble);

@@ -209,6 +209,23 @@ public class AiChatHistoryManager {
     }
 
     /**
+     * Finds the newest session belonging to a track (title + artist, case-insensitive).
+     * Sessions are stored newest-first, so the first match is the latest.
+     */
+    public synchronized ChatSession findLatestSessionForTrack(String title, String artist) {
+        if (title == null || title.trim().isEmpty()) return null;
+        String t = title.trim();
+        String a = artist != null ? artist.trim() : "";
+        for (ChatSession s : getSessions()) {
+            if (s == null || s.songTitle == null) continue;
+            if (!s.songTitle.trim().equalsIgnoreCase(t)) continue;
+            String sa = s.songArtist != null ? s.songArtist.trim() : "";
+            if (sa.equalsIgnoreCase(a)) return s;
+        }
+        return null;
+    }
+
+    /**
      * Checks if any sessions exist.
      */
     public synchronized boolean hasHistory() {
