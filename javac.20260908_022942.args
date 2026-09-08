@@ -1,9 +1,0 @@
--Xmaxerrs
-3000
--d
-/data/data/com.termux/files/usr/tmp/tmp.W4yhcGgVsS
--cp
-/dev/null
-app/src/main/java/com/lyricsync/app/lyrics/cache/LyricsCacheManager.java
-app/src/main/java/com/lyricsync/app/lyrics/LyricsProviderManager.java
-app/src/main/java/com/lyricsync/app/overlay/FloatingOverlayService.java
