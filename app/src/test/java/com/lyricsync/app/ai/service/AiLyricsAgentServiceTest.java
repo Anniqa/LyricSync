@@ -526,5 +526,16 @@ public class AiLyricsAgentServiceTest {
         assertEquals("Bohemian Rhapsody", disambiguated.title);
         assertEquals("Marc Martel", disambiguated.artist);
     }
+
+    @Test
+    public void testShutdownTerminatesExecutor() {
+        ExecutorService testExecutor = Executors.newSingleThreadExecutor();
+        AiLyricsAgentService customService = new AiLyricsAgentService(
+                new FakeKugouProvider(), new FakeLRCLIBProvider(), new FakeLyricsCacheManager(), testExecutor);
+
+        assertFalse(testExecutor.isShutdown());
+        customService.shutdown();
+        assertTrue(testExecutor.isShutdown());
+    }
 }
 

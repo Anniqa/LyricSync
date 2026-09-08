@@ -94,6 +94,12 @@ public class AiLyricsAgentService {
         this.executor = executor != null ? executor : Executors.newCachedThreadPool();
     }
 
+    public void shutdown() {
+        if (executor != null) {
+            executor.shutdown();
+        }
+    }
+
     public AntigravityApiClient.Cancellable retrieveLyrics(final TrackInfo track, final AiLyricsCallback callback) {
         final ServiceCancellable cancellable = new ServiceCancellable();
 
@@ -123,7 +129,7 @@ public class AiLyricsAgentService {
     private void executeRetrieve(TrackInfo track, AiLyricsCallback callback, ServiceCancellable cancellable) {
         // Step 1: Disambiguate Metadata
         if (cancellable.isCancelled()) return;
-        if (callback != null) {
+        if (!cancellable.isCancelled() && callback != null) {
             callback.onStepChanged(STEP_DISAMBIGUATING, "Analyzing song metadata…");
         }
         if (cancellable.isCancelled()) return;
@@ -138,7 +144,7 @@ public class AiLyricsAgentService {
 
         // Step 2: Fetch Syllable Lyrics (Kugou KRC)
         if (cancellable.isCancelled()) return;
-        if (callback != null) {
+        if (!cancellable.isCancelled() && callback != null) {
             callback.onStepChanged(STEP_FETCHING_SYLLABLE, "Searching syllable lyrics (KRC / YRC / TTML)…");
         }
         if (cancellable.isCancelled()) return;
@@ -164,7 +170,7 @@ public class AiLyricsAgentService {
 
         // Step 3: Fallback to Line-Synced Lyrics (LRCLIB LRC)
         if (cancellable.isCancelled()) return;
-        if (callback != null) {
+        if (!cancellable.isCancelled() && callback != null) {
             callback.onStepChanged(STEP_FALLBACK_LRC, "Syllable not found, searching line format (LRC)…");
         }
         if (cancellable.isCancelled()) return;

@@ -41,6 +41,7 @@ public class OverlayRetryStateFlowTest {
         volatile Exception exceptionToThrow;
         volatile CountDownLatch fetchStartedLatch;
         volatile CountDownLatch unblockLatch;
+        volatile CountDownLatch fetchCompletedLatch;
 
         FakeKugouProvider() {
             super(null);
@@ -49,16 +50,26 @@ public class OverlayRetryStateFlowTest {
         @Override
         public LyricsData fetchLyrics(TrackInfo track) throws Exception {
             queries.add(track);
-            if (fetchStartedLatch != null) {
-                fetchStartedLatch.countDown();
+            try {
+                if (fetchStartedLatch != null) {
+                    fetchStartedLatch.countDown();
+                }
+                if (unblockLatch != null) {
+                    try {
+                        unblockLatch.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                if (exceptionToThrow != null) {
+                    throw exceptionToThrow;
+                }
+                return lyricsToReturn;
+            } finally {
+                if (fetchCompletedLatch != null) {
+                    fetchCompletedLatch.countDown();
+                }
             }
-            if (unblockLatch != null) {
-                unblockLatch.await(5, TimeUnit.SECONDS);
-            }
-            if (exceptionToThrow != null) {
-                throw exceptionToThrow;
-            }
-            return lyricsToReturn;
         }
     }
 
@@ -212,6 +223,7 @@ public class OverlayRetryStateFlowTest {
                 activeAiLyricsCall.cancel();
                 activeAiLyricsCall = null;
             }
+            pendingFetchKey = null;
             if (currentRetryState == FloatingOverlayService.RETRY_STATE_AI) {
                 setRetryState(FloatingOverlayService.RETRY_STATE_IDLE);
             }
@@ -224,9 +236,9 @@ public class OverlayRetryStateFlowTest {
         }
 
         public synchronized void fetchLyrics(TrackInfo track) {
+            cancelAiLyricsRetrieval();
             final String fetchKey = (track != null && track.isValid()) ? track.title + "|||" + track.artist : null;
             this.pendingFetchKey = fetchKey;
-            cancelAiLyricsRetrieval();
         }
 
         public synchronized void triggerStandardRetry() {
@@ -364,6 +376,9 @@ public class OverlayRetryStateFlowTest {
         lrcLyrics.lines.add(new LyricsData.LyricsLine(0, 1500, "Mada kono sekai wa"));
         fakeLrclib.lyricsToReturn = lrcLyrics;
 
+        fakeKugou.fetchStartedLatch = new CountDownLatch(1);
+        fakeKugou.unblockLatch = new CountDownLatch(1);
+
         controller.setCurrentTrack(track);
         assertEquals("Initial state must be IDLE", FloatingOverlayService.STATE_IDLE, controller.getRetryState());
         assertTrue("Retry actions container must be visible in IDLE", controller.isRetryActionsVisible());
@@ -373,11 +388,17 @@ public class OverlayRetryStateFlowTest {
         CountDownLatch completionLatch = new CountDownLatch(1);
         controller.triggerAiLyricsRetrieval(completionLatch);
 
-        // Immediate state after trigger
+        // Wait until fetch starts inside provider thread so in-flight state is guaranteed
+        assertTrue("Provider fetch should begin", fakeKugou.fetchStartedLatch.await(3, TimeUnit.SECONDS));
+
+        // Immediate state while searching
         assertEquals("State must transition to STATE_AI_SEARCHING",
                 FloatingOverlayService.STATE_AI_SEARCHING, controller.getRetryState());
         assertFalse("Retry actions container hidden during AI search", controller.isRetryActionsVisible());
         assertTrue("AI progress container visible during AI search", controller.isAiProgressVisible());
+
+        // Unblock provider
+        fakeKugou.unblockLatch.countDown();
 
         // Wait for background retrieval to finish
         assertTrue("AI retrieval should complete within timeout", completionLatch.await(5, TimeUnit.SECONDS));
@@ -508,6 +529,8 @@ public class OverlayRetryStateFlowTest {
         // Block Kugou fetch to simulate slow network call
         fakeKugou.fetchStartedLatch = new CountDownLatch(1);
         fakeKugou.unblockLatch = new CountDownLatch(1);
+        CountDownLatch fetchCompletedLatch = new CountDownLatch(1);
+        fakeKugou.fetchCompletedLatch = fetchCompletedLatch;
 
         LyricsData trackALyrics = new LyricsData(LyricsData.Type.SYLLABLE);
         trackALyrics.lines.add(new LyricsData.LyricsLine(0, 1000, "Song A delayed lyrics"));
@@ -538,8 +561,12 @@ public class OverlayRetryStateFlowTest {
         // Unblock provider background thread
         fakeKugou.unblockLatch.countDown();
 
-        // Allow background thread to complete
-        Thread.sleep(150);
+        // Wait for background provider execution to complete deterministically
+        assertTrue("Provider fetch should complete", fetchCompletedLatch.await(5, TimeUnit.SECONDS));
+        executor.submit(new Runnable() {
+            @Override
+            public void run() {}
+        }).get(5, TimeUnit.SECONDS);
 
         // Verify delayed response from Song A was completely suppressed
         assertEquals("State must remain IDLE (not overridden to LOADED by late Track A response)",

@@ -3545,6 +3545,7 @@ public class FloatingOverlayService extends Service {
             activeAiLyricsCall.cancel();
             activeAiLyricsCall = null;
         }
+        pendingFetchKey = null;
         if (currentRetryState == RETRY_STATE_AI) {
             setRetryState(RETRY_STATE_IDLE);
         }
@@ -3644,9 +3645,9 @@ public class FloatingOverlayService extends Service {
 
     private void fetchLyrics(TrackInfo track) {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
+        cancelAiLyricsRetrieval();
         final String fetchKey = track.title + "|||" + track.artist;
         pendingFetchKey = fetchKey;
-        cancelAiLyricsRetrieval();
         if (translateService != null) {
             translateService.cancel();
         }
@@ -4079,6 +4080,9 @@ public class FloatingOverlayService extends Service {
         if (activeInstance == this) activeInstance = null;
         super.onDestroy();
         cancelAiLyricsRetrieval();
+        if (aiLyricsAgentService != null) {
+            aiLyricsAgentService.shutdown();
+        }
         if (aiTranslationService != null) {
             aiTranslationService.cancel();
         }
