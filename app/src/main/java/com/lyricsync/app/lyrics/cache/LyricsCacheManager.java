@@ -22,10 +22,15 @@ public class LyricsCacheManager {
     private final Gson gson = new Gson();
 
     public LyricsCacheManager(Context context) {
-        dbHelper = new CacheDBHelper(context);
+        dbHelper = context != null ? new CacheDBHelper(context) : null;
+    }
+
+    protected LyricsCacheManager() {
+        dbHelper = null;
     }
 
     public LyricsData getCached(TrackInfo track) {
+        if (dbHelper == null) return null;
         String key = makeKey(track);
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
@@ -68,7 +73,7 @@ public class LyricsCacheManager {
     }
 
     public void cache(TrackInfo track, LyricsData lyrics) {
-        if (lyrics == null || lyrics.type == null) return;
+        if (lyrics == null || lyrics.type == null || dbHelper == null) return;
         LyricsData existing = getCached(track);
         if (existing != null && existing.type != null) {
             if (typeRank(existing.type) > typeRank(lyrics.type)) {

@@ -89,4 +89,8 @@ public class LyricsData {
     public boolean isEmpty() {
         return lines == null || lines.isEmpty();
     }
+
+    public boolean isSynced() {
+        return (type == Type.SYLLABLE || type == Type.LINE) && !isEmpty();
+    }
 }
