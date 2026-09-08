@@ -444,4 +444,107 @@ public class KugouLyricsProviderTest {
         assertNotNull("Should fetch lyrics preferring KRC candidate", result);
         assertEquals(LyricsData.Type.SYLLABLE, result.type);
     }
+
+    @Test
+    public void testSearchCandidatePrefersKrcOverExactMatchingNonKrcInSameResponse() throws Exception {
+        String krcContent = "[ar:The Weeknd]\n[ti:Blinding Lights]\n[1000,2000]<0,1000,0>Yeah";
+        String base64Payload = makeMockKrcBase64(krcContent);
+
+        OkHttpClient mockClient = new OkHttpClient.Builder()
+                .addInterceptor(new Interceptor() {
+                    @Override
+                    public Response intercept(Chain chain) throws IOException {
+                        Request req = chain.request();
+                        String url = req.url().toString();
+                        String responseJson;
+                        if (url.contains("/search")) {
+                            // Same response contains:
+                            // 1. Exact match non-KRC candidate (krctype = 1, perfect title/artist/duration match -> score = 1.0)
+                            // 2. Valid KRC candidate (krctype = 2, lower base score e.g. duration diff of 14s -> score ~ 0.86)
+                            responseJson = "{\"status\":200,\"candidates\":["
+                                    + "{"
+                                    + "\"id\":\"lrc_perfect\","
+                                    + "\"accesskey\":\"key1\","
+                                    + "\"song\":\"Blinding Lights\","
+                                    + "\"singer\":\"The Weeknd\","
+                                    + "\"duration\":200000,"
+                                    + "\"krctype\":1"
+                                    + "},"
+                                    + "{"
+                                    + "\"id\":\"krc_syllable\","
+                                    + "\"accesskey\":\"key2\","
+                                    + "\"song\":\"Blinding Lights\","
+                                    + "\"singer\":\"The Weeknd\","
+                                    + "\"duration\":214000,"
+                                    + "\"krctype\":2"
+                                    + "}"
+                                    + "]}";
+                        } else if (url.contains("/download")) {
+                            // Verify that candidate krc_syllable (id=krc_syllable) was chosen over lrc_perfect
+                            assertTrue("Must download KRC syllable candidate (id=krc_syllable) despite lower base score",
+                                    url.contains("id=krc_syllable"));
+                            responseJson = "{\"status\":200,\"content\":\"" + base64Payload + "\"}";
+                        } else {
+                            responseJson = "{}";
+                        }
+
+                        return new Response.Builder()
+                                .request(req)
+                                .protocol(Protocol.HTTP_1_1)
+                                .code(200)
+                                .message("OK")
+                                .body(ResponseBody.create(MediaType.parse("application/json"), responseJson))
+                                .build();
+                    }
+                })
+                .build();
+
+        KugouLyricsProvider provider = new KugouLyricsProvider(mockClient);
+        TrackInfo track = new TrackInfo();
+        track.title = "Blinding Lights";
+        track.artist = "The Weeknd";
+        track.duration = 200000;
+
+        LyricsData result = provider.fetchLyrics(track);
+        assertNotNull("Should fetch lyrics preferring KRC syllable candidate in same response", result);
+        assertEquals(LyricsData.Type.SYLLABLE, result.type);
+    }
+
+    @Test
+    public void testCaseInsensitiveQueryDeduplication() throws Exception {
+        List<String> queriesExecuted = new ArrayList<>();
+        OkHttpClient mockClient = new OkHttpClient.Builder()
+                .addInterceptor(new Interceptor() {
+                    @Override
+                    public Response intercept(Chain chain) throws IOException {
+                        Request req = chain.request();
+                        String url = req.url().toString();
+                        if (url.contains("/search")) {
+                            queriesExecuted.add(req.url().queryParameter("keyword"));
+                        }
+                        return new Response.Builder()
+                                .request(req)
+                                .protocol(Protocol.HTTP_1_1)
+                                .code(200)
+                                .message("OK")
+                                .body(ResponseBody.create(MediaType.parse("application/json"), "{\"status\":200,\"candidates\":[]}"))
+                                .build();
+                    }
+                })
+                .build();
+
+        KugouLyricsProvider provider = new KugouLyricsProvider(mockClient);
+        TrackInfo track = new TrackInfo();
+        // Title and artist with case differences that might generate duplicate queries if case-insensitive deduplication is absent
+        track.title = "hello";
+        track.artist = "HELLO";
+
+        provider.fetchLyrics(track);
+        // "HELLO - hello" vs "hello - HELLO" should be deduplicated case-insensitively
+        long distinctCaseInsensitive = queriesExecuted.stream()
+                .map(String::toLowerCase)
+                .distinct()
+                .count();
+        assertEquals("Executed queries should be case-insensitively unique", distinctCaseInsensitive, queriesExecuted.size());
+    }
 }

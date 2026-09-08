@@ -72,7 +72,7 @@ public class KugouLyricsProvider implements LyricsProvider {
         Candidate best = null;
         Set<String> seen = new HashSet<>();
         for (String query : queryList) {
-            if (query.isEmpty() || !seen.add(query)) {
+            if (query.isEmpty() || !seen.add(query.toLowerCase(Locale.ROOT))) {
                 continue;
             }
             Candidate candidate = searchCandidate(query, cleanTitle, sanitized.titleAliases, cleanArtist, track.duration);
@@ -177,8 +177,10 @@ public class KugouLyricsProvider implements LyricsProvider {
             }
 
             JsonArray candidates = root.getAsJsonArray("candidates");
-            Candidate best = null;
-            double highestScore = -1.0;
+            Candidate bestKrc = null;
+            double highestKrcScore = -1.0;
+            Candidate bestNonKrc = null;
+            double highestNonKrcScore = -1.0;
 
             for (JsonElement elem : candidates) {
                 if (!elem.isJsonObject()) continue;
@@ -195,19 +197,24 @@ public class KugouLyricsProvider implements LyricsProvider {
                 if (c.id.isEmpty() || c.accesskey.isEmpty()) continue;
 
                 double score = scoreCandidate(title, aliases, artist, duration, c.song, c.singer, c.duration);
-                // Heavily prefer krctype == 2 (KRC syllable format)
-                if (c.krctype == 2) {
-                    score += 0.25;
-                }
                 c.score = score;
 
-                if (score > highestScore && score >= 0.30) {
-                    highestScore = score;
-                    best = c;
+                if (score >= 0.30) {
+                    if (c.krctype == 2) {
+                        if (score > highestKrcScore) {
+                            highestKrcScore = score;
+                            bestKrc = c;
+                        }
+                    } else {
+                        if (score > highestNonKrcScore) {
+                            highestNonKrcScore = score;
+                            bestNonKrc = c;
+                        }
+                    }
                 }
             }
 
-            return best;
+            return bestKrc != null ? bestKrc : bestNonKrc;
         } catch (Exception e) {
             return null;
         }
