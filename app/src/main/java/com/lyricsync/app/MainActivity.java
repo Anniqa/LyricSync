@@ -1246,7 +1246,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                         String t = currentTrackTitle;
                         String a = currentTrackArtist;
                         String l = songChatManager != null ? songChatManager.getFullLyrics() : "";
-                        boolean playing = currentTrack != null && currentTrack.hasTrack;
+                        boolean playing = currentTrackTitle != null && !currentTrackTitle.trim().isEmpty();
                         if (callback != null) {
                             callback.onSuccess(t, a, l, playing, 0);
                         }

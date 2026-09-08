@@ -402,9 +402,10 @@ public class FloatingOverlayService extends Service {
                     String t = currentTrack != null ? currentTrack.title : "";
                     String a = currentTrack != null ? currentTrack.artist : "";
                     String l = songChatManager != null ? songChatManager.getFullLyrics() : "";
-                    boolean playing = isPlaying;
+                    boolean playing = sessionTracker != null && sessionTracker.isPlaying();
+                    long position = sessionTracker != null ? sessionTracker.getCurrentPosition() : 0L;
                     if (callback != null) {
-                        callback.onSuccess(t, a, l, playing, lastPlaybackPosition);
+                        callback.onSuccess(t, a, l, playing, position);
                     }
                 });
             }

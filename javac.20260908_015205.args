@@ -1,0 +1,8 @@
+-Xmaxerrs
+3000
+-d
+/data/data/com.termux/files/usr/tmp/tmp.UyoQQuDlmn
+-cp
+/dev/null
+app/src/main/java/com/lyricsync/app/MainActivity.java
+app/src/main/java/com/lyricsync/app/overlay/FloatingOverlayService.java
