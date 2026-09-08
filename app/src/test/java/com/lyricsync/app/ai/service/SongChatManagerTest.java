@@ -90,19 +90,23 @@ public class SongChatManagerTest {
     }
 
     @Test
-    public void testBuildMessagesToSendIncludesCurrentTrackHint() {
-        chatManager.loadSession(new AiChatHistoryManager.ChatSession(
-                "s-1", "Old Song", "Old Artist", 1000L,
-                Collections.singletonList(AiChatMessage.user("tentang apa lagu ini?")), null));
-        chatManager.setCurrentSong("Idol", "YOASOBI", "full lyrics", null);
+    public void testBuildMessagesToSendLeavesUserMessageUntouched() {
+        AiChatHistoryManager.ChatSession session = new AiChatHistoryManager.ChatSession(
+                "sess-1",
+                "Idol",
+                "YOASOBI",
+                System.currentTimeMillis(),
+                Collections.singletonList(AiChatMessage.user("Halo apa kabar?")),
+                Collections.<String>emptyList()
+        );
+        chatManager.loadSession(session);
 
         List<AiChatMessage> messages = chatManager.buildMessagesToSend();
         assertFalse(messages.isEmpty());
         AiChatMessage lastUser = messages.get(messages.size() - 1);
         assertEquals("user", lastUser.role);
-        assertTrue(lastUser.content.contains("Lagu yang SEDANG DIPUTAR sekarang"));
-        assertTrue(lastUser.content.contains("Idol"));
-        assertTrue(lastUser.content.contains("YOASOBI"));
+        assertEquals("Halo apa kabar?", lastUser.content);
+        assertFalse(lastUser.content.contains("Lagu yang SEDANG DIPUTAR"));
     }
     @Test
     public void testLoadSession() {

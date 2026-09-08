@@ -330,21 +330,11 @@ public class SongChatManager {
             sb.append("- 'adjust_overlay_appearance': Gunakan jika pengguna meminta mengubah ukuran font lirik ('font_scale': misal 0.8 kecil, 1.2 besar), gaya animasi teks ('anim_style': glow/scale/pop/fade), atau ukuran overlay ('width_percent', 'height_percent').\n");
             sb.append("- 'manage_lyric_lines': Gunakan jika pengguna meminta menghapus baris tertentu ('delete'), menyisipkan baris baru ('insert'), atau menggeser timing baris ('shift_timing').\n");
             sb.append("- 'get_current_playing_track': Gunakan jika ingin mengetahui lagu apa yang saat ini sedang diputar di pemutar musik pengguna secara real-time (judul, artis, lirik aktif, status pemutaran). Panggil alat ini untuk memastikan lagu yang aktif jika pengguna bertanya tentang lagu saat ini!\n");
-            sb.append("Jika permintaan pengguna berkaitan dengan tindakan di atas, SEGERA panggil alat tersebut!\n");
-            sb.append("\n[PANDUAN KONTROL PENUH EDITING & MODIFIKASI LIRIK]\n");
-            sb.append("Anda memiliki KONTROL PENUH (FULL CONTROL) untuk mengedit, memodifikasi, dan mengatur tampilan lirik lagu (baik lirik suku kata/syllable, lirik per baris/line-by-line, maupun lirik biasa):\n");
-            sb.append("- 'batch_edit_lyrics': Gunakan jika ingin membuat terjemahan lengkap/sebagian, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus dalam satu pemanggilan (parameter: 'lines' berisi daftar objek baris dengan 'line_index', serta opsional 'translation', 'text', 'romanji'). Gunakan alat ini saat pengguna meminta terjemahan penuh atau modifikasi banyak baris!\n");
-            sb.append("- 'translate_lyrics': Gunakan jika pengguna meminta menerjemahkan lirik lagu ke bahasa lain (misal: Indonesia, Inggris, Jepang, Spanyol).\n");
-            sb.append("- 'transliterate_lyrics': Gunakan jika pengguna meminta transliterasi (Romaji/Pinyin/Romaja). Parameter 'mode': 'romaji_with_translation' (dengan arti), 'romaji_only' (hanya romaji), atau 'pure_romaji' (hanya romaji). Parameter 'show_original_script': false jika pengguna meminta membuang/menyembunyikan huruf asli (misal: 'Jepang buang').\n");
-            sb.append("- 'set_sync_offset': Gunakan jika pengguna mengeluh lirik terlalu cepat/lambat atau meminta memajukan/menunda lirik.\n");
-            sb.append("- 'modify_lyric_line': Gunakan jika pengguna meminta mengoreksi teks, arti, atau bacaan baris lirik tertentu.\n");
-            sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
-            sb.append("Jika pengguna bertanya 'apa saja yang bisa kamu lakukan' ('what can you do') atau meminta rekomendasi, jelaskan dengan ramah semua kemampuan di atas dan beri contoh prompt yang bisa mereka gunakan.\n");
-            sb.append("Jika permintaan pengguna berkaitan dengan tindakan editing lirik di atas, SEGERA panggil alat tersebut!\n");
-            sb.append("Setelah memanggil alat, selalu berikan konfirmasi ringkas dan ramah mengenai perubahan yang telah berhasil Anda terapkan di layar overlay.\n");
-            sb.append("Jawab pertanyaan pengguna mengenai makna lagu, kisah di balik lagu, tema emosi, dan lirik secara ramah, mendalam, dan terstruktur dalam Bahasa Indonesia.");
-            sb.append("If user requests any of these actions, execute the respective tool immediately!\n");
-            sb.append("Answer user questions about the song's meaning, backstory, emotional themes, and lyrics warmly, insightfully, and clearly in English.");
+            sb.append("\n[ATURAN PENTING PENGGUNAAN ALAT]\n");
+            sb.append("- HANYA panggil alat jika pengguna secara EKSPLISIT meminta tindakan tersebut (misal: mencari lirik baru, menerjemahkan, transliterasi, mengedit lirik, atau mengubah tampilan/player).\n");
+            sb.append("- JANGAN PERNAH memanggil alat jika pengguna tidak memintanya secara jelas!\n");
+            sb.append("- Jika pengguna bertanya hal umum, mengobrol santai, atau bertanya di luar lagu, jawablah pertanyaannya secara langsung tanpa memanggil alat dan tanpa memaksakan topik lagu.\n");
+            sb.append("- Setelah memanggil alat, berikan konfirmasi ringkas mengenai perubahan yang telah berhasil diterapkan.");
         }
         return sb.toString();
     }
@@ -388,17 +378,6 @@ public class SongChatManager {
                         prev.content = prev.content + "\n\n" + msg.content;
                     }
                 }
-            }
-        }
-        // If we have history and an active song, ensure the LAST user message contains the current track hint
-        // so the model NEVER confuses past song discussions with the currently playing track!
-        if (!sanitizedHistory.isEmpty() && title != null && !title.trim().isEmpty()) {
-            AiChatMessage lastMsg = sanitizedHistory.get(sanitizedHistory.size() - 1);
-            if ("user".equals(lastMsg.role)) {
-                String trackHint = "\n\n[Lagu yang SEDANG DIPUTAR sekarang di pemutar musik pengguna: \""
-                        + title.trim() + "\"" + (artist != null && !artist.trim().isEmpty() ? " oleh \"" + artist.trim() + "\"" : "")
-                        + "]\n(Catatan: Jika pertanyaan pengguna di atas merujuk pada 'lagu ini', 'lagu sekarang', atau hal musik tanpa menyebut judul secara spesifik, jawablah mengenai lagu yang SEDANG DIPUTAR ini! Gunakan alat get_current_playing_track jika membutuhkan info pemutar lebih lanjut.)";
-                lastMsg.content = lastMsg.content + trackHint;
             }
         }
 
