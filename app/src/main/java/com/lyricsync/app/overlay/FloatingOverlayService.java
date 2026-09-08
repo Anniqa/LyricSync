@@ -3435,9 +3435,6 @@ public class FloatingOverlayService extends Service {
         if (songChatManager != null && track != null) {
             songChatManager.setCurrentSong(track.title, track.artist, "", null);
         }
-        if (aiChatMessages != null) {
-            aiChatMessages.removeAllViews();
-        }
         if (aiMoodBadge != null) {
             aiMoodBadge.setVisibility(View.GONE);
         }

@@ -45,15 +45,14 @@ public class SongChatManagerTest {
     }
 
     @Test
-    public void testSetCurrentSongResetsHistoryAndSession() {
+    public void testSetCurrentSongUpdatesContextAndPreservesSession() {
         String originalSession = chatManager.getActiveSessionId();
         chatManager.setCurrentSong("Bohemian Rhapsody", "Queen", "Is this the real life?", null);
 
         assertEquals("Bohemian Rhapsody", chatManager.getTitle());
         assertEquals("Queen", chatManager.getArtist());
         assertEquals("Is this the real life?", chatManager.getFullLyrics());
-        assertTrue(chatManager.getHistory().isEmpty());
-        assertNotEquals(originalSession, chatManager.getActiveSessionId());
+        assertEquals(originalSession, chatManager.getActiveSessionId());
     }
 
     @Test
@@ -70,57 +69,25 @@ public class SongChatManagerTest {
     }
 
     @Test
-    public void testSetCurrentSongRestoresSessionForTrack() {
-        AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession();
-        saved.songTitle = "Idol";
-        saved.songArtist = "YOASOBI";
-        saved.messages.add(AiChatMessage.user("what is this song about"));
-        saved.messages.add(AiChatMessage.model("It is about the idol industry."));
-        historyManager.saveSession(saved);
+    public void testSetCurrentSongPreservesHistoryAcrossSongs() {
+        chatManager.setCurrentSong("Song A", "Artist A", "Lyrics A", null);
+        String session = chatManager.getActiveSessionId();
 
-        chatManager.setCurrentSong("Idol", "YOASOBI", "", null);
-
-        assertEquals(saved.id, chatManager.getActiveSessionId());
-        assertEquals(2, chatManager.getHistory().size());
-        assertEquals("what is this song about", chatManager.getHistory().get(0).content);
-    }
-
-    @Test
-    public void testSetCurrentSongSameSongKeepsSession() {
-        AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession();
-        saved.songTitle = "Idol";
-        saved.songArtist = "YOASOBI";
-        saved.messages.add(AiChatMessage.user("hi"));
-        historyManager.saveSession(saved);
-
-        chatManager.setCurrentSong("Idol", "YOASOBI", "", null);
-        String sessionAfterRestore = chatManager.getActiveSessionId();
-
-        // Same-song update (e.g. meaning arrives later) must not nuke the chat.
-        chatManager.setCurrentSong("Idol", "YOASOBI", "full lyrics here", null);
-
-        assertEquals(sessionAfterRestore, chatManager.getActiveSessionId());
+        AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession(
+                session, "Song A", "Artist A", 1000L,
+                Collections.singletonList(AiChatMessage.user("hello")), null);
+        chatManager.loadSession(saved);
         assertEquals(1, chatManager.getHistory().size());
-        assertEquals("full lyrics here", chatManager.getFullLyrics());
+
+        // Song changes to Song B
+        chatManager.setCurrentSong("Song B", "Artist B", "Lyrics B", null);
+
+        // Session and history remain intact
+        assertEquals(session, chatManager.getActiveSessionId());
+        assertEquals(1, chatManager.getHistory().size());
+        assertEquals("hello", chatManager.getHistory().get(0).content);
+        assertEquals("Song B", chatManager.getTitle());
     }
-
-    @Test
-    public void testSetCurrentSongDifferentSongGetsFreshSession() {
-        AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession();
-        saved.songTitle = "Idol";
-        saved.songArtist = "YOASOBI";
-        saved.messages.add(AiChatMessage.user("hi"));
-        historyManager.saveSession(saved);
-
-        chatManager.setCurrentSong("Idol", "YOASOBI", "", null);
-        String idolSession = chatManager.getActiveSessionId();
-
-        chatManager.setCurrentSong("BBB", "Creepy Nuts", "", null);
-
-        assertNotEquals(idolSession, chatManager.getActiveSessionId());
-        assertTrue(chatManager.getHistory().isEmpty());
-    }
-
     @Test
     public void testLoadSession() {
         AiChatHistoryManager.ChatSession session = new AiChatHistoryManager.ChatSession(

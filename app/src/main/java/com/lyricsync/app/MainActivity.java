@@ -1514,7 +1514,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         stopVoiceInput();
         voiceBaseText = aiStudioChatInput != null ? aiStudioChatInput.getText().toString() : "";
         try {
-            speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+            speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(getApplicationContext());
         } catch (Exception e) {
             startVoiceIntentFallback();
             return;
@@ -1554,8 +1554,11 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-        intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,
-                LocaleHelper.getLanguage(this));
+        String langCode = LocaleHelper.getLanguage(this);
+        String bcp47 = "id".equalsIgnoreCase(langCode) ? "id-ID" : "en-US";
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, bcp47);
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, bcp47);
+        intent.putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
         try {
             speechRecognizer.startListening(intent);
         } catch (Exception e) {
@@ -1582,16 +1585,23 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,
-                    LocaleHelper.getLanguage(this));
+            String langCode = LocaleHelper.getLanguage(this);
+            String bcp47 = "id".equalsIgnoreCase(langCode) ? "id-ID" : "en-US";
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, bcp47);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, bcp47);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
             intent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,
                     getString(R.string.ai_voice_listening));
-            startActivityForResult(intent, REQ_VOICE_INTENT);
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivityForResult(intent, REQ_VOICE_INTENT);
+            } else {
+                Toast.makeText(this, getString(R.string.ai_voice_error) + " (no speech engine installed)",
+                        Toast.LENGTH_LONG).show();
+            }
         } catch (Exception e) {
             Toast.makeText(this, R.string.ai_voice_error, Toast.LENGTH_SHORT).show();
         }
     }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -2140,18 +2150,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             songChatManager.setCurrentSong(currentTrackTitle, currentTrackArtist, "", null);
         }
 
-        if (songChatManager != null) {
-            AiChatHistoryManager.ChatSession snap = songChatManager.createSessionSnapshot();
-            renderChatHistory(snap.messages, snap.webSources);
-        } else {
-            renderChatHistory(null, null);
-        }
-        if (aiStudioWebSourcesContainer != null) {
-            aiStudioWebSourcesContainer.removeAllViews();
-        }
-        if (aiStudioWebSourcesScroll != null) {
-            aiStudioWebSourcesScroll.setVisibility(View.GONE);
-        }
         syncAiChatDialogHeader();
 
         if (aiStudioSummary != null) {

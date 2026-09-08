@@ -176,40 +176,23 @@ public class SongChatManager {
     }
 
     /**
-     * Sets the active song context. Same-song calls only refresh lyrics/meaning data
-     * and keep the chat session intact. On a real song change, restores the latest
-     * saved session for that track (1 session per song) or starts a fresh one.
+     * Sets the active song context without destroying the current conversation session.
+     * Song transitions update track metadata so AI prompts reflect the currently playing song,
+     * while the conversation history and active session UUID remain intact.
+     * To explicitly start a new session, call {@link #startNewSession()}.
      */
     public synchronized void setCurrentSong(String title, String artist, String fullLyrics, SongMeaning meaning) {
-        boolean sameSong = title != null
-                && title.equals(this.title)
-                && java.util.Objects.equals(artist != null ? artist : "", this.artist != null ? this.artist : "");
-        if (sameSong) {
-            if (fullLyrics != null && !fullLyrics.trim().isEmpty()) this.fullLyrics = fullLyrics;
-            if (meaning != null) this.meaning = meaning;
-            return;
-        }
-        if (activeCall != null) {
-            try {
-                activeCall.cancel();
-            } catch (Exception ignored) {}
-            activeCall = null;
-        }
         this.title = title;
         this.artist = artist;
-        this.fullLyrics = fullLyrics;
-        this.meaning = meaning;
-        this.currentSessionId++;
-        clearHistory();
-
-        AiChatHistoryManager.ChatSession existing = (title != null && historyManager != null)
-                ? historyManager.findLatestSessionForTrack(title, artist) : null;
-        if (existing != null) {
-            this.activeSessionUuid = existing.id;
-            if (existing.messages != null) this.history.addAll(existing.messages);
-            if (existing.webSources != null) this.lastWebSources.addAll(existing.webSources);
-        } else {
-            this.activeSessionUuid = UUID.randomUUID().toString();
+        if (fullLyrics != null && !fullLyrics.trim().isEmpty()) {
+            this.fullLyrics = fullLyrics;
+        } else if (title == null) {
+            this.fullLyrics = null;
+        }
+        if (meaning != null) {
+            this.meaning = meaning;
+        } else if (title == null) {
+            this.meaning = null;
         }
     }
 
