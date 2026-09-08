@@ -13,8 +13,11 @@ import com.lyricsync.app.lyrics.util.TrackMetadataSanitizer;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -59,14 +62,28 @@ public class KugouLyricsProvider implements LyricsProvider {
         String cleanTitle = sanitized.cleanTitle.isEmpty() ? track.title : sanitized.cleanTitle;
         String cleanArtist = sanitized.cleanArtist.isEmpty() ? track.artist : sanitized.cleanArtist;
 
-        // 1. Search with primary clean title and artist
-        Candidate best = searchCandidate(cleanTitle, cleanArtist, track.duration);
+        // Build high-yield permutations:
+        // 1. "Artist - Title" (Kugou's primary catalog convention)
+        // 2. "Title - Artist"
+        // 3. "Title Artist"
+        // 4. Aliases (Kanji / native script)
+        List<String> queryList = buildQueryPermutations(cleanTitle, cleanArtist, sanitized.titleAliases);
 
-        // 2. If not found or low score, try aliases (e.g. English or original script alias)
-        if (best == null && !sanitized.titleAliases.isEmpty()) {
-            for (String alias : sanitized.titleAliases) {
-                best = searchCandidate(alias, cleanArtist, track.duration);
-                if (best != null) break;
+        Candidate best = null;
+        Set<String> seen = new HashSet<>();
+        for (String query : queryList) {
+            if (query.isEmpty() || !seen.add(query)) {
+                continue;
+            }
+            Candidate candidate = searchCandidate(query, cleanTitle, sanitized.titleAliases, cleanArtist, track.duration);
+            if (candidate != null) {
+                if (candidate.krctype == 2) {
+                    best = candidate;
+                    break; // Found preferred KRC syllable candidate
+                }
+                if (best == null || candidate.score > best.score) {
+                    best = candidate;
+                }
             }
         }
 
@@ -101,7 +118,27 @@ public class KugouLyricsProvider implements LyricsProvider {
         return null;
     }
 
-    private static class Candidate {
+    static List<String> buildQueryPermutations(String cleanTitle, String cleanArtist, List<String> titleAliases) {
+        List<String> queryList = new ArrayList<>();
+        if (cleanArtist != null && !cleanArtist.isEmpty()) {
+            queryList.add((cleanArtist + " - " + cleanTitle).trim());
+            queryList.add((cleanTitle + " - " + cleanArtist).trim());
+        }
+        queryList.add((cleanTitle + " " + (cleanArtist != null ? cleanArtist : "")).trim());
+        if (titleAliases != null) {
+            for (String alias : titleAliases) {
+                if (!alias.equalsIgnoreCase(cleanTitle)) {
+                    if (cleanArtist != null && !cleanArtist.isEmpty()) {
+                        queryList.add((cleanArtist + " - " + alias).trim());
+                    }
+                    queryList.add((alias + " " + (cleanArtist != null ? cleanArtist : "")).trim());
+                }
+            }
+        }
+        return queryList;
+    }
+
+    static class Candidate {
         String id;
         String accesskey;
         String song;
@@ -110,9 +147,13 @@ public class KugouLyricsProvider implements LyricsProvider {
         int krctype;
         double score;
     }
-    private Candidate searchCandidate(String title, String artist, long duration) throws IOException {
-        String keyword = (title + " " + artist).trim();
-        String encodedKeyword = URLEncoder.encode(keyword, "UTF-8");
+
+    Candidate searchCandidate(String query, String title, String artist, long duration) throws IOException {
+        return searchCandidate(query, title, Collections.emptyList(), artist, duration);
+    }
+
+    Candidate searchCandidate(String query, String title, List<String> aliases, String artist, long duration) throws IOException {
+        String encodedKeyword = URLEncoder.encode(query, "UTF-8");
         String url = SEARCH_URL + "?ver=1&man=yes&client=mobi"
                 + "&keyword=" + encodedKeyword
                 + "&duration=" + (duration > 0 ? duration : "")
@@ -153,7 +194,7 @@ public class KugouLyricsProvider implements LyricsProvider {
 
                 if (c.id.isEmpty() || c.accesskey.isEmpty()) continue;
 
-                double score = scoreCandidate(title, artist, duration, c.song, c.singer, c.duration);
+                double score = scoreCandidate(title, aliases, artist, duration, c.song, c.singer, c.duration);
                 // Heavily prefer krctype == 2 (KRC syllable format)
                 if (c.krctype == 2) {
                     score += 0.25;
@@ -196,14 +237,24 @@ public class KugouLyricsProvider implements LyricsProvider {
         }
     }
 
-    private double scoreCandidate(String inTitle, String inArtist, long inDuration,
-                                   String candSong, String candSinger, long candDuration) {
+    double scoreCandidate(String inTitle, String inArtist, long inDuration,
+                          String candSong, String candSinger, long candDuration) {
+        return scoreCandidate(inTitle, null, inArtist, inDuration, candSong, candSinger, candDuration);
+    }
+
+    double scoreCandidate(String inTitle, List<String> aliases, String inArtist, long inDuration,
+                          String candSong, String candSinger, long candDuration) {
         double ts = tokenOverlap(inTitle, candSong);
+        if (aliases != null) {
+            for (String alias : aliases) {
+                ts = Math.max(ts, tokenOverlap(alias, candSong));
+            }
+        }
         double as = tokenOverlap(inArtist, candSinger);
         double ds = 0.5d;
         if (inDuration > 0 && candDuration > 0) {
             long diff = Math.abs(inDuration - candDuration);
-            ds = Math.max(0d, 1d - (diff / 12000d));
+            ds = Math.max(0d, 1d - (diff / 15000d));
         }
         return (ts * 0.50d) + (as * 0.35d) + (ds * 0.15d);
     }
