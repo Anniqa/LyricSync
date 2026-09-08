@@ -78,6 +78,35 @@ public class TrackMetadataSanitizerTest {
     }
 
     @Test
+    public void testHyphenDualScriptUsseewa() {
+        TrackMetadataSanitizer.SanitizedMetadata result = TrackMetadataSanitizer.sanitize(
+                "うっせぇわ - Usseewa",
+                "Ado"
+        );
+        assertEquals("うっせぇわ", result.cleanTitle);
+        assertEquals("Ado", result.cleanArtist);
+        assertEquals(1, result.titleAliases.size());
+        assertEquals("Usseewa", result.titleAliases.get(0));
+    }
+
+    @Test
+    public void testWesternSongNoiseRemasteredAndFeat() {
+        TrackMetadataSanitizer.SanitizedMetadata r1 = TrackMetadataSanitizer.sanitize(
+                "Bohemian Rhapsody - Remastered 2011",
+                "Queen"
+        );
+        assertEquals("Bohemian Rhapsody", r1.cleanTitle);
+        assertEquals("Queen", r1.cleanArtist);
+
+        TrackMetadataSanitizer.SanitizedMetadata r2 = TrackMetadataSanitizer.sanitize(
+                "Shape of You (feat. Stormzy)",
+                "Ed Sheeran"
+        );
+        assertEquals("Shape of You", r2.cleanTitle);
+        assertEquals("Ed Sheeran", r2.cleanArtist);
+    }
+
+    @Test
     public void testNullAndEmptyHandling() {
         TrackMetadataSanitizer.SanitizedMetadata nullResult = TrackMetadataSanitizer.sanitize((TrackInfo) null);
         assertNotNull(nullResult);

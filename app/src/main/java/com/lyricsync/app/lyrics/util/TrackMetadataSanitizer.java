@@ -28,17 +28,20 @@ public class TrackMetadataSanitizer {
     }
 
     private static final Pattern NOISE_BRACKETS = Pattern.compile(
-            "(?i)\\s*\\[[^\\]]*(official|video|audio|lyric|mv|hd|4k|remaster|visualizer)[^\\]]*\\]"
+            "(?i)\\s*\\[[^\\]]*(official|video|audio|lyric|lyrics|mv|hd|4k|remaster|remastered|deluxe|visualizer|live|performance)[^\\]]*\\]"
     );
 
     private static final Pattern NOISE_PARENTHESES = Pattern.compile(
-            "(?i)\\s*\\([^)]*(official|video|audio|lyric|mv|hd|4k|remaster|visualizer|live|performance)[^)]*\\)"
+            "(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|mv|hd|4k|remaster|remastered|deluxe|visualizer|live|performance|acoustic|instrumental)[^)]*\\)"
+    );
+
+    private static final Pattern NOISE_FEAT = Pattern.compile(
+            "(?i)\\s*\\((feat\\.?|ft\\.?|with)\\s+[^)]*\\)"
     );
 
     private static final Pattern NOISE_TRAILING = Pattern.compile(
-            "(?i)\\s*-\\s*(official|video|audio|lyric|mv|hd|4k|remaster|visualizer|live|performance).*$"
+            "(?i)\\s*-\\s*(official|video|audio|lyric|lyrics|mv|hd|4k|remaster|remastered|visualizer|live|performance|instrumental|acoustic).*$"
     );
-
     private static final Pattern ARTIST_TITLE_DELIMITER = Pattern.compile("\\s+[-—–]\\s+");
 
     private static final Pattern ARTIST_NOISE_SUFFIX = Pattern.compile(
@@ -71,6 +74,7 @@ public class TrackMetadataSanitizer {
         artist = artist.split("[,&/]", 2)[0].trim();
 
         // 2. Remove noise tags from title
+        title = NOISE_FEAT.matcher(title).replaceAll("");
         title = NOISE_BRACKETS.matcher(title).replaceAll("");
         title = NOISE_PARENTHESES.matcher(title).replaceAll("");
         title = NOISE_TRAILING.matcher(title).replaceAll("");
@@ -92,7 +96,7 @@ public class TrackMetadataSanitizer {
             }
         }
 
-        // 4. Dual-script title extraction (e.g. "アイドル (Idol)" or "KAIKAI KITAN (廻廻奇譚)")
+        // 4. Dual-script title extraction (e.g. "アイドル (Idol)" or "うっせぇわ - Usseewa")
         List<String> aliases = new ArrayList<>();
         Matcher dualMatcher = DUAL_SCRIPT_PAREN.matcher(title);
         if (dualMatcher.matches()) {
@@ -102,8 +106,21 @@ public class TrackMetadataSanitizer {
                 title = primary;
                 aliases.add(secondary);
             }
+        } else if (title.contains(" - ") || title.contains(" — ") || title.contains(" – ")) {
+            String[] hyphenParts = ARTIST_TITLE_DELIMITER.split(title, 2);
+            if (hyphenParts.length == 2) {
+                String p1 = hyphenParts[0].trim();
+                String p2 = hyphenParts[1].trim();
+                if (!p1.isEmpty() && !p2.isEmpty()) {
+                    boolean p1NonLatin = com.lyricsync.app.ai.transliteration.ScriptDetector.isNonLatin(p1);
+                    boolean p2NonLatin = com.lyricsync.app.ai.transliteration.ScriptDetector.isNonLatin(p2);
+                    if (p1NonLatin != p2NonLatin) {
+                        title = p1;
+                        aliases.add(p2);
+                    }
+                }
+            }
         }
-
         return new SanitizedMetadata(title, artist, aliases);
     }
 

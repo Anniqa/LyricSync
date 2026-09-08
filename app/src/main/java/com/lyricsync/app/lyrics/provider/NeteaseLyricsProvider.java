@@ -36,7 +36,32 @@ public class NeteaseLyricsProvider implements LyricsProvider {
 
     @Override
     public LyricsData fetchLyrics(TrackInfo track) throws Exception {
-        long songId = searchSong(track);
+        if (track == null || !track.isValid()) return null;
+
+        com.lyricsync.app.lyrics.util.TrackMetadataSanitizer.SanitizedMetadata sanitized =
+                com.lyricsync.app.lyrics.util.TrackMetadataSanitizer.sanitize(track);
+        String cleanTitle = !sanitized.cleanTitle.isEmpty() ? sanitized.cleanTitle : track.title;
+        String cleanArtist = !sanitized.cleanArtist.isEmpty() ? sanitized.cleanArtist : track.artist;
+
+        TrackInfo query = new TrackInfo();
+        query.title = cleanTitle;
+        query.artist = cleanArtist;
+        query.duration = track.duration;
+
+        long songId = searchSong(query);
+
+        // Try aliases if not found
+        if (songId <= 0 && !sanitized.titleAliases.isEmpty()) {
+            for (String alias : sanitized.titleAliases) {
+                TrackInfo aliasQuery = new TrackInfo();
+                aliasQuery.title = alias;
+                aliasQuery.artist = cleanArtist;
+                aliasQuery.duration = track.duration;
+                songId = searchSong(aliasQuery);
+                if (songId > 0) break;
+            }
+        }
+
         if (songId <= 0) {
             throw new IOException("Song not found on Netease");
         }
@@ -143,10 +168,25 @@ public class NeteaseLyricsProvider implements LyricsProvider {
 
     private Set<String> tokens(String text) {
         Set<String> set = new HashSet<>();
-        String norm = text.toLowerCase(java.util.Locale.US)
-                .replaceAll("[^a-z0-9]+", " ").trim();
+        if (text == null) return set;
+        String norm = text.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
         if (norm.isEmpty()) return set;
-        for (String t : norm.split(" ")) { if (t.length() > 1) set.add(t); }
+        for (String w : norm.split("\\s+")) {
+            if (w.length() > 1) {
+                set.add(w);
+            }
+            // For CJK characters (Japanese, Chinese, Korean), add individual characters and 2-grams
+            for (int i = 0; i < w.length(); i++) {
+                char c = w.charAt(i);
+                if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3040 && c <= 0x30ff) || (c >= 0xac00 && c <= 0xd7af)) {
+                    set.add(String.valueOf(c));
+                    if (i + 1 < w.length()) {
+                        set.add(w.substring(i, i + 2));
+                    }
+                }
+            }
+        }
         return set;
     }
 

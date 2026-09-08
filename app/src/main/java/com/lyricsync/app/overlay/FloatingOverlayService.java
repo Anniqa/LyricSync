@@ -3481,6 +3481,12 @@ public class FloatingOverlayService extends Service {
                     AppLog.d(TAG, "Stale lyrics ignored for: " + track.title);
                     return;
                 }
+                // Quality guard: NEVER downgrade from SYLLABLE to LINE or STATIC!
+                if (currentLyrics != null && currentLyrics.type == LyricsData.Type.SYLLABLE
+                        && lyrics != null && lyrics.type != LyricsData.Type.SYLLABLE) {
+                    AppLog.w(TAG, "Ignoring incoming " + lyrics.type + " lyrics because overlay already has SYLLABLE lyrics!");
+                    return;
+                }
                 AppLog.i(TAG, "Lyrics loaded: " + lyrics.lines.size()
                         + " lines from " + lyrics.provider
                         + " type=" + lyrics.type);
