@@ -26,6 +26,52 @@ public class FloatingOverlayRetryStateTest {
     }
 
     @Test
+    public void testStandardRetryStatePreservedDuringFetch() {
+        // Verifies that cancelAiLyricsRetrieval() preserves RETRY_STATE_STANDARD during standard fetch
+        final AtomicInteger currentState = new AtomicInteger(FloatingOverlayService.RETRY_STATE_IDLE);
+        final AtomicReference<AntigravityApiClient.Cancellable> activeAiCall = new AtomicReference<>();
+
+        Runnable cancelAiRetrieval = () -> {
+            if (activeAiCall.get() != null) {
+                activeAiCall.get().cancel();
+                activeAiCall.set(null);
+            }
+            if (currentState.get() == FloatingOverlayService.RETRY_STATE_AI) {
+                currentState.set(FloatingOverlayService.RETRY_STATE_IDLE);
+            }
+        };
+
+        // Standard retry initiated:
+        currentState.set(FloatingOverlayService.RETRY_STATE_STANDARD);
+
+        // Inside fetchLyrics, cancelAiRetrieval is called
+        cancelAiRetrieval.run();
+
+        // State MUST remain RETRY_STATE_STANDARD while fetch is in progress
+        assertEquals("State must remain RETRY_STATE_STANDARD while fetch is in progress",
+                FloatingOverlayService.RETRY_STATE_STANDARD, currentState.get());
+
+        // Upon error: returns to IDLE
+        currentState.set(FloatingOverlayService.RETRY_STATE_IDLE);
+        assertEquals(FloatingOverlayService.RETRY_STATE_IDLE, currentState.get());
+
+        // Initiate standard retry again and succeed: transitions to LOADED
+        currentState.set(FloatingOverlayService.RETRY_STATE_STANDARD);
+        cancelAiRetrieval.run();
+        assertEquals(FloatingOverlayService.RETRY_STATE_STANDARD, currentState.get());
+        currentState.set(FloatingOverlayService.STATE_LOADED);
+        assertEquals(FloatingOverlayService.STATE_LOADED, currentState.get());
+
+        // Now initiate AI retry:
+        currentState.set(FloatingOverlayService.RETRY_STATE_AI);
+        cancelAiRetrieval.run();
+
+        // AI retry cancelled -> resets to IDLE
+        assertEquals("State resets to IDLE when cancelling AI retrieval",
+                FloatingOverlayService.RETRY_STATE_IDLE, currentState.get());
+    }
+
+    @Test
     public void testCancellationSuppressionPattern() {
         // Models the exact cancellation and pendingFetchKey guard used in FloatingOverlayService
         final AtomicReference<String> pendingFetchKey = new AtomicReference<>("Song A|||Artist A");
@@ -54,7 +100,9 @@ public class FloatingOverlayRetryStateTest {
             activeCall.get().cancel();
             activeCall.set(null);
         }
-        retryState.set(FloatingOverlayService.RETRY_STATE_IDLE);
+        if (retryState.get() == FloatingOverlayService.RETRY_STATE_AI) {
+            retryState.set(FloatingOverlayService.RETRY_STATE_IDLE);
+        }
 
         assertTrue("In-flight call was cancelled", callCancelled.get());
         assertNull("Active call reference cleared", activeCall.get());

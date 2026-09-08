@@ -3545,7 +3545,9 @@ public class FloatingOverlayService extends Service {
             activeAiLyricsCall.cancel();
             activeAiLyricsCall = null;
         }
-        setRetryState(RETRY_STATE_IDLE);
+        if (currentRetryState == RETRY_STATE_AI) {
+            setRetryState(RETRY_STATE_IDLE);
+        }
     }
 
     private void triggerAiLyricsRetrieval() {
@@ -3598,7 +3600,6 @@ public class FloatingOverlayService extends Service {
                     currentLyrics = lyrics;
                     lyricsStatusText = describeLyrics(lyrics);
                     if (currentTrack != null) updateTrackInfo(currentTrack);
-                    showLyricsState();
                     renderOverlayLyrics(lyrics);
                     setupAiPromptTemplates();
                     publishNowPlaying();
@@ -3994,6 +3995,7 @@ public class FloatingOverlayService extends Service {
 
     private void clearOverlay() {
         if (isDestroyed) return;
+        cancelAiLyricsRetrieval();
         if (activeTransliterationCall != null) {
             activeTransliterationCall.cancel();
             activeTransliterationCall = null;
