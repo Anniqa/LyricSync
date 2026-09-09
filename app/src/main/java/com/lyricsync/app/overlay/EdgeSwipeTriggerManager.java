@@ -145,6 +145,8 @@ public class EdgeSwipeTriggerManager {
 
         final Runnable holdRunnable = () -> {
             if (!isAttached || !isEnabled) return;
+            AppLog.d(TAG, "Hold check: armed=" + isArmed[0] + " cancelled=" + isCancelled[0]
+                    + " fired=" + hasTriggered[0]);
             if (isArmed[0] && !isCancelled[0] && !hasTriggered[0]) {
                 hasTriggered[0] = true;
                 Haptics.tick(view);
@@ -179,9 +181,15 @@ public class EdgeSwipeTriggerManager {
                     float dy = Math.abs(event.getRawY() - downY[0]);
 
                     if (dy > dx * 1.5f) {
+                        if (!isCancelled[0]) {
+                            AppLog.d(TAG, "Gesture cancelled: vertical scroll dx=" + dx + " dy=" + dy);
+                        }
                         isCancelled[0] = true;
                         handler.removeCallbacks(holdRunnable);
                     } else if (dx >= minSwipeDistance && !isCancelled[0] && !hasTriggered[0]) {
+                        if (!isArmed[0]) {
+                            AppLog.d(TAG, "Gesture armed: dx=" + dx);
+                        }
                         isArmed[0] = true;
                         if (System.currentTimeMillis() - downTime[0] >= HOLD_DURATION_MS) {
                             handler.removeCallbacks(holdRunnable);
@@ -192,6 +200,9 @@ public class EdgeSwipeTriggerManager {
 
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
+                    AppLog.d(TAG, "Gesture end: action="
+                            + (event.getActionMasked() == MotionEvent.ACTION_CANCEL ? "CANCEL" : "UP")
+                            + " armed=" + isArmed[0] + " fired=" + hasTriggered[0]);
                     handler.removeCallbacks(holdRunnable);
                     isArmed[0] = false;
                     return true;
