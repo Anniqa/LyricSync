@@ -277,6 +277,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         setupAppearanceChips();
         setupLanguageUi();
         setupTranslationUi();
+        setupEdgeTriggerUi();
         setupSpotifyAccountUi();
         setupAiAccountUi();
         setupAiStudioUi();
@@ -641,6 +642,22 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
         }
     }
+
+    private void setupEdgeTriggerUi() {
+        androidx.appcompat.widget.SwitchCompat switchEdge = findViewById(R.id.switch_edge_trigger);
+        if (switchEdge != null) {
+            switchEdge.setChecked(prefs.getBoolean("pref_edge_trigger_enabled", true));
+            switchEdge.setOnCheckedChangeListener((btn, isChecked) -> {
+                Haptics.tick(btn);
+                prefs.edit().putBoolean("pref_edge_trigger_enabled", isChecked).apply();
+                FloatingOverlayService service = FloatingOverlayService.getInstance();
+                if (service != null) {
+                    service.setEdgeTriggerEnabled(isChecked);
+                }
+            });
+        }
+    }
+
     // ── Spotify Syllable Sync Account ──────────────────────────────────────
 
     private void setupSpotifyAccountUi() {
