@@ -134,6 +134,13 @@ public class EdgeSwipeTriggerManager {
     private View createTriggerView(final boolean isLeft) {
         View view = new View(context);
         view.setBackgroundColor(Color.TRANSPARENT);
+        // Re-apply exclusion whenever layout changes (rotation, resize):
+        // an empty or stale rect means EdgeBackGestureHandler steals touches.
+        view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if ((r - l) != (or - ol) || (b - t) != (ob - ot)) {
+                applyExclusionRect(v);
+            }
+        });
 
         final float[] downX = new float[1];
         final float[] downY = new float[1];
@@ -215,23 +222,31 @@ public class EdgeSwipeTriggerManager {
 
     private void updateExclusionRects() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (leftTriggerView != null && leftParams != null) {
-                leftTriggerView.post(() -> {
-                    if (leftTriggerView != null) {
-                        Rect rect = new Rect(0, 0, leftTriggerView.getWidth(), leftTriggerView.getHeight());
-                        leftTriggerView.setSystemGestureExclusionRects(Collections.singletonList(rect));
-                    }
-                });
-            }
-            if (rightTriggerView != null && rightParams != null) {
-                rightTriggerView.post(() -> {
-                    if (rightTriggerView != null) {
-                        Rect rect = new Rect(0, 0, rightTriggerView.getWidth(), rightTriggerView.getHeight());
-                        rightTriggerView.setSystemGestureExclusionRects(Collections.singletonList(rect));
-                    }
-                });
-            }
+            applyExclusionRect(leftTriggerView);
+            applyExclusionRect(rightTriggerView);
+            // Re-apply after layout settles: a rect captured before first
+            // measure would be empty (0x0) and silently ignored by the system,
+            // leaving EdgeBackGestureHandler free to steal our touches.
+            handler.postDelayed(() -> {
+                applyExclusionRect(leftTriggerView);
+                applyExclusionRect(rightTriggerView);
+            }, 500);
         }
+    }
+
+    private void applyExclusionRect(View view) {
+        if (view == null) return;
+        view.post(() -> {
+            int w = view.getWidth();
+            int h = view.getHeight();
+            if (w <= 0 || h <= 0) {
+                AppLog.w(TAG, "Exclusion skipped: view not laid out yet");
+                return;
+            }
+            Rect rect = new Rect(0, 0, w, h);
+            view.setSystemGestureExclusionRects(Collections.singletonList(rect));
+            AppLog.d(TAG, "Exclusion applied: " + w + "x" + h);
+        });
     }
 
     private int dpToPx(int dp) {
