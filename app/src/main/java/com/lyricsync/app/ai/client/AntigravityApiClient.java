@@ -248,6 +248,14 @@ public class AntigravityApiClient {
         return toolExecutor;
     }
 
+    public AntigravityAuthManager getAuthManager() {
+        return authManager;
+    }
+
+    public boolean isAuthenticated() {
+        return authManager != null && authManager.isAuthenticated();
+    }
+
     private static OkHttpClient createDefaultHttpClient() {
         return new OkHttpClient.Builder()
                 .connectTimeout(60, TimeUnit.SECONDS)

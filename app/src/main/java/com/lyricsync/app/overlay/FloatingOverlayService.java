@@ -442,7 +442,7 @@ public class FloatingOverlayService extends Service {
         songChatManager.setHistoryManager(aiChatHistoryManager);
         aiTransliterationService = new AiSyllableTransliterationService(this, apiClient);
         lyricsCacheManager = new LyricsCacheManager(this);
-        aiLyricsAgentService = new AiLyricsAgentService(this);
+        aiLyricsAgentService = new AiLyricsAgentService(this, apiClient);
         quotaClient = new AntigravityQuotaClient(authManager);
         AntigravityToolExecutor.setChatModelSupplier(() ->
                 sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
@@ -3554,7 +3554,7 @@ public class FloatingOverlayService extends Service {
     private void triggerAiLyricsRetrieval() {
         if (currentTrack == null || !currentTrack.isValid()) return;
         if (aiLyricsAgentService == null) {
-            aiLyricsAgentService = new AiLyricsAgentService(this);
+            aiLyricsAgentService = new AiLyricsAgentService(this, apiClient);
         }
         cancelAiLyricsRetrieval();
         final TrackInfo track = currentTrack;

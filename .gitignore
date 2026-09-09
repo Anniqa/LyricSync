@@ -18,3 +18,4 @@ opencode.json
 
 # superpowers design docs (local only, never publish)
 docs/superpowers/
+build-output/

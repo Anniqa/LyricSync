@@ -11,6 +11,7 @@ import com.lyricsync.app.lyrics.model.TrackInfo;
 
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -48,32 +49,58 @@ public class NeteaseLyricsProvider implements LyricsProvider {
         query.artist = cleanArtist;
         query.duration = track.duration;
 
-        long songId = searchSong(query);
+        List<Long> songIds = searchSongIds(cleanMetadata(cleanTitle) + " " + cleanMetadata(cleanArtist),
+                cleanTitle, cleanArtist, track.duration);
 
-        // Try aliases if not found
-        if (songId <= 0 && !sanitized.titleAliases.isEmpty()) {
+        // Try aliases if no song IDs found
+        if (songIds.isEmpty() && !sanitized.titleAliases.isEmpty()) {
             for (String alias : sanitized.titleAliases) {
-                TrackInfo aliasQuery = new TrackInfo();
-                aliasQuery.title = alias;
-                aliasQuery.artist = cleanArtist;
-                aliasQuery.duration = track.duration;
-                songId = searchSong(aliasQuery);
-                if (songId > 0) break;
+                List<Long> aliasIds = searchSongIds(cleanMetadata(alias) + " " + cleanMetadata(cleanArtist),
+                        alias, cleanArtist, track.duration);
+                if (!aliasIds.isEmpty()) {
+                    songIds = aliasIds;
+                    break;
+                }
             }
         }
 
-        if (songId <= 0) {
-            throw new IOException("Song not found on Netease");
+        for (long id : songIds) {
+            try {
+                LyricsData lyrics = fetchLyricById(id);
+                if (lyrics != null && !lyrics.isEmpty() && lyrics.isSynced()) {
+                    return lyrics;
+                }
+            } catch (Exception ignored) {}
         }
 
-        return fetchLyricById(songId);
+        throw new IOException("No synced lyrics found on Netease");
     }
 
-    private long searchSong(TrackInfo track) throws IOException {
-        String cleanTitle = cleanMetadata(track.title);
-        String cleanArtist = cleanMetadata(track.artist);
-        String query = cleanTitle + " " + cleanArtist;
-        String url = SEARCH_URL + "?s=" + Uri.encode(query) + "&type=1&limit=10&offset=0";
+    public LyricsData fetchLyricsByQuery(String queryString, long durationMs) throws Exception {
+        if (queryString == null || queryString.trim().isEmpty()) return null;
+        List<Long> songIds = searchSongIds(queryString.trim(), queryString.trim(), "", durationMs);
+        for (long id : songIds) {
+            try {
+                LyricsData lyrics = fetchLyricById(id);
+                if (lyrics != null && !lyrics.isEmpty() && lyrics.isSynced()) {
+                    return lyrics;
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private static String urlEncode(String val) {
+        if (val == null) return "";
+        try {
+            return java.net.URLEncoder.encode(val, "UTF-8").replace("+", "%20");
+        } catch (Exception e) {
+            return val;
+        }
+    }
+
+    private List<Long> searchSongIds(String searchQuery, String title, String artist, long durationMs) throws IOException {
+        String url = SEARCH_URL + "?s=" + urlEncode(searchQuery) + "&type=1&limit=10&offset=0";
 
         Request request = new Request.Builder()
                 .url(url)
@@ -81,6 +108,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
                 .build();
 
+        List<Long> resultIds = new java.util.ArrayList<>();
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("HTTP " + response.code());
@@ -91,13 +119,12 @@ public class NeteaseLyricsProvider implements LyricsProvider {
             JsonObject root = JsonParser.parseString(body).getAsJsonObject();
             JsonObject result = root.getAsJsonObject("result");
 
-            if (result == null || !result.has("songs")) return -1;
+            if (result == null || !result.has("songs")) return resultIds;
 
             JsonArray songs = result.getAsJsonArray("songs");
-            if (songs == null || songs.isEmpty()) return -1;
+            if (songs == null || songs.isEmpty()) return resultIds;
 
-            long bestId = -1;
-            double bestScore = -1;
+            List<ScoredSong> scored = new java.util.ArrayList<>();
             for (JsonElement el : songs) {
                 JsonObject song = el.getAsJsonObject();
                 String name = safeStr(song, "name");
@@ -105,17 +132,32 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                 long duration = safeLong(song, "duration");
                 long id = safeLong(song, "id");
                 if (id <= 0) continue;
-                double score = scoreCandidate(track.title, track.artist, track.duration,
-                        name, artists, duration);
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestId = id;
+                double score = scoreCandidate(title, artist, durationMs, name, artists, duration);
+                if (score >= 0.30d) {
+                    scored.add(new ScoredSong(id, score));
                 }
             }
 
-            // Only accept a confident match. Returning the first result blindly would
-            // frequently attach the wrong song's lyrics.
-            return bestScore >= 0.4d ? bestId : -1;
+            java.util.Collections.sort(scored);
+            for (ScoredSong s : scored) {
+                resultIds.add(s.id);
+            }
+            return resultIds;
+        }
+    }
+
+    private static class ScoredSong implements Comparable<ScoredSong> {
+        final long id;
+        final double score;
+
+        ScoredSong(long id, double score) {
+            this.id = id;
+            this.score = score;
+        }
+
+        @Override
+        public int compareTo(ScoredSong o) {
+            return Double.compare(o.score, this.score); // descending
         }
     }
 

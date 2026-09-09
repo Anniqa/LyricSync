@@ -54,14 +54,23 @@ public class LRCLIBProvider implements LyricsProvider {
         }
     }
 
+    private static String urlEncode(String val) {
+        if (val == null) return "";
+        try {
+            return java.net.URLEncoder.encode(val, "UTF-8").replace("+", "%20");
+        } catch (Exception e) {
+            return val;
+        }
+    }
+
     private String buildUrl(TrackInfo track) {
         String cleanTitle = cleanMetadata(track.title);
         String cleanArtist = cleanMetadata(track.artist);
         StringBuilder sb = new StringBuilder(API_URL);
-        sb.append("?track_name=").append(Uri.encode(cleanTitle));
-        sb.append("&artist_name=").append(Uri.encode(cleanArtist));
+        sb.append("?track_name=").append(urlEncode(cleanTitle));
+        sb.append("&artist_name=").append(urlEncode(cleanArtist));
         if (track.album != null) {
-            sb.append("&album_name=").append(Uri.encode(track.album));
+            sb.append("&album_name=").append(urlEncode(track.album));
         }
         if (track.duration > 0) {
             sb.append("&duration=").append(track.duration / 1000);
@@ -79,12 +88,18 @@ public class LRCLIBProvider implements LyricsProvider {
                 .trim();
     }
 
-    private LyricsData searchByQuery(TrackInfo track) throws IOException {
-        String cleanTitle = cleanMetadata(track.title);
-        String cleanArtist = cleanMetadata(track.artist);
-        String url = "https://lrclib.net/api/search?track_name="
-                + Uri.encode(cleanTitle) + "&artist_name=" + Uri.encode(cleanArtist);
+    public LyricsData fetchLyricsByQuery(String query, long durationMs) throws Exception {
+        if (query == null || query.trim().isEmpty()) {
+            throw new IOException("Empty search query");
+        }
+        TrackInfo queryTrack = new TrackInfo();
+        queryTrack.title = query.trim();
+        queryTrack.artist = "";
+        queryTrack.duration = durationMs;
+        return fetchLyrics(queryTrack);
+    }
 
+    private JsonArray executeSearch(String url) throws IOException {
         Request request = new Request.Builder()
                 .url(url)
                 .header("User-Agent", "LyricSync/1.0")
@@ -97,30 +112,85 @@ public class LRCLIBProvider implements LyricsProvider {
 
             if (response.body() == null) throw new IOException("Empty response body");
             String body = response.body().string();
-            JsonArray results = JsonParser.parseString(body).getAsJsonArray();
-
-            if (results == null || results.isEmpty()) {
-                throw new IOException("No results found");
-            }
-
-            JsonObject best = results.get(0).getAsJsonObject();
-            double bestScore = -1;
-            for (JsonElement el : results) {
-                JsonObject obj = el.getAsJsonObject();
-                String rName = safeStr(obj, "trackName", "name");
-                String rArtist = safeStr(obj, "artistName");
-                long rDuration = obj.has("duration") && !obj.get("duration").isJsonNull()
-                        ? (long) obj.get("duration").getAsDouble() : 0;
-                double score = scoreResult(cleanTitle, cleanArtist, track.duration,
-                        rName, rArtist, rDuration);
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = obj;
-                }
-            }
-
-            return parseResponse(best.toString());
+            return JsonParser.parseString(body).getAsJsonArray();
         }
+    }
+
+    private LyricsData searchByQuery(TrackInfo track) throws IOException {
+        String cleanTitle = cleanMetadata(track.title);
+        String cleanArtist = cleanMetadata(track.artist);
+        String url = "https://lrclib.net/api/search?track_name="
+                + urlEncode(cleanTitle) + "&artist_name=" + urlEncode(cleanArtist);
+
+        JsonArray results = null;
+        try {
+            results = executeSearch(url);
+        } catch (Exception ignored) {}
+
+        // Fallback to broader ?q= search if specific search returned no results
+        if (results == null || results.isEmpty() || !hasAnyLyrics(results)) {
+            String q = (cleanTitle + " " + cleanArtist).trim();
+            if (!q.isEmpty()) {
+                try {
+                    results = executeSearch("https://lrclib.net/api/search?q=" + urlEncode(q));
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (results == null || results.isEmpty()) {
+            throw new IOException("No results found");
+        }
+
+        return selectBestMatch(cleanTitle, cleanArtist, track.duration, results);
+    }
+
+    private boolean hasAnyLyrics(JsonArray results) {
+        for (JsonElement el : results) {
+            if (!el.isJsonObject()) continue;
+            JsonObject obj = el.getAsJsonObject();
+            boolean hasSynced = obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()
+                    && !obj.get("syncedLyrics").getAsString().trim().isEmpty();
+            boolean hasPlain = obj.has("plainLyrics") && !obj.get("plainLyrics").isJsonNull()
+                    && !obj.get("plainLyrics").getAsString().trim().isEmpty();
+            if (hasSynced || hasPlain) return true;
+        }
+        return false;
+    }
+
+    private LyricsData selectBestMatch(String inTitle, String inArtist, long inDuration,
+                                      JsonArray results) throws IOException {
+        JsonObject best = null;
+        double bestScore = -1;
+        for (JsonElement el : results) {
+            if (!el.isJsonObject()) continue;
+            JsonObject obj = el.getAsJsonObject();
+            String rName = safeStr(obj, "trackName", "name");
+            String rArtist = safeStr(obj, "artistName");
+            long rDurationSec = obj.has("duration") && !obj.get("duration").isJsonNull()
+                    ? (long) Math.round(obj.get("duration").getAsDouble()) : 0;
+            long candDuration = rDurationSec < 10000 ? rDurationSec * 1000L : rDurationSec;
+
+            boolean hasSynced = obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()
+                    && !obj.get("syncedLyrics").getAsString().trim().isEmpty();
+            boolean hasPlain = obj.has("plainLyrics") && !obj.get("plainLyrics").isJsonNull()
+                    && !obj.get("plainLyrics").getAsString().trim().isEmpty();
+            if (!hasSynced && !hasPlain) continue;
+
+            double score = scoreResult(inTitle, inArtist, inDuration, rName, rArtist, candDuration);
+            if (hasSynced) {
+                score += 0.35d;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = obj;
+            }
+        }
+
+        if (best == null) {
+            throw new IOException("No candidate with lyrics found");
+        }
+
+        return parseResponse(best.toString());
     }
 
     private double scoreResult(String inTitle, String inArtist, long inDuration,
