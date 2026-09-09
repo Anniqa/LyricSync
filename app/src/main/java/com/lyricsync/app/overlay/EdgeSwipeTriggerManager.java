@@ -56,8 +56,11 @@ public class EdgeSwipeTriggerManager {
 
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
         int triggerWidth = dpToPx(12);
-        int triggerHeight = (int) (dm.heightPixels * 0.45f);
-        int triggerY = (int) (dm.heightPixels * 0.28f);
+        // Keep the zone (and its system-gesture exclusion rect) well under the
+        // platform exclusion limit so the system does not ignore the request
+        // and steal edge touches for Back navigation.
+        int triggerHeight = (int) (dm.heightPixels * 0.30f);
+        int triggerY = (int) (dm.heightPixels * 0.35f);
 
         leftParams = createLayoutParams(triggerWidth, triggerHeight, triggerY, Gravity.TOP | Gravity.START);
         rightParams = createLayoutParams(triggerWidth, triggerHeight, triggerY, Gravity.TOP | Gravity.END);
@@ -163,6 +166,11 @@ public class EdgeSwipeTriggerManager {
                     isArmed[0] = false;
                     isCancelled[0] = false;
                     hasTriggered[0] = false;
+                    // Immediate feedback proves the touch reached our window.
+                    // If DOWN lands here but no trigger follows, the system
+                    // stole the stream (exclusion ignored) instead of our code.
+                    AppLog.d(TAG, "Edge touch DOWN on " + (isLeft ? "LEFT" : "RIGHT"));
+                    Haptics.tick(view);
                     handler.postDelayed(holdRunnable, HOLD_DURATION_MS);
                     return true;
 
