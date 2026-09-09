@@ -119,6 +119,10 @@ public class FloatingOverlayService extends Service {
         return activeInstance;
     }
 
+    public void setEdgeTriggerEnabled(boolean enabled) {
+        // Stub to be wired to EdgeSwipeTriggerManager in Task 3
+    }
+
     private WindowManager windowManager;
     private View overlayView;
     private MediaSessionTracker sessionTracker;
