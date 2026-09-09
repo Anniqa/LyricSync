@@ -121,7 +121,7 @@ public class FloatingOverlayService extends Service {
     }
 
     private EdgeSwipeTriggerManager edgeSwipeTriggerManager;
-    private boolean isOverlayWindowVisible = true;
+    private volatile boolean isOverlayWindowVisible = true;
 
     public void setEdgeTriggerEnabled(boolean enabled) {
         if (edgeSwipeTriggerManager != null) {
@@ -210,6 +210,7 @@ public class FloatingOverlayService extends Service {
     private AiSyllableTransliterationService aiTransliterationService;
     private LyricsCacheManager lyricsCacheManager;
     private androidx.appcompat.widget.SwitchCompat overlayRomajiSwitch;
+    private androidx.appcompat.widget.SwitchCompat switchEdgeOverlay;
     private TextView overlayTransliterationLabel;
     private View romajiRow;
     private boolean isProgrammaticRomajiUpdate = false;
@@ -343,6 +344,12 @@ public class FloatingOverlayService extends Service {
             boolean enabled = prefs.getBoolean(key, true);
             if (highlighter != null) {
                 highlighter.setOriginalScriptEnabled(enabled);
+            }
+        } else if ("pref_edge_trigger_enabled".equals(key)) {
+            boolean enabled = prefs.getBoolean("pref_edge_trigger_enabled", true);
+            setEdgeTriggerEnabled(enabled);
+            if (switchEdgeOverlay != null && switchEdgeOverlay.isChecked() != enabled) {
+                switchEdgeOverlay.setChecked(enabled);
             }
         }
     };
@@ -598,7 +605,7 @@ public class FloatingOverlayService extends Service {
                 Toast.makeText(this, labelName + (isChecked ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
             });
         }
-        androidx.appcompat.widget.SwitchCompat switchEdgeOverlay = overlayView.findViewById(R.id.overlay_edge_trigger_switch);
+        switchEdgeOverlay = overlayView.findViewById(R.id.overlay_edge_trigger_switch);
         if (switchEdgeOverlay != null) {
             switchEdgeOverlay.setChecked(sharedPrefs.getBoolean("pref_edge_trigger_enabled", true));
             switchEdgeOverlay.setOnCheckedChangeListener((btn, isChecked) -> {
@@ -789,6 +796,7 @@ public class FloatingOverlayService extends Service {
     public void showOverlayWindow() {
         handler.post(() -> {
             if (isDestroyed || overlayView == null || windowManager == null) return;
+            overlayView.animate().cancel();
             if (!isOverlayWindowVisible) {
                 try {
                     overlayView.setVisibility(View.VISIBLE);
@@ -811,6 +819,9 @@ public class FloatingOverlayService extends Service {
     public void hideOverlayWindow() {
         handler.post(() -> {
             if (isDestroyed || overlayView == null) return;
+            isOverlayWindowVisible = false;
+            stopRenderLoop();
+            overlayView.animate().cancel();
             overlayView.animate()
                     .alpha(0f)
                     .scaleX(0.85f)
@@ -820,8 +831,6 @@ public class FloatingOverlayService extends Service {
                     .withEndAction(() -> {
                         if (overlayView != null) {
                             overlayView.setVisibility(View.GONE);
-                            isOverlayWindowVisible = false;
-                            stopRenderLoop();
                             updateNotification();
                             AppLog.i(TAG, "Overlay window hidden, edge triggers still active");
                         }
@@ -3306,7 +3315,7 @@ public class FloatingOverlayService extends Service {
                             updateNotification();
                             publishNowPlaying();
                             // Squash-and-bounce once so a new song visibly "lands".
-                            if (overlayView != null) Anim.bubblePulse(overlayView);
+                            if (overlayView != null && isOverlayWindowVisible) Anim.bubblePulse(overlayView);
                         });
                     }
 
@@ -3387,6 +3396,7 @@ public class FloatingOverlayService extends Service {
     };
 
     private void startRenderLoop() {
+        if (!isOverlayWindowVisible) return;
         renderRunning = true;
         startFrameCallback();
     }
