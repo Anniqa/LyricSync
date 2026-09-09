@@ -103,6 +103,7 @@ public class FloatingOverlayService extends Service {
 
     public static final String ACTION_STOP = "com.lyricsync.app.action.STOP";
     public static final String ACTION_TOGGLE = "com.lyricsync.app.action.TOGGLE";
+    public static final String ACTION_SHOW_OVERLAY = "com.lyricsync.app.action.SHOW_OVERLAY";
 
     /** Sync slider is 0..3000 with 1500 meaning "no offset". */
     private static final int SYNC_LIMIT_MS = 1500;
@@ -119,8 +120,13 @@ public class FloatingOverlayService extends Service {
         return activeInstance;
     }
 
+    private EdgeSwipeTriggerManager edgeSwipeTriggerManager;
+    private boolean isOverlayWindowVisible = true;
+
     public void setEdgeTriggerEnabled(boolean enabled) {
-        // Stub to be wired to EdgeSwipeTriggerManager in Task 3
+        if (edgeSwipeTriggerManager != null) {
+            edgeSwipeTriggerManager.setEnabled(enabled);
+        }
     }
 
     private WindowManager windowManager;
@@ -490,6 +496,11 @@ public class FloatingOverlayService extends Service {
             stopSelf();
             return;
         }
+        boolean edgeEnabled = sharedPrefs.getBoolean("pref_edge_trigger_enabled", true);
+        edgeSwipeTriggerManager = new EdgeSwipeTriggerManager(this, this::showOverlayWindow);
+        if (edgeEnabled) {
+            edgeSwipeTriggerManager.attach();
+        }
         startTracker();
         running = true;
         AppLog.i(TAG, "Overlay service created");
@@ -504,6 +515,9 @@ public class FloatingOverlayService extends Service {
                     return START_NOT_STICKY;
                 case ACTION_TOGGLE:
                     if (overlayView != null) setLyricsVisible(!lyricsVisible, true, true);
+                    return START_STICKY;
+                case ACTION_SHOW_OVERLAY:
+                    showOverlayWindow();
                     return START_STICKY;
                 default:
                     break;
@@ -584,6 +598,15 @@ public class FloatingOverlayService extends Service {
                 Toast.makeText(this, labelName + (isChecked ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
             });
         }
+        androidx.appcompat.widget.SwitchCompat switchEdgeOverlay = overlayView.findViewById(R.id.overlay_edge_trigger_switch);
+        if (switchEdgeOverlay != null) {
+            switchEdgeOverlay.setChecked(sharedPrefs.getBoolean("pref_edge_trigger_enabled", true));
+            switchEdgeOverlay.setOnCheckedChangeListener((btn, isChecked) -> {
+                Haptics.tick(btn);
+                sharedPrefs.edit().putBoolean("pref_edge_trigger_enabled", isChecked).apply();
+                setEdgeTriggerEnabled(isChecked);
+            });
+        }
         if (romajiRow != null) {
             View.OnLongClickListener longClickListener = v -> {
                 Haptics.tick(v);
@@ -661,7 +684,7 @@ public class FloatingOverlayService extends Service {
         });
         overlayClose.setOnClickListener(v -> {
             Haptics.confirm(v);
-            animateOutAndStop();
+            hideOverlayWindow();
         });
 
         // Tap the title block (or the cover) to hide/show the header buttons, so a
@@ -761,6 +784,50 @@ public class FloatingOverlayService extends Service {
                 .setInterpolator(Anim.STANDARD)
                 .withEndAction(this::stopSelf)
                 .start();
+    }
+
+    public void showOverlayWindow() {
+        handler.post(() -> {
+            if (isDestroyed || overlayView == null || windowManager == null) return;
+            if (!isOverlayWindowVisible) {
+                try {
+                    overlayView.setVisibility(View.VISIBLE);
+                    isOverlayWindowVisible = true;
+                    Anim.bubbleIn(overlayView);
+                    if (lyricsVisible && currentLyrics != null) {
+                        startRenderLoop();
+                    }
+                    updateNotification();
+                    AppLog.i(TAG, "Overlay window shown from edge trigger");
+                } catch (Exception e) {
+                    AppLog.e(TAG, "Error showing overlay window: " + e.getMessage());
+                }
+            } else {
+                Anim.bubblePulse(overlayView);
+            }
+        });
+    }
+
+    public void hideOverlayWindow() {
+        handler.post(() -> {
+            if (isDestroyed || overlayView == null) return;
+            overlayView.animate()
+                    .alpha(0f)
+                    .scaleX(0.85f)
+                    .scaleY(0.85f)
+                    .setDuration(180)
+                    .setInterpolator(Anim.STANDARD)
+                    .withEndAction(() -> {
+                        if (overlayView != null) {
+                            overlayView.setVisibility(View.GONE);
+                            isOverlayWindowVisible = false;
+                            stopRenderLoop();
+                            updateNotification();
+                            AppLog.i(TAG, "Overlay window hidden, edge triggers still active");
+                        }
+                    })
+                    .start();
+        });
     }
 
     // ── Colour ─────────────────────────────────────────────────────────────
@@ -4121,6 +4188,10 @@ public class FloatingOverlayService extends Service {
         if (springScroller != null) springScroller.destroy();
         NowPlaying.clear();
         dismissAiChatOverlay();
+        if (edgeSwipeTriggerManager != null) {
+            edgeSwipeTriggerManager.detach();
+            edgeSwipeTriggerManager = null;
+        }
         if (overlayView != null && windowManager != null) {
             try {
                 windowManager.removeView(overlayView);
