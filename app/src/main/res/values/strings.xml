@@ -58,10 +58,6 @@
     <string name="lyrics_translation_desc">Display translated subtitles under synced lyrics</string>
     <string name="lyrics_translation_target">Target Language</string>
 
-    <!-- Edge Gesture Shortcut -->
-    <string name="pref_edge_trigger_title">Edge Gesture Shortcut</string>
-    <string name="pref_edge_trigger_desc">Swipe and hold from edge to show lyrics</string>
-
     <!-- Spotify Account & Syllable Sync -->
     <string name="spotify_account_title">Spotify &amp; Syllable Sync</string>
     <string name="spotify_account_desc">Unlock 100% stable word-by-word lyrics rate using your Spotify session (sp_dc cookie)</string>
