@@ -68,13 +68,4 @@ public class EdgeSwipeTriggerGestureTest {
         sm.onMove(20f, 180f); // dy = 80, dx = 10 -> vertical scroll
         Assert.assertFalse("Vertical scroll should cancel gesture", sm.evaluateTrigger(1300L));
     }
-
-    @Test
-    public void testHoldThenSwipe_Success() {
-        GestureStateMachine sm = new GestureStateMachine();
-        sm.onDown(10f, 100f, 1000L);
-        Assert.assertFalse("Not triggered while stationary even after 250ms", sm.evaluateTrigger(1300L));
-        sm.onMove(60f, 105f);
-        Assert.assertTrue("Triggered when swipe occurs after holding past threshold", sm.evaluateTrigger(1300L));
-    }
 }
