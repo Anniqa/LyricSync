@@ -42,8 +42,8 @@ public class EdgeSwipeTriggerManager {
     private View rightTriggerView;
     private WindowManager.LayoutParams leftParams;
     private WindowManager.LayoutParams rightParams;
-    private boolean isAttached = false;
-    private boolean isEnabled = true;
+    private volatile boolean isAttached = false;
+    private volatile boolean isEnabled = true;
 
     public EdgeSwipeTriggerManager(Context context, OnTriggerListener listener) {
         this.context = context;
@@ -78,13 +78,19 @@ public class EdgeSwipeTriggerManager {
     }
 
     public synchronized void detach() {
-        if (!isAttached || windowManager == null) return;
-        try {
-            if (leftTriggerView != null) windowManager.removeView(leftTriggerView);
-        } catch (Exception ignored) {}
-        try {
-            if (rightTriggerView != null) windowManager.removeView(rightTriggerView);
-        } catch (Exception ignored) {}
+        handler.removeCallbacksAndMessages(null);
+        if (windowManager != null) {
+            if (leftTriggerView != null) {
+                try {
+                    windowManager.removeView(leftTriggerView);
+                } catch (Exception ignored) {}
+            }
+            if (rightTriggerView != null) {
+                try {
+                    windowManager.removeView(rightTriggerView);
+                } catch (Exception ignored) {}
+            }
+        }
         leftTriggerView = null;
         rightTriggerView = null;
         isAttached = false;
@@ -128,12 +134,14 @@ public class EdgeSwipeTriggerManager {
 
         final float[] downX = new float[1];
         final float[] downY = new float[1];
+        final long[] downTime = new long[1];
         final boolean[] isArmed = new boolean[1];
         final boolean[] isCancelled = new boolean[1];
         final boolean[] hasTriggered = new boolean[1];
         final float minSwipeDistance = dpToPx(20);
 
         final Runnable holdRunnable = () -> {
+            if (!isAttached || !isEnabled) return;
             if (isArmed[0] && !isCancelled[0] && !hasTriggered[0]) {
                 hasTriggered[0] = true;
                 Haptics.tick(view);
@@ -151,6 +159,7 @@ public class EdgeSwipeTriggerManager {
                 case MotionEvent.ACTION_DOWN:
                     downX[0] = event.getRawX();
                     downY[0] = event.getRawY();
+                    downTime[0] = System.currentTimeMillis();
                     isArmed[0] = false;
                     isCancelled[0] = false;
                     hasTriggered[0] = false;
@@ -164,8 +173,12 @@ public class EdgeSwipeTriggerManager {
                     if (dy > dx * 1.5f) {
                         isCancelled[0] = true;
                         handler.removeCallbacks(holdRunnable);
-                    } else if (dx >= minSwipeDistance && !isCancelled[0]) {
+                    } else if (dx >= minSwipeDistance && !isCancelled[0] && !hasTriggered[0]) {
                         isArmed[0] = true;
+                        if (System.currentTimeMillis() - downTime[0] >= HOLD_DURATION_MS) {
+                            handler.removeCallbacks(holdRunnable);
+                            holdRunnable.run();
+                        }
                     }
                     return true;
 
