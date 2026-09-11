@@ -33,8 +33,8 @@ import okhttp3.Response;
  */
 public class KugouLyricsProvider implements LyricsProvider {
 
-    private static final String SEARCH_URL = "http://krcs.kugou.com/search";
-    private static final String DOWNLOAD_URL = "http://lyrics.kugou.com/download";
+    private static final String SEARCH_URL = "https://krcs.kugou.com/search";
+    private static final String DOWNLOAD_URL = "https://lyrics.kugou.com/download";
 
     private final OkHttpClient client;
 
@@ -56,7 +56,7 @@ public class KugouLyricsProvider implements LyricsProvider {
 
     @Override
     public LyricsData fetchLyrics(TrackInfo track) throws Exception {
-        if (track == null || !track.isValid()) return null;
+        if (track == null || track.title == null || track.title.trim().isEmpty()) return null;
 
         TrackMetadataSanitizer.SanitizedMetadata sanitized = TrackMetadataSanitizer.sanitize(track);
         String cleanTitle = sanitized.cleanTitle.isEmpty() ? track.title : sanitized.cleanTitle;
@@ -92,27 +92,37 @@ public class KugouLyricsProvider implements LyricsProvider {
         }
 
         // 3. Download lyric content
-        String rawBase64 = downloadLyricContent(best.id, best.accesskey);
+        String fmt = best.krctype == 2 ? "krc" : "lrc";
+        String rawBase64 = downloadLyricContent(best.id, best.accesskey, fmt);
         if (rawBase64 == null || rawBase64.trim().isEmpty()) {
             return null;
         }
 
-        // 4. Decode base64 and decrypt KRC
-        byte[] rawKrc;
+        // 4. Decode base64 and parse KRC or LRC
+        byte[] rawBytes;
         try {
-            rawKrc = Base64.getMimeDecoder().decode(rawBase64);
+            rawBytes = Base64.getMimeDecoder().decode(rawBase64);
         } catch (IllegalArgumentException e) {
             return null;
         }
 
-        byte[] decryptedBytes = SyllableLyricsParser.decryptKrc(rawKrc);
-        String krcText = new String(decryptedBytes, StandardCharsets.UTF_8);
+        if (best.krctype == 2) {
+            byte[] decryptedBytes = SyllableLyricsParser.decryptKrc(rawBytes);
+            String krcText = new String(decryptedBytes, StandardCharsets.UTF_8);
 
-        // 5. Parse KRC format
-        LyricsData lyrics = SyllableLyricsParser.parseKrc(krcText);
-        if (lyrics != null && !lyrics.isEmpty()) {
-            lyrics.provider = getName();
-            return lyrics;
+            // 5. Parse KRC format
+            LyricsData lyrics = SyllableLyricsParser.parseKrc(krcText);
+            if (lyrics != null && !lyrics.isEmpty()) {
+                lyrics.provider = getName();
+                return lyrics;
+            }
+        } else {
+            String rawText = new String(rawBytes, StandardCharsets.UTF_8);
+            LyricsData lyrics = SyllableLyricsParser.parse(rawText, "lrc");
+            if (lyrics != null && !lyrics.isEmpty()) {
+                lyrics.provider = getName();
+                return lyrics;
+            }
         }
 
         return null;
@@ -221,10 +231,15 @@ public class KugouLyricsProvider implements LyricsProvider {
     }
 
     private String downloadLyricContent(String id, String accesskey) throws IOException {
+        return downloadLyricContent(id, accesskey, "krc");
+    }
+
+    private String downloadLyricContent(String id, String accesskey, String fmt) throws IOException {
+        String format = (fmt != null && !fmt.isEmpty()) ? fmt : "krc";
         String url = DOWNLOAD_URL + "?ver=1&client=pc"
                 + "&id=" + URLEncoder.encode(id, "UTF-8")
                 + "&accesskey=" + URLEncoder.encode(accesskey, "UTF-8")
-                + "&fmt=krc&charset=utf8";
+                + "&fmt=" + URLEncoder.encode(format, "UTF-8") + "&charset=utf8";
         Request request = new Request.Builder()
                 .url(url)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")

@@ -25,10 +25,18 @@ public class NeteaseLyricsProvider implements LyricsProvider {
     private static final String SEARCH_URL = "https://music.163.com/api/search/get";
     private static final String LYRIC_URL = "https://music.163.com/api/song/lyric";
 
-    private final OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build();
+    private final OkHttpClient client;
+
+    public NeteaseLyricsProvider() {
+        this.client = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .build();
+    }
+
+    public NeteaseLyricsProvider(OkHttpClient client) {
+        this.client = client != null ? client : new OkHttpClient();
+    }
 
     @Override
     public String getName() {
@@ -37,7 +45,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
 
     @Override
     public LyricsData fetchLyrics(TrackInfo track) throws Exception {
-        if (track == null || !track.isValid()) return null;
+        if (track == null || track.title == null || track.title.trim().isEmpty()) return null;
 
         com.lyricsync.app.lyrics.util.TrackMetadataSanitizer.SanitizedMetadata sanitized =
                 com.lyricsync.app.lyrics.util.TrackMetadataSanitizer.sanitize(track);
@@ -64,13 +72,31 @@ public class NeteaseLyricsProvider implements LyricsProvider {
             }
         }
 
+        // Additional query permutation: try cleanTitle alone if combined query returned no songs
+        if (songIds.isEmpty() && !cleanTitle.trim().isEmpty()) {
+            List<Long> titleOnlyIds = searchSongIds(cleanMetadata(cleanTitle), cleanTitle, "", track.duration);
+            if (!titleOnlyIds.isEmpty()) {
+                songIds = titleOnlyIds;
+            }
+        }
+
+        LyricsData bestLineLyrics = null;
         for (long id : songIds) {
             try {
                 LyricsData lyrics = fetchLyricById(id);
-                if (lyrics != null && !lyrics.isEmpty() && lyrics.isSynced()) {
-                    return lyrics;
+                if (lyrics != null && !lyrics.isEmpty()) {
+                    if (lyrics.type == LyricsData.Type.SYLLABLE) {
+                        return lyrics; // Found preferred syllable lyrics!
+                    }
+                    if (bestLineLyrics == null && lyrics.isSynced()) {
+                        bestLineLyrics = lyrics; // Keep first line-synced as fallback
+                    }
                 }
             } catch (Exception ignored) {}
+        }
+
+        if (bestLineLyrics != null) {
+            return bestLineLyrics;
         }
 
         throw new IOException("No synced lyrics found on Netease");
@@ -79,15 +105,21 @@ public class NeteaseLyricsProvider implements LyricsProvider {
     public LyricsData fetchLyricsByQuery(String queryString, long durationMs) throws Exception {
         if (queryString == null || queryString.trim().isEmpty()) return null;
         List<Long> songIds = searchSongIds(queryString.trim(), queryString.trim(), "", durationMs);
+        LyricsData bestLineLyrics = null;
         for (long id : songIds) {
             try {
                 LyricsData lyrics = fetchLyricById(id);
-                if (lyrics != null && !lyrics.isEmpty() && lyrics.isSynced()) {
-                    return lyrics;
+                if (lyrics != null && !lyrics.isEmpty()) {
+                    if (lyrics.type == LyricsData.Type.SYLLABLE) {
+                        return lyrics; // Return syllable lyrics immediately!
+                    }
+                    if (bestLineLyrics == null && lyrics.isSynced()) {
+                        bestLineLyrics = lyrics;
+                    }
                 }
             } catch (Exception ignored) {}
         }
-        return null;
+        return bestLineLyrics;
     }
 
     private static String urlEncode(String val) {
