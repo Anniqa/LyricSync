@@ -2553,9 +2553,31 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
             @Override
             public void onLyricsError(String error) {
-                runOnUiThread(() -> {
-                    if (callback != null) {
-                        callback.onError(error);
+                com.lyricsync.app.ai.service.AiLyricsAgentService agentService =
+                        new com.lyricsync.app.ai.service.AiLyricsAgentService(MainActivity.this, apiClient);
+                agentService.retrieveLyrics(track, new com.lyricsync.app.ai.service.AiLyricsAgentService.AiLyricsCallback() {
+                    @Override
+                    public void onStepChanged(int stepCode, String message) {}
+
+                    @Override
+                    public void onSuccess(LyricsData lyrics) {
+                        runOnUiThread(() -> {
+                            applyLyricsStudio(lyrics, null);
+                            if (callback != null) {
+                                callback.onSuccess("Berhasil mencari via AI dan menerapkan lirik dari "
+                                        + (lyrics.provider != null ? lyrics.provider : "AI Web Search")
+                                        + " (" + lyrics.lines.size() + " baris).");
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(String aiError) {
+                        runOnUiThread(() -> {
+                            if (callback != null) {
+                                callback.onError(error + " | AI: " + aiError);
+                            }
+                        });
                     }
                 });
             }

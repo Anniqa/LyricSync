@@ -209,7 +209,7 @@ public class KugouLyricsProvider implements LyricsProvider {
                 double score = scoreCandidate(title, aliases, artist, duration, c.song, c.singer, c.duration);
                 c.score = score;
 
-                if (score >= 0.30) {
+                if (score >= 0.45) {
                     if (c.krctype == 2) {
                         if (score > highestKrcScore) {
                             highestKrcScore = score;
@@ -266,13 +266,54 @@ public class KugouLyricsProvider implements LyricsProvider {
 
     double scoreCandidate(String inTitle, List<String> aliases, String inArtist, long inDuration,
                           String candSong, String candSinger, long candDuration) {
+        if (inTitle == null || candSong == null) return 0d;
+
         double ts = tokenOverlap(inTitle, candSong);
+        String normInTitle = inTitle.trim().toLowerCase(Locale.US);
+        String normCandSong = candSong.trim().toLowerCase(Locale.US);
+        if (normInTitle.equals(normCandSong)) {
+            ts = 1.0d;
+        } else if (normInTitle.contains(normCandSong) || normCandSong.contains(normInTitle)) {
+            ts = Math.max(ts, 0.75d);
+        }
+
         if (aliases != null) {
             for (String alias : aliases) {
-                ts = Math.max(ts, tokenOverlap(alias, candSong));
+                if (alias == null) continue;
+                double ats = tokenOverlap(alias, candSong);
+                String normAlias = alias.trim().toLowerCase(Locale.US);
+                if (normAlias.equals(normCandSong)) {
+                    ats = 1.0d;
+                } else if (normAlias.contains(normCandSong) || normCandSong.contains(normAlias)) {
+                    ats = Math.max(ats, 0.75d);
+                }
+                ts = Math.max(ts, ats);
             }
         }
-        double as = tokenOverlap(inArtist, candSinger);
+
+        // Gatekeeper 1: Title must have minimum token overlap. Never accept an unrelated song.
+        if (ts < 0.25d) {
+            return 0.0d;
+        }
+
+        double as = 0.5d;
+        boolean hasInArtist = inArtist != null && !inArtist.trim().isEmpty();
+        boolean hasCandSinger = candSinger != null && !candSinger.trim().isEmpty();
+        if (hasInArtist && hasCandSinger) {
+            as = tokenOverlap(inArtist, candSinger);
+            String normInArtist = inArtist.trim().toLowerCase(Locale.US);
+            String normCandSinger = candSinger.trim().toLowerCase(Locale.US);
+            if (normInArtist.equals(normCandSinger)) {
+                as = 1.0d;
+            } else if (normInArtist.contains(normCandSinger) || normCandSinger.contains(normInArtist)) {
+                as = Math.max(as, 0.80d);
+            }
+            // Gatekeeper 2: Artist must match when both are provided
+            if (as < 0.25d) {
+                return 0.0d;
+            }
+        }
+
         double ds = 0.5d;
         if (inDuration > 0 && candDuration > 0) {
             long diff = Math.abs(inDuration - candDuration);
@@ -304,7 +345,7 @@ public class KugouLyricsProvider implements LyricsProvider {
         String[] words = lower.split("[^a-z0-9\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+");
         for (String w : words) {
             w = w.trim();
-            if (w.length() > 1) {
+            if (w.length() > 1 || words.length <= 2) {
                 set.add(w);
             }
             // For CJK characters, add individual characters as tokens
@@ -314,6 +355,10 @@ public class KugouLyricsProvider implements LyricsProvider {
                     set.add(String.valueOf(c));
                 }
             }
+        }
+        String compact = lower.replaceAll("[^a-z0-9\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+", "");
+        if (!compact.isEmpty()) {
+            set.add(compact);
         }
         return set;
     }

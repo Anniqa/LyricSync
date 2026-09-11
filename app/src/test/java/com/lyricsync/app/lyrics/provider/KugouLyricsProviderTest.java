@@ -547,4 +547,15 @@ public class KugouLyricsProviderTest {
                 .count();
         assertEquals("Executed queries should be case-insensitively unique", distinctCaseInsensitive, queriesExecuted.size());
     }
+
+    @Test
+    public void testScoreCandidateRejectsTitleMismatchEvenIfSameArtist() {
+        KugouLyricsProvider provider = new KugouLyricsProvider();
+        // User searched "liMOusIne" by "Bring Me The Horizon"
+        // Candidate is "Kingslayer" by "Bring Me The Horizon" with matching duration
+        double score = provider.scoreCandidate("liMOusIne", Collections.emptyList(), "Bring Me The Horizon", 220000,
+                "Kingslayer", "Bring Me The Horizon", 220000);
+        // Due to title gatekeeper, score must be 0.0
+        assertEquals(0.0, score, 0.001);
+    }
 }

@@ -5,8 +5,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
+import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
+import com.lyricsync.app.lyrics.model.SyllableLyricsParser;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.lyrics.provider.KugouLyricsProvider;
 import com.lyricsync.app.lyrics.provider.LRCLIBProvider;
@@ -40,6 +42,7 @@ public class AiLyricsAgentService {
     public static final int STEP_DISAMBIGUATING = 1;
     public static final int STEP_FETCHING_SYLLABLE = 2;
     public static final int STEP_FALLBACK_LRC = 3;
+    public static final int STEP_AI_WEB_SEARCH = 4;
 
     public interface AiLyricsCallback {
         void onStepChanged(int stepCode, String message);
@@ -194,6 +197,16 @@ public class AiLyricsAgentService {
             }
         }
 
+        // 1b. Add aliases from sanitizer to searchQueries
+        TrackMetadataSanitizer.SanitizedMetadata sanitized = TrackMetadataSanitizer.sanitize(queryTrack);
+        for (String alias : sanitized.titleAliases) {
+            if (alias != null && !alias.trim().isEmpty()) {
+                String aq = (alias.trim() + " " + queryTrack.artist).trim();
+                if (!searchQueries.contains(aq)) searchQueries.add(aq);
+                if (!searchQueries.contains(alias.trim())) searchQueries.add(alias.trim());
+            }
+        }
+
         // Add heuristic queries if not already present
         String h1 = (queryTrack.title + " " + queryTrack.artist).trim();
         String h2 = (queryTrack.artist + " " + queryTrack.title).trim();
@@ -214,6 +227,24 @@ public class AiLyricsAgentService {
         try {
             syllableLyrics = kugouProvider.fetchLyrics(queryTrack);
         } catch (Exception ignored) {}
+
+        // 2a-fallback: If Kugou didn't match primary title, try smart aliases
+        if ((syllableLyrics == null || syllableLyrics.isEmpty()) && sanitized.titleAliases != null) {
+            for (String alias : sanitized.titleAliases) {
+                if (alias == null || alias.trim().isEmpty() || alias.equalsIgnoreCase(queryTrack.title)) continue;
+                TrackInfo aliasTrack = new TrackInfo();
+                aliasTrack.title = alias.trim();
+                aliasTrack.artist = queryTrack.artist;
+                aliasTrack.duration = queryTrack.duration;
+                try {
+                    LyricsData aliasLyrics = kugouProvider.fetchLyrics(aliasTrack);
+                    if (aliasLyrics != null && !aliasLyrics.isEmpty()) {
+                        syllableLyrics = aliasLyrics;
+                        break;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
 
         if (cancellable.isCancelled()) return;
 
@@ -336,7 +367,24 @@ public class AiLyricsAgentService {
             return;
         }
 
-        // Neither provider returned synced lyrics
+        // Step 4: Autonomous AI Web Lyrics Search & Synchronization
+        if (!cancellable.isCancelled() && apiClient != null && apiClient.isAuthenticated()) {
+            if (callback != null) {
+                callback.onStepChanged(STEP_AI_WEB_SEARCH, "Searching and synchronizing lyrics on the web with AI…");
+            }
+            LyricsData aiWebLyrics = requestAiWebLyrics(queryTrack, cancellable);
+            if (aiWebLyrics != null && !aiWebLyrics.isEmpty()) {
+                if (cacheManager != null) {
+                    cacheManager.cache(track, aiWebLyrics);
+                }
+                if (!cancellable.isCancelled() && callback != null) {
+                    callback.onSuccess(aiWebLyrics);
+                }
+                return;
+            }
+        }
+
+        // Neither provider nor AI returned synced lyrics
         if (!cancellable.isCancelled() && callback != null) {
             callback.onError("No synced lyrics found for this version.");
         }
@@ -450,6 +498,86 @@ public class AiLyricsAgentService {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    private LyricsData requestAiWebLyrics(TrackInfo track, ServiceCancellable cancellable) {
+        if (apiClient == null || cancellable.isCancelled()) return null;
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final String[] responseHolder = new String[1];
+
+        String targetTitle = (track.title != null) ? track.title.trim() : "";
+        String targetArtist = (track.artist != null) ? track.artist.trim() : "";
+        long durMs = track.duration > 0 ? track.duration : 210000L;
+        long durMin = durMs / 60000;
+        long durSec = (durMs % 60000) / 1000;
+        String durFormatted = String.format(java.util.Locale.ROOT, "%02d:%02d", durMin, durSec);
+
+        String prompt = "You are an expert music lyrics retriever.\n"
+                + "Search the web and find the authentic, accurate full lyrics with synchronized timestamps (standard LRC format) for this song:\n"
+                + "Title: " + targetTitle + "\n"
+                + "Artist: " + targetArtist + "\n"
+                + "Duration: " + durFormatted + " (" + durMs + " ms)\n\n"
+                + "MANDATORY REQUIREMENTS:\n"
+                + "1. Search the web for the official lyrics and time-synced LRC of this exact track.\n"
+                + "2. Format your response strictly as valid synchronized LRC format with [mm:ss.xx] timestamp tags preceding each lyric line.\n"
+                + "   Example format:\n"
+                + "   [00:10.50] First line of the lyrics\n"
+                + "   [00:14.20] Second line of the lyrics\n"
+                + "   [00:18.00] Third line of the lyrics\n"
+                + "3. If time-synced LRC timestamps exist online, use those precise timestamps.\n"
+                + "4. If online sources only have plain text lyrics, distribute realistic timestamps across the song duration (" + durFormatted + ") following natural song structure (intro, verses, chorus, outro).\n"
+                + "5. Include all verses and chorus. Never truncate with '...' or omit lines.\n"
+                + "6. Output ONLY the raw LRC lines. Do NOT wrap in markdown code fences (no ```lrc), no intro, no comments, no explanation.";
+
+        List<com.lyricsync.app.ai.model.AiChatMessage> messages = new ArrayList<>();
+        messages.add(com.lyricsync.app.ai.model.AiChatMessage.user(prompt));
+
+        try {
+            String model = AntigravityToolExecutor.getSearchModel();
+            AntigravityApiClient.Cancellable call = apiClient.generateContent(
+                    model,
+                    messages,
+                    true, // Enable Google Search grounding
+                    "low",
+                    new AntigravityApiClient.CompletionCallback() {
+                        @Override
+                        public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                            responseHolder[0] = fullText;
+                            latch.countDown();
+                        }
+
+                        @Override
+                        public void onError(Exception error) {
+                            latch.countDown();
+                        }
+                    });
+            cancellable.setNestedCall(call);
+
+            latch.await(15, TimeUnit.SECONDS);
+        } catch (Throwable t) {
+            return null;
+        }
+
+        if (responseHolder[0] != null && !responseHolder[0].trim().isEmpty()) {
+            String text = responseHolder[0].trim();
+            if (text.startsWith("```lrc")) {
+                text = text.substring(6);
+            } else if (text.startsWith("```")) {
+                text = text.substring(3);
+            }
+            if (text.endsWith("```")) {
+                text = text.substring(0, text.length() - 3);
+            }
+            text = text.trim();
+
+            LyricsData parsed = SyllableLyricsParser.parse(text, "lrc");
+            if (parsed != null && !parsed.isEmpty() && parsed.lines.size() >= 3) {
+                parsed.provider = "AI Web Search";
+                return parsed;
+            }
+        }
+        return null;
     }
 
     /**

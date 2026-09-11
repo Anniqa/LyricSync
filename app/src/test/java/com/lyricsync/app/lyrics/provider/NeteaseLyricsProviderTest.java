@@ -112,4 +112,90 @@ public class NeteaseLyricsProviderTest {
         assertNotNull("Lyrics should be found", result);
         assertEquals(LyricsData.Type.LINE, result.type);
     }
+
+    @Test
+    public void testFalseMatchRejectedWhenTitleDoesNotMatchEvenIfSameArtist() throws Exception {
+        // Simulates searching for an album like "POST HUMAN: NeX GEn Album" where NetEase returns
+        // popular songs by the artist like "Kingslayer" or "LosT", but title does not match.
+        OkHttpClient mockClient = new OkHttpClient.Builder()
+                .addInterceptor(new Interceptor() {
+                    @Override
+                    public Response intercept(Chain chain) throws IOException {
+                        Request req = chain.request();
+                        String url = req.url().toString();
+                        String responseJson;
+
+                        if (url.contains("/api/search/get")) {
+                            responseJson = "{\"code\":200,\"result\":{\"songs\":["
+                                    + "{\"id\":301,\"name\":\"Kingslayer\",\"artists\":[{\"name\":\"Bring Me The Horizon\"}],\"duration\":220000},"
+                                    + "{\"id\":302,\"name\":\"Can You Feel My Heart\",\"artists\":[{\"name\":\"Bring Me The Horizon\"}],\"duration\":228000}"
+                                    + "]}}";
+                        } else {
+                            responseJson = "{\"code\":200,\"lrc\":{\"lyric\":\"[00:01.00]Sample lyric\"}}";
+                        }
+
+                        return new Response.Builder()
+                                .request(req)
+                                .protocol(Protocol.HTTP_1_1)
+                                .code(200)
+                                .message("OK")
+                                .body(ResponseBody.create(MediaType.parse("application/json"), responseJson))
+                                .build();
+                    }
+                })
+                .build();
+
+        NeteaseLyricsProvider provider = new NeteaseLyricsProvider(mockClient);
+        TrackInfo track = new TrackInfo();
+        track.title = "POST HUMAN: NeX GEn Album";
+        track.artist = "Bring Me The Horizon";
+        track.duration = 2400000;
+
+        LyricsData result = provider.fetchLyrics(track);
+        assertNull("Should reject candidates whose title has no match with the query, returning null instead of wrong song lyrics", result);
+    }
+
+    @Test
+    public void testCandidateWithMatchingTitleSelectedOverFirstCandidateWithMismatchedTitle() throws Exception {
+        // First candidate is "Kingslayer" (wrong song), second is "liMOusIne" (correct song)
+        OkHttpClient mockClient = new OkHttpClient.Builder()
+                .addInterceptor(new Interceptor() {
+                    @Override
+                    public Response intercept(Chain chain) throws IOException {
+                        Request req = chain.request();
+                        String url = req.url().toString();
+                        String responseJson;
+
+                        if (url.contains("/api/search/get")) {
+                            responseJson = "{\"code\":200,\"result\":{\"songs\":["
+                                    + "{\"id\":401,\"name\":\"Kingslayer\",\"artists\":[{\"name\":\"Bring Me The Horizon\"}],\"duration\":220000},"
+                                    + "{\"id\":402,\"name\":\"liMOusIne\",\"artists\":[{\"name\":\"Bring Me The Horizon\"}],\"duration\":195000}"
+                                    + "]}}";
+                        } else if (url.contains("id=402")) {
+                            responseJson = "{\"code\":200,\"lrc\":{\"lyric\":\"[00:01.00]limousine lyric\"}}";
+                        } else {
+                            responseJson = "{\"code\":200,\"lrc\":{\"lyric\":\"[00:01.00]kingslayer lyric\"}}";
+                        }
+
+                        return new Response.Builder()
+                                .request(req)
+                                .protocol(Protocol.HTTP_1_1)
+                                .code(200)
+                                .message("OK")
+                                .body(ResponseBody.create(MediaType.parse("application/json"), responseJson))
+                                .build();
+                    }
+                })
+                .build();
+
+        NeteaseLyricsProvider provider = new NeteaseLyricsProvider(mockClient);
+        TrackInfo track = new TrackInfo();
+        track.title = "liMOusIne";
+        track.artist = "Bring Me The Horizon";
+        track.duration = 195000;
+
+        LyricsData result = provider.fetchLyrics(track);
+        assertNotNull("Should find matching lyrics for liMOusIne", result);
+        assertEquals("limousine lyric", result.lines.get(0).text);
+    }
 }

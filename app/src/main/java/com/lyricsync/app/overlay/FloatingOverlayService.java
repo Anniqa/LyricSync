@@ -2127,9 +2127,32 @@ public class FloatingOverlayService extends Service {
 
             @Override
             public void onLyricsError(String error) {
-                handler.post(() -> {
-                    if (callback != null) {
-                        callback.onError(error);
+                if (aiLyricsAgentService == null) {
+                    aiLyricsAgentService = new AiLyricsAgentService(FloatingOverlayService.this, apiClient);
+                }
+                aiLyricsAgentService.retrieveLyrics(track, new AiLyricsAgentService.AiLyricsCallback() {
+                    @Override
+                    public void onStepChanged(int stepCode, String message) {}
+
+                    @Override
+                    public void onSuccess(LyricsData lyrics) {
+                        handler.post(() -> {
+                            applyLyricsLive(lyrics, null);
+                            if (callback != null) {
+                                callback.onSuccess("Berhasil mencari via AI dan menerapkan lirik dari "
+                                        + (lyrics.provider != null ? lyrics.provider : "AI Web Search")
+                                        + " (" + lyrics.lines.size() + " baris).");
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(String aiError) {
+                        handler.post(() -> {
+                            if (callback != null) {
+                                callback.onError(error + " | AI: " + aiError);
+                            }
+                        });
                     }
                 });
             }
@@ -3578,6 +3601,8 @@ public class FloatingOverlayService extends Service {
                             tvAiProgressStep.setText(R.string.ai_step_searching_syllable);
                         } else if (stepCode == AiLyricsAgentService.STEP_FALLBACK_LRC) {
                             tvAiProgressStep.setText(R.string.ai_step_fallback_lrc);
+                        } else if (stepCode == AiLyricsAgentService.STEP_AI_WEB_SEARCH) {
+                            tvAiProgressStep.setText(R.string.ai_step_web_search);
                         }
                     }
                 });

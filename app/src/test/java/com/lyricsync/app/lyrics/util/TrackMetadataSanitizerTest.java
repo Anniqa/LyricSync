@@ -107,6 +107,54 @@ public class TrackMetadataSanitizerTest {
     }
 
     @Test
+    public void testAlbumNoiseSuffixStripping() {
+        TrackMetadataSanitizer.SanitizedMetadata r1 = TrackMetadataSanitizer.sanitize(
+                "POST HUMAN: NeX GEn Album",
+                "Bring Me The Horizon"
+        );
+        assertEquals("POST HUMAN: NeX GEn", r1.cleanTitle);
+        assertEquals("Bring Me The Horizon", r1.cleanArtist);
+
+        TrackMetadataSanitizer.SanitizedMetadata r2 = TrackMetadataSanitizer.sanitize(
+                "Meteora Full Album",
+                "Linkin Park"
+        );
+        assertEquals("Meteora", r2.cleanTitle);
+        assertEquals("Linkin Park", r2.cleanArtist);
+    }
+
+    @Test
+    public void testSmartAliasesStylisticAndOst() {
+        // BMTH track "a bulleT w- my namE On" or "a bulleT w/ my namE On"
+        TrackMetadataSanitizer.SanitizedMetadata r1 = TrackMetadataSanitizer.sanitize(
+                "a bulleT w- my namE On",
+                "Bring Me The Horizon"
+        );
+        assertTrue("Should produce alias with 'with'", r1.titleAliases.contains("a bulleT with my namE On"));
+
+        // Dotted abbreviations "R.i.p." -> "Rip", "p.u.s.s.-e" -> "puss-e"
+        TrackMetadataSanitizer.SanitizedMetadata r2 = TrackMetadataSanitizer.sanitize(
+                "R.i.p.",
+                "Bring Me The Horizon"
+        );
+        assertTrue("Should produce un-dotted alias 'Rip'", r2.titleAliases.contains("Rip"));
+
+        TrackMetadataSanitizer.SanitizedMetadata r2b = TrackMetadataSanitizer.sanitize(
+                "p.u.s.s.-e",
+                "Bring Me The Horizon"
+        );
+        assertTrue("Should produce un-dotted alias 'puss-e'", r2b.titleAliases.contains("puss-e"));
+
+        // [ost] preservation with alias
+        TrackMetadataSanitizer.SanitizedMetadata r3 = TrackMetadataSanitizer.sanitize(
+                "[ost] dreamseeker",
+                "Bring Me The Horizon"
+        );
+        assertEquals("[ost] dreamseeker", r3.cleanTitle);
+        assertTrue("Should produce alias without [ost]", r3.titleAliases.contains("dreamseeker"));
+    }
+
+    @Test
     public void testNullAndEmptyHandling() {
         TrackMetadataSanitizer.SanitizedMetadata nullResult = TrackMetadataSanitizer.sanitize((TrackInfo) null);
         assertNotNull(nullResult);

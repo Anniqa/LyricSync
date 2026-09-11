@@ -196,6 +196,27 @@ public class LyricsProviderManager {
                 AppLog.d(TAG, "Trying provider: " + provider.getName() + " for: " + queryTrack);
                 LyricsData lyrics = provider.fetchLyrics(queryTrack);
 
+                // If not found and track has title aliases, try each alias on this provider
+                if ((lyrics == null || lyrics.isEmpty()) && meta.titleAliases != null && !meta.titleAliases.isEmpty()) {
+                    for (String alias : meta.titleAliases) {
+                        if (alias == null || alias.trim().isEmpty() || alias.equalsIgnoreCase(queryTrack.title)) continue;
+                        TrackInfo aliasTrack = new TrackInfo();
+                        aliasTrack.title = alias.trim();
+                        aliasTrack.artist = queryTrack.artist;
+                        aliasTrack.duration = queryTrack.duration;
+                        aliasTrack.album = queryTrack.album;
+                        aliasTrack.packageName = queryTrack.packageName;
+                        aliasTrack.trackId = queryTrack.trackId;
+                        try {
+                            LyricsData aliasLyrics = provider.fetchLyrics(aliasTrack);
+                            if (aliasLyrics != null && !aliasLyrics.isEmpty()) {
+                                lyrics = aliasLyrics;
+                                break;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                }
+
                 if (lyrics != null && !lyrics.isEmpty()) {
                     if (requestingSyllableOnly && lyrics.type != LyricsData.Type.SYLLABLE) {
                         // Syllable was specifically requested; ignore non-syllable results

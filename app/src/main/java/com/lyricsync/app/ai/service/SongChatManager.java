@@ -50,6 +50,7 @@ public class SongChatManager {
         boolean isIndo = "id".equalsIgnoreCase(langCode) || "in".equalsIgnoreCase(langCode);
         if (isIndo) {
             return Collections.unmodifiableList(Arrays.asList(
+                    new PromptTemplate("search_and_apply", "Cari & Terapkan Lirik", "Cari lirik lengkap lagu ini dan terapkan langsung ke overlay", "Tolong carikan lirik lengkap yang akurat untuk lagu ini dan langsung terapkan ke overlay pemutar musik.", "ic_sparkles"),
                     new PromptTemplate("what_can_you_do", "Apa yang Bisa Kamu Lakukan?", "Lihat kemampuan kontrol penuh: terjemahan, edit teks, romaji, timing", "Apa saja yang bisa kamu lakukan untuk mengontrol dan mengedit lirik lagu ini? Berikan daftar fitur dan contoh perintahnya.", "ic_sparkles"),
                     new PromptTemplate("translate_all", "Terjemahkan Lirik Lengkap", "Terjemahkan seluruh lirik secara puitis dan terapkan ke overlay", "Terjemahkan seluruh baris lirik lagu ini ke Bahasa Indonesia dengan gaya puitis dan langsung terapkan ke overlay.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Makna & Kisah Lagu", "Eksplorasi cerita, tema utama, dan narasi lagu", "Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.", "ic_sparkles"),
@@ -61,6 +62,7 @@ public class SongChatManager {
             ));
         } else {
             return Collections.unmodifiableList(Arrays.asList(
+                    new PromptTemplate("search_and_apply", "Find & Apply Lyrics", "Find full lyrics for this song and apply directly to overlay", "Please find the accurate full lyrics for this song and apply them directly to my overlay player.", "ic_sparkles"),
                     new PromptTemplate("what_can_you_do", "What Can You Do?", "See full control capabilities: translation, text editing, romaji, timing", "What can you do to control and edit the lyrics of this song? List your features and example prompts.", "ic_sparkles"),
                     new PromptTemplate("translate_all", "Translate All Lyrics", "Translate all lines poetically and apply directly to overlay", "Translate all lyric lines of this song poetically and apply the translation directly to the overlay.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Song Meaning & Story", "Deep dive into themes and narrative", "Explain the story, themes, and deeper meaning behind this song.", "ic_sparkles"),
@@ -330,11 +332,29 @@ public class SongChatManager {
             sb.append("- 'adjust_overlay_appearance': Gunakan jika pengguna meminta mengubah ukuran font lirik ('font_scale': misal 0.8 kecil, 1.2 besar), gaya animasi teks ('anim_style': glow/scale/pop/fade), atau ukuran overlay ('width_percent', 'height_percent').\n");
             sb.append("- 'manage_lyric_lines': Gunakan jika pengguna meminta menghapus baris tertentu ('delete'), menyisipkan baris baru ('insert'), atau menggeser timing baris ('shift_timing').\n");
             sb.append("- 'get_current_playing_track': Gunakan jika ingin mengetahui lagu apa yang saat ini sedang diputar di pemutar musik pengguna secara real-time (judul, artis, lirik aktif, status pemutaran). Panggil alat ini untuk memastikan lagu yang aktif jika pengguna bertanya tentang lagu saat ini!\n");
+            sb.append("\n[PANDUAN EKSPLISIT PENCARIAN & PENERAPAN LIRIK]\n");
+            sb.append("Ketika pengguna meminta mencari lirik (misal: 'cari lirik', 'carikan lirik lagu ini', 'pasang lirik lagu X', 'ganti lirik'):\n");
+            sb.append("1. PANGGIL alat 'fetch_external_syllable_lyrics' dengan judul dan artis yang sesuai (provider 'all'). Alat ini secara otomatis menelusuri database suku kata, multi-query, dan pencarian web AI mandiri!\n");
+            sb.append("2. Alternatif: Jika Anda memiliki teks lirik tersinkronisasi atau pengguna memberikan teks lirik, susun dalam format LRC bertimestamp lengkap ([mm:ss.xx] teks) dan PANGGIL 'parse_and_apply_lyrics'.\n");
+            sb.append("3. SANGAT PENTING: JANGAN HANYA MENULISKAN TEKS LIRIK SEBAGAI CHAT BIASA! Pengguna ingin lirik BENAR-BENAR DITERAPKAN ke overlay pemutar mereka. Oleh karena itu, Anda WAJIB memanggil 'fetch_external_syllable_lyrics' atau 'parse_and_apply_lyrics'!\n");
+            sb.append("4. Berikan konfirmasi kepada pengguna bahwa lirik telah berhasil dicari dan langsung diterapkan ke layar overlay pemutar.\n");
             sb.append("\n[ATURAN PENTING PENGGUNAAN ALAT]\n");
             sb.append("- HANYA panggil alat jika pengguna secara EKSPLISIT meminta tindakan tersebut (misal: mencari lirik baru, menerjemahkan, transliterasi, mengedit lirik, atau mengubah tampilan/player).\n");
             sb.append("- JANGAN PERNAH memanggil alat jika pengguna tidak memintanya secara jelas!\n");
             sb.append("- Jika pengguna bertanya hal umum, mengobrol santai, atau bertanya di luar lagu, jawablah pertanyaannya secara langsung tanpa memanggil alat dan tanpa memaksakan topik lagu.\n");
             sb.append("- Setelah memanggil alat, berikan konfirmasi ringkas mengenai perubahan yang telah berhasil diterapkan.");
+        } else {
+            sb.append("\n[LYRICS TOOLS GUIDELINE]\n");
+            sb.append("You have tool functions to control and modify the overlay lyrics in real-time:\n");
+            sb.append("- 'fetch_external_syllable_lyrics': Search and apply syllable/synced lyrics from external databases or AI web retrieval.\n");
+            sb.append("- 'parse_and_apply_lyrics': Parse raw lyrics (YRC/KRC/TTML/ELRC/LRC) and directly apply them to the overlay.\n");
+            sb.append("- 'translate_lyrics': Translate lyrics to target language.\n");
+            sb.append("- 'transliterate_lyrics': Add Romaji/Pinyin/Romaja.\n");
+            sb.append("- 'batch_edit_lyrics': Batch update lines.\n");
+            sb.append("- 'control_playback': Control seek/play/pause.\n");
+            sb.append("- 'adjust_overlay_appearance': Modify font scale or animation.\n");
+            sb.append("\n[IMPORTANT: SEARCHING & APPLYING LYRICS]\n");
+            sb.append("When the user asks you to find or apply lyrics: DO NOT JUST PRINT LYRICS IN CHAT! You MUST call 'fetch_external_syllable_lyrics' or 'parse_and_apply_lyrics' so the lyrics are ACTUALLY applied to their player overlay screen!\n");
         }
         return sb.toString();
     }

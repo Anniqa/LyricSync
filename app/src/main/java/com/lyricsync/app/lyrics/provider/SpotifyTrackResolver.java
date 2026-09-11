@@ -28,10 +28,11 @@ public class SpotifyTrackResolver {
     public static String cleanTitle(String title) {
         if (title == null) return "";
         String cleaned = title
-                .replaceAll("(?i)\\s*\\[[^\\]]*]", "")
-                .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance)[^)]*\\)", "")
+                .replaceAll("(?i)\\s*\\[[^\\]]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance|remaster|remastered)[^\\]]*\\]", "")
+                .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance|remaster|remastered)[^)]*\\)", "")
                 .replaceAll("(?i)\\s+-\\s+(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k).*$", "")
                 .replaceAll("(?i)\\s*[\\(\\[]?\\s*(feat\\.?|ft\\.?|featuring)\\s+[^\\)\\]]*[\\)\\]]?", "")
+                .replaceAll("(?i)\\s*\\b(full album|album|ep)\\b\\s*$", "")
                 .replaceAll("\\s+", " ")
                 .trim();
         return cleaned.isEmpty() ? title.trim() : cleaned;
@@ -51,6 +52,58 @@ public class SpotifyTrackResolver {
             cleaned = split[0].trim();
         }
         return cleaned.isEmpty() ? artist.trim() : cleaned;
+    }
+
+    private static java.util.Set<String> tokens(String s) {
+        if (s == null) return java.util.Collections.emptySet();
+        java.util.Set<String> set = new java.util.HashSet<>();
+        String[] parts = s.toLowerCase(java.util.Locale.ROOT).split("[^\\p{L}\\p{N}]+");
+        for (String p : parts) {
+            if (!p.isEmpty()) {
+                set.add(p);
+            }
+        }
+        return set;
+    }
+
+    private static double tokenOverlap(java.util.Set<String> a, java.util.Set<String> b) {
+        if (a.isEmpty() || b.isEmpty()) return 0.0;
+        int common = 0;
+        for (String s : a) {
+            if (b.contains(s)) common++;
+        }
+        return (double) common / Math.max(a.size(), b.size());
+    }
+
+    private static boolean isTitleMatch(String queryTitle, String candTitle, String candTitleShort) {
+        if (queryTitle == null || queryTitle.trim().isEmpty()) return false;
+        String qClean = cleanTitle(queryTitle).toLowerCase(java.util.Locale.ROOT);
+        String cClean = cleanTitle(candTitle).toLowerCase(java.util.Locale.ROOT);
+        String cShort = cleanTitle(candTitleShort).toLowerCase(java.util.Locale.ROOT);
+
+        if (qClean.equals(cClean) || qClean.equals(cShort)) {
+            return true;
+        }
+
+        java.util.Set<String> qTokens = tokens(qClean);
+        java.util.Set<String> cTokens = tokens(cClean);
+        java.util.Set<String> sTokens = tokens(cShort);
+
+        double overlapClean = tokenOverlap(qTokens, cTokens);
+        double overlapShort = tokenOverlap(qTokens, sTokens);
+        double maxOverlap = Math.max(overlapClean, overlapShort);
+
+        if (maxOverlap >= 0.35) {
+            return true;
+        }
+
+        int minLen = Math.min(qClean.length(), cClean.length());
+        int maxLen = Math.max(qClean.length(), cClean.length());
+        if (minLen >= 4 && (double) minLen / maxLen >= 0.6 && (cClean.contains(qClean) || qClean.contains(cClean))) {
+            return true;
+        }
+
+        return false;
     }
 
     public static String resolve(String title, String artist) {
@@ -75,6 +128,11 @@ public class SpotifyTrackResolver {
                 for (JsonElement el : items) {
                     if (!el.isJsonObject()) continue;
                     JsonObject item = el.getAsJsonObject();
+                    String candTitle = item.has("title") ? item.get("title").getAsString() : "";
+                    String candTitleShort = item.has("title_short") ? item.get("title_short").getAsString() : candTitle;
+                    if (!isTitleMatch(cTitle, candTitle, candTitleShort)) {
+                        continue;
+                    }
                     if (item.has("isrc") && !item.get("isrc").isJsonNull()) {
                         String s = item.get("isrc").getAsString();
                         if (s != null && !s.trim().isEmpty()) {

@@ -537,5 +537,73 @@ public class AiLyricsAgentServiceTest {
         customService.shutdown();
         assertTrue(testExecutor.isShutdown());
     }
+
+    static class FakeAiClient extends AntigravityApiClient {
+        volatile String lrcToReturn;
+        volatile boolean authenticated = true;
+
+        FakeAiClient() {
+            super(null);
+        }
+
+        @Override
+        public boolean isAuthenticated() {
+            return authenticated;
+        }
+
+        @Override
+        public Cancellable generateContent(String modelId, List<com.lyricsync.app.ai.model.AiChatMessage> messages,
+                                           boolean enableWebSearch, String effortLevel,
+                                           CompletionCallback callback) {
+            if (callback != null) {
+                if (lrcToReturn != null) {
+                    callback.onComplete(lrcToReturn, Collections.emptyList(), 10, 20);
+                } else {
+                    callback.onError(new java.io.IOException("Not found"));
+                }
+            }
+            return new Cancellable() {
+                @Override public void cancel() {}
+                @Override public boolean isCancelled() { return false; }
+            };
+        }
+    }
+
+    @Test
+    public void testAiWebSearchFallbackWhenProvidersHaveNoMatch() throws Exception {
+        FakeKugouProvider fakeKugou = new FakeKugouProvider();
+        FakeLRCLIBProvider fakeLrclib = new FakeLRCLIBProvider();
+        FakeLyricsCacheManager fakeCache = new FakeLyricsCacheManager();
+        FakeAiClient fakeAi = new FakeAiClient();
+        fakeAi.lrcToReturn = "[00:10.00]Line one of authentic web lyrics\n[00:15.00]Line two of authentic web lyrics\n[00:20.00]Line three of authentic web lyrics";
+
+        ExecutorService testExecutor = Executors.newSingleThreadExecutor();
+        AiLyricsAgentService service = new AiLyricsAgentService(
+                fakeKugou, null, fakeLrclib, null, fakeCache, fakeAi, testExecutor);
+
+        TrackInfo track = new TrackInfo();
+        track.title = "Obscure Song";
+        track.artist = "Indie Artist";
+        track.duration = 180000;
+
+        TestCallback callback = new TestCallback();
+        service.retrieveLyrics(track, callback);
+
+        assertTrue("Callback should finish within timeout", callback.doneLatch.await(5, TimeUnit.SECONDS));
+        assertNotNull("Should retrieve lyrics via AI web search", callback.successLyrics.get());
+        assertEquals("AI Web Search", callback.successLyrics.get().provider);
+        assertFalse(callback.successLyrics.get().isEmpty());
+
+        List<LyricsData.LyricsLine> contentLines = new ArrayList<>();
+        for (LyricsData.LyricsLine l : callback.successLyrics.get().lines) {
+            if (!l.isInterlude) contentLines.add(l);
+        }
+        assertEquals(3, contentLines.size());
+        assertEquals("Line one of authentic web lyrics", contentLines.get(0).text);
+        assertTrue("Should pass through STEP_AI_WEB_SEARCH", callback.stepCodes.contains(AiLyricsAgentService.STEP_AI_WEB_SEARCH));
+        assertNotNull("Should cache retrieved AI lyrics", fakeCache.cachedLyrics);
+
+        testExecutor.shutdown();
+    }
 }
 

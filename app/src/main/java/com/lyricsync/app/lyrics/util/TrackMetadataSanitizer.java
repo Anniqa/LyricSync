@@ -42,6 +42,10 @@ public class TrackMetadataSanitizer {
     private static final Pattern NOISE_TRAILING = Pattern.compile(
             "(?i)\\s*-\\s*(official|video|audio|lyric|lyrics|mv|hd|4k|remaster|remastered|visualizer|live|performance|instrumental|acoustic).*$"
     );
+
+    private static final Pattern NOISE_ALBUM_SUFFIX = Pattern.compile(
+            "(?i)\\s*\\b(full album|album|ep)\\b\\s*$"
+    );
     private static final Pattern ARTIST_TITLE_DELIMITER = Pattern.compile("\\s+[-—–]\\s+");
 
     private static final Pattern ARTIST_NOISE_SUFFIX = Pattern.compile(
@@ -78,6 +82,7 @@ public class TrackMetadataSanitizer {
         title = NOISE_BRACKETS.matcher(title).replaceAll("");
         title = NOISE_PARENTHESES.matcher(title).replaceAll("");
         title = NOISE_TRAILING.matcher(title).replaceAll("");
+        title = NOISE_ALBUM_SUFFIX.matcher(title).replaceAll("");
         title = title.replaceAll("\\s+", " ").trim();
 
         // 3. Artist separation from title if formatted as "Artist - Title"
@@ -121,7 +126,57 @@ public class TrackMetadataSanitizer {
                 }
             }
         }
+
+        // 5. Stylistic & shorthand permutations (e.g. "w-" / "w/" <-> "with", "b4" <-> "before", dotted "p.u.s.s.-e" / "r.i.p.")
+        addSmartAliases(title, aliases);
+
         return new SanitizedMetadata(title, artist, aliases);
+    }
+
+    private static void addSmartAliases(String title, List<String> aliases) {
+        if (title == null || title.isEmpty()) return;
+
+        // Shorthand "w-" or "w/" -> "with"
+        if (title.matches("(?i).*\\s+w[-/]\\s+.*")) {
+            String withVersion = title.replaceAll("(?i)\\s+w[-/]\\s+", " with ");
+            if (!withVersion.equalsIgnoreCase(title) && !aliases.contains(withVersion)) {
+                aliases.add(withVersion);
+            }
+            String slashVersion = title.replaceAll("(?i)\\s+w-\\s+", " w/ ");
+            if (!slashVersion.equalsIgnoreCase(title) && !aliases.contains(slashVersion)) {
+                aliases.add(slashVersion);
+            }
+        }
+
+        // Shorthand "b4" -> "before"
+        if (title.matches("(?i).*\\b(b4)\\b.*")) {
+            String beforeVersion = title.replaceAll("(?i)\\b(b4)\\b", "before");
+            if (!beforeVersion.equalsIgnoreCase(title) && !aliases.contains(beforeVersion)) {
+                aliases.add(beforeVersion);
+            }
+        }
+
+        // Dotted acronyms / abbreviations (e.g., "p.u.s.s.-e" -> "puss-e", "R.i.p." -> "Rip")
+        if (title.contains(".")) {
+            String undotted = title.replaceAll("(?<=\\p{L})\\.(?=\\p{L}|\\s|$|[^\\p{L}\\p{N}])", "");
+            if (!undotted.equalsIgnoreCase(title) && !aliases.contains(undotted)) {
+                aliases.add(undotted);
+            }
+        }
+
+        // Prefixed "[ost]" (e.g., "[ost] (spi)ritual" -> "(spi)ritual" / "spiritual")
+        if (title.matches("(?i)^\\[ost\\]\\s+.*")) {
+            String withoutOst = title.replaceAll("(?i)^\\[ost\\]\\s+", "").trim();
+            if (!withoutOst.isEmpty() && !aliases.contains(withoutOst)) {
+                aliases.add(withoutOst);
+            }
+        }
+        if (title.contains("(spi)ritual")) {
+            String spiritual = title.replace("(spi)ritual", "spiritual");
+            if (!aliases.contains(spiritual)) {
+                aliases.add(spiritual);
+            }
+        }
     }
 
 

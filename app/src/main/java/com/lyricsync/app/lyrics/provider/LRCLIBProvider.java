@@ -11,6 +11,7 @@ import com.lyricsync.app.lyrics.model.TrackInfo;
 
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -81,9 +82,10 @@ public class LRCLIBProvider implements LyricsProvider {
     private String cleanMetadata(String text) {
         if (text == null) return "";
         return text
-                .replaceAll("(?i)\\s*\\[[^\\]]*]", "")
+                .replaceAll("(?i)\\s*\\[[^\\]]*(official|video|audio|lyric|lyrics|mv|hd|4k|remaster|remastered|deluxe|visualizer|live|performance|topic)[^\\]]*\\]", "")
                 .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance|topic)[^)]*\\)", "")
                 .replaceAll("(?i)\\s*-\\s*(official|video|audio|lyric|lyrics|mv|music video|hd|4k|topic).*$", "")
+                .replaceAll("(?i)\\s*\\b(full album|album|ep)\\b\\s*$", "")
                 .replaceAll("\\s+", " ")
                 .trim();
     }
@@ -160,7 +162,7 @@ public class LRCLIBProvider implements LyricsProvider {
     private LyricsData selectBestMatch(String inTitle, String inArtist, long inDuration,
                                       JsonArray results) throws IOException {
         JsonObject best = null;
-        double bestScore = -1;
+        double bestScore = 0.45d;
         for (JsonElement el : results) {
             if (!el.isJsonObject()) continue;
             JsonObject obj = el.getAsJsonObject();
@@ -177,6 +179,7 @@ public class LRCLIBProvider implements LyricsProvider {
             if (!hasSynced && !hasPlain) continue;
 
             double score = scoreResult(inTitle, inArtist, inDuration, rName, rArtist, candDuration);
+            if (score <= 0.0d) continue; // Failed gatekeeper checks
             if (hasSynced) {
                 score += 0.35d;
             }
@@ -195,8 +198,40 @@ public class LRCLIBProvider implements LyricsProvider {
 
     private double scoreResult(String inTitle, String inArtist, long inDuration,
                                 String candTitle, String candArtist, long candDuration) {
+        if (inTitle == null || candTitle == null) return 0d;
+
         double ts = tokenOverlap(inTitle, candTitle);
-        double as = tokenOverlap(inArtist, candArtist);
+        String normInTitle = inTitle.trim().toLowerCase(Locale.US);
+        String normCandTitle = candTitle.trim().toLowerCase(Locale.US);
+        if (normInTitle.equals(normCandTitle)) {
+            ts = 1.0d;
+        } else if (normInTitle.contains(normCandTitle) || normCandTitle.contains(normInTitle)) {
+            ts = Math.max(ts, 0.75d);
+        }
+
+        // Gatekeeper 1: Title must have minimum token overlap
+        if (ts < 0.25d) {
+            return 0.0d;
+        }
+
+        double as = 0.5d;
+        boolean hasInArtist = inArtist != null && !inArtist.trim().isEmpty();
+        boolean hasCandArtist = candArtist != null && !candArtist.trim().isEmpty();
+        if (hasInArtist && hasCandArtist) {
+            as = tokenOverlap(inArtist, candArtist);
+            String normInArtist = inArtist.trim().toLowerCase(Locale.US);
+            String normCandArtist = candArtist.trim().toLowerCase(Locale.US);
+            if (normInArtist.equals(normCandArtist)) {
+                as = 1.0d;
+            } else if (normInArtist.contains(normCandArtist) || normCandArtist.contains(normInArtist)) {
+                as = Math.max(as, 0.80d);
+            }
+            // Gatekeeper 2: Artist must match when both provided
+            if (as < 0.25d) {
+                return 0.0d;
+            }
+        }
+
         double ds = 0.5d;
         if (inDuration > 0 && candDuration > 0) {
             long diff = Math.abs(inDuration - candDuration);
@@ -219,10 +254,20 @@ public class LRCLIBProvider implements LyricsProvider {
 
     private Set<String> tokens(String text) {
         Set<String> set = new HashSet<>();
+        if (text == null) return set;
         String norm = text.toLowerCase(java.util.Locale.US)
                 .replaceAll("[^a-z0-9]+", " ").trim();
         if (norm.isEmpty()) return set;
-        for (String t : norm.split(" ")) { if (t.length() > 1) set.add(t); }
+        String[] words = norm.split("\\s+");
+        for (String t : words) {
+            if (t.length() > 1 || words.length <= 2) {
+                set.add(t);
+            }
+        }
+        String compact = norm.replaceAll("\\s+", "");
+        if (!compact.isEmpty()) {
+            set.add(compact);
+        }
         return set;
     }
 

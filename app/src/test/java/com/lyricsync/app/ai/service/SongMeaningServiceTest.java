@@ -376,12 +376,12 @@ public class SongMeaningServiceTest {
         assertEquals("Musical Composition", SongChatManager.QUICK_PROMPTS.get(5));
 
         List<SongChatManager.PromptTemplate> enTemplates = SongChatManager.getPromptTemplates("en");
-        assertEquals(6, enTemplates.size());
-        assertEquals("meaning", enTemplates.get(0).id);
+        assertEquals(9, enTemplates.size());
+        assertEquals("search_and_apply", enTemplates.get(0).id);
 
         List<SongChatManager.PromptTemplate> idTemplates = SongChatManager.getPromptTemplates("id");
-        assertEquals(6, idTemplates.size());
-        assertEquals("Makna & Kisah Lagu", idTemplates.get(0).title);
+        assertEquals(9, idTemplates.size());
+        assertEquals("Cari & Terapkan Lirik", idTemplates.get(0).title);
     }
 
     @Test
@@ -541,22 +541,22 @@ public class SongMeaningServiceTest {
     }
 
     @Test
-    public void testSongChatManagerTrackChangeCancelsStreamAndPreventsContamination() {
+    public void testSongChatManagerStartNewSessionCancelsStreamAndPreventsContamination() {
         chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics 1...", null);
         mockApiClient.autoCompleteStream = false; // Hold stream open
 
         chatManager.sendMessage("Tentang Fix You", false, null);
         assertEquals(1, chatManager.getHistory().size());
 
-        // Track changes to "Yellow" before Fix You stream completes
-        chatManager.setCurrentSong("Yellow", "Coldplay", "Lyrics 2...", null);
+        // Starting a new session before Fix You stream completes
+        chatManager.startNewSession();
         assertTrue(chatManager.getHistory().isEmpty());
 
         // Late completion arrives for Fix You
         mockApiClient.triggerLateStreamCompletion("Jawaban Fix You yang terlambat");
 
-        // The new song history must remain empty, unaffected by the previous song's late response
-        assertTrue("New song history must not be contaminated by cancelled previous song stream",
+        // The new session history must remain empty, unaffected by cancelled previous song stream
+        assertTrue("New session history must not be contaminated by cancelled previous stream",
                 chatManager.getHistory().isEmpty());
     }
 
@@ -575,16 +575,20 @@ public class SongMeaningServiceTest {
     }
 
     @Test
-    public void testSongChatManagerSetCurrentSongResetsHistory() {
+    public void testSongChatManagerSetCurrentSongPreservesHistory() {
         chatManager.setCurrentSong("Fix You", "Coldplay", "Lyrics...", null);
         mockApiClient.mockStreamFullText = "Jawaban.";
         chatManager.sendMessage("Pertanyaan", false, null);
         assertEquals(2, chatManager.getHistory().size());
 
-        // Switching song
+        // Switching song preserves history
         chatManager.setCurrentSong("Yellow", "Coldplay", "Look at the stars...", null);
-        assertTrue(chatManager.getHistory().isEmpty());
+        assertEquals(2, chatManager.getHistory().size());
         assertEquals("Yellow", chatManager.getTitle());
+
+        // But startNewSession explicitly resets history
+        chatManager.startNewSession();
+        assertTrue(chatManager.getHistory().isEmpty());
     }
 
     @Test
@@ -724,8 +728,8 @@ public class SongMeaningServiceTest {
             }
         });
 
-        // Track changes (increments currentSessionId)
-        chatManager.setCurrentSong("Yellow", "Coldplay", "Lyrics...", null);
+        // New session starts (increments currentSessionId)
+        chatManager.startNewSession();
 
         // Late tool events from previous song
         if (mockApiClient.activeListener != null) {
@@ -733,8 +737,8 @@ public class SongMeaningServiceTest {
             mockApiClient.activeListener.onToolCompleted("web_search", 1);
         }
 
-        assertTrue("Tool execution callbacks must be suppressed after track change", toolExecuting.isEmpty());
-        assertTrue("Tool completion callbacks must be suppressed after track change", toolCompleted.isEmpty());
+        assertTrue("Tool execution callbacks must be suppressed after session change", toolExecuting.isEmpty());
+        assertTrue("Tool completion callbacks must be suppressed after session change", toolCompleted.isEmpty());
     }
 
     @Test

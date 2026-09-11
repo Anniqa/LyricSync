@@ -99,7 +99,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
             return bestLineLyrics;
         }
 
-        throw new IOException("No synced lyrics found on Netease");
+        return null;
     }
 
     public LyricsData fetchLyricsByQuery(String queryString, long durationMs) throws Exception {
@@ -165,7 +165,7 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                 long id = safeLong(song, "id");
                 if (id <= 0) continue;
                 double score = scoreCandidate(title, artist, durationMs, name, artists, duration);
-                if (score >= 0.30d) {
+                if (score >= 0.45d) {
                     scored.add(new ScoredSong(id, score));
                 }
             }
@@ -218,8 +218,40 @@ public class NeteaseLyricsProvider implements LyricsProvider {
 
     private double scoreCandidate(String inTitle, String inArtist, long inDuration,
                                    String candName, String candArtists, long candDuration) {
+        if (inTitle == null || candName == null) return 0d;
+
         double ts = tokenOverlap(inTitle, candName);
-        double as = tokenOverlap(inArtist, candArtists);
+        String normInTitle = inTitle.trim().toLowerCase(java.util.Locale.ROOT);
+        String normCandName = candName.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normInTitle.equals(normCandName)) {
+            ts = 1.0d;
+        } else if (normInTitle.contains(normCandName) || normCandName.contains(normInTitle)) {
+            ts = Math.max(ts, 0.75d);
+        }
+
+        // Gatekeeper 1: Title must have minimum token overlap. Never accept an unrelated song.
+        if (ts < 0.25d) {
+            return 0.0d;
+        }
+
+        double as = 0.5d;
+        boolean hasInArtist = inArtist != null && !inArtist.trim().isEmpty();
+        boolean hasCandArtist = candArtists != null && !candArtists.trim().isEmpty();
+        if (hasInArtist && hasCandArtist) {
+            as = tokenOverlap(inArtist, candArtists);
+            String normInArtist = inArtist.trim().toLowerCase(java.util.Locale.ROOT);
+            String normCandArtist = candArtists.trim().toLowerCase(java.util.Locale.ROOT);
+            if (normInArtist.equals(normCandArtist)) {
+                as = 1.0d;
+            } else if (normInArtist.contains(normCandArtist) || normCandArtist.contains(normInArtist)) {
+                as = Math.max(as, 0.80d);
+            }
+            // Gatekeeper 2: Artist must have minimum overlap when both are provided
+            if (as < 0.25d) {
+                return 0.0d;
+            }
+        }
+
         double ds = 0.5d;
         if (inDuration > 0 && candDuration > 0) {
             long diff = Math.abs(inDuration - candDuration);
@@ -246,8 +278,9 @@ public class NeteaseLyricsProvider implements LyricsProvider {
         String norm = text.toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
         if (norm.isEmpty()) return set;
-        for (String w : norm.split("\\s+")) {
-            if (w.length() > 1) {
+        String[] words = norm.split("\\s+");
+        for (String w : words) {
+            if (w.length() > 1 || words.length <= 2) {
                 set.add(w);
             }
             // For CJK characters (Japanese, Chinese, Korean), add individual characters and 2-grams
@@ -260,6 +293,11 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                     }
                 }
             }
+        }
+        // Compact alphanumeric token for short acronyms/stylized names like n/a, die4u
+        String compact = text.toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", "");
+        if (!compact.isEmpty()) {
+            set.add(compact);
         }
         return set;
     }
@@ -276,9 +314,10 @@ public class NeteaseLyricsProvider implements LyricsProvider {
     private static String cleanMetadata(String text) {
         if (text == null) return "";
         return text
-                .replaceAll("(?i)\\s*\\[[^\\]]*]", "")
+                .replaceAll("(?i)\\s*\\[[^\\]]*(official|video|audio|lyric|lyrics|mv|hd|4k|remaster|remastered|deluxe|visualizer|live|performance|topic)[^\\]]*\\]", "")
                 .replaceAll("(?i)\\s*\\([^)]*(official|video|audio|lyric|lyrics|visualizer|mv|music video|hd|4k|performance|topic)[^)]*\\)", "")
                 .replaceAll("(?i)\\s*-\\s*(official|video|audio|lyric|lyrics|mv|music video|hd|4k|topic).*$", "")
+                .replaceAll("(?i)\\s*\\b(full album|album|ep)\\b\\s*$", "")
                 .replaceAll("\\s+", " ")
                 .trim();
     }
