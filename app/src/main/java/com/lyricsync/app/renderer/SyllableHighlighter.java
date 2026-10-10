@@ -338,6 +338,30 @@ public class SyllableHighlighter {
         return false;
     }
 
+    /** Characters per view for scripts without word spaces; see {@link #splitDisplayUnits}. */
+    private static final int NON_LATIN_CHUNK = 2;
+
+    /**
+     * Splits a display word into the units that become individual word views. Latin text
+     * keeps its space-separated tokens, but a run without word spaces (Japanese, Chinese,
+     * Korean, Cyrillic) is chunked: a single view holding a whole Japanese line cannot
+     * wrap, so it measures wider than the overlay and is sliced at both edges instead of
+     * flowing onto the next row.
+     */
+    static List<String> splitDisplayUnits(String text) {
+        List<String> units = new ArrayList<>();
+        if (text == null) return units;
+        for (String token : text.trim().split("\\s+")) {
+            if (token.isEmpty()) continue;
+            if (ScriptDetector.isNonLatin(token)) {
+                units.addAll(ScriptDetector.chunkByCodePoints(token, NON_LATIN_CHUNK));
+            } else {
+                units.add(token);
+            }
+        }
+        return units;
+    }
+
     private View createPerWordView(LyricsData.LyricsLine line, LineView lv, LinearLayout.LayoutParams params) {
         LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -365,13 +389,13 @@ public class SyllableHighlighter {
             String wText = dw.text != null ? dw.text.trim() : "";
             if (wText.isEmpty()) continue;
 
-            String[] tokens = wText.split("\\s+");
-            long wordDur = dw.endTime > dw.startTime ? (dw.endTime - dw.startTime) / tokens.length : 0;
-            for (int k = 0; k < tokens.length; k++) {
-                String tok = tokens[k];
-                if (tok.isEmpty()) continue;
+            List<String> units = splitDisplayUnits(wText);
+            if (units.isEmpty()) continue;
+            long wordDur = dw.endTime > dw.startTime ? (dw.endTime - dw.startTime) / units.size() : 0;
+            for (int k = 0; k < units.size(); k++) {
+                String tok = units.get(k);
                 long wStart = dw.startTime + k * wordDur;
-                long wEnd = (k == tokens.length - 1) ? dw.endTime : wStart + wordDur;
+                long wEnd = (k == units.size() - 1) ? dw.endTime : wStart + wordDur;
 
                 GradientWordView wv = new GradientWordView(context);
                 wv.setAnimConfig(animConfig);

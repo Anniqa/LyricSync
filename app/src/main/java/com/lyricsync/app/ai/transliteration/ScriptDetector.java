@@ -1,5 +1,7 @@
 package com.lyricsync.app.ai.transliteration;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 public final class ScriptDetector {
@@ -77,5 +79,28 @@ public final class ScriptDetector {
         stripped = stripped.replaceAll("[「」『』【】《》〈〉〔〕()（）\\[\\]{}〜〰、。・!?:;,.]", " ");
         stripped = stripped.replaceAll("\\s+", " ").trim();
         return stripped;
+    }
+
+    /**
+     * Splits a run of text that has no word spaces (Japanese, Chinese, Korean, Cyrillic,
+     * Thai ...) into chunks of at most {@code maxCodePoints} characters.
+     *
+     * A renderer that turns such a run into a single view cannot wrap it: the view
+     * measures as wide as the whole run, so a long lyric line overflows a narrow overlay
+     * and is sliced at both edges instead of flowing onto the next row. Chunking keeps
+     * every unbreakable view small enough for the flow layout to break between them.
+     */
+    public static List<String> chunkByCodePoints(String text, int maxCodePoints) {
+        List<String> chunks = new ArrayList<>();
+        if (text == null || text.isEmpty()) return chunks;
+        int limit = Math.max(1, maxCodePoints);
+        int cp = 0;
+        while (cp < text.length()) {
+            int count = Math.min(limit, text.codePointCount(cp, text.length()));
+            int end = text.offsetByCodePoints(cp, count);
+            chunks.add(text.substring(cp, end));
+            cp = end;
+        }
+        return chunks;
     }
 }
