@@ -367,7 +367,7 @@ public class AntigravityToolExecutorTest {
 
         JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
         assertEquals("custom-project-123", root.get("project").getAsString());
-        assertEquals("gemini-2.5-flash", root.get("model").getAsString());
+        assertEquals(AntigravityToolExecutor.SEARCH_MODEL, root.get("model").getAsString());
         assertEquals("agent", root.get("requestType").getAsString());
         assertEquals("antigravity", root.get("userAgent").getAsString());
         assertTrue(root.has("requestId"));
@@ -400,7 +400,7 @@ public class AntigravityToolExecutorTest {
         String payload = AntigravityToolExecutor.buildSearchPayload(null, "Queen song facts", 3);
         JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
         assertEquals("aicode-consumers", root.get("project").getAsString());
-        assertEquals("gemini-2.5-flash", root.get("model").getAsString());
+        assertEquals(AntigravityToolExecutor.SEARCH_MODEL, root.get("model").getAsString());
     }
 
     @Test

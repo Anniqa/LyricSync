@@ -1,0 +1,25 @@
+{
+  "lyrics": {
+    "syncType": "SYLLABLE_SYNCED",
+    "provider": "Musixmatch",
+    "lines": [
+      {
+        "startTimeMs": "1000",
+        "endTimeMs": "3000",
+        "words": "hello world",
+        "syllables": [
+          {
+            "startTimeMs": "1000",
+            "endTimeMs": "2000",
+            "text": "hello"
+          },
+          {
+            "startTimeMs": "2000",
+            "endTimeMs": "3000",
+            "text": "world"
+          }
+        ]
+      }
+    ]
+  }
+}

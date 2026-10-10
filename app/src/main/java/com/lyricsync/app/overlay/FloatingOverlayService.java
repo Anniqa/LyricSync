@@ -19,7 +19,6 @@ import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -53,12 +52,10 @@ import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.AiLyricsAgentService;
 import com.lyricsync.app.ai.service.SongChatManager;
-import com.lyricsync.app.ai.service.SongMeaningService;
 import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.util.AiStreamingAnimator;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
-import android.text.method.LinkMovementMethod;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.view.ContextThemeWrapper;
@@ -71,7 +68,6 @@ import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.lyricsync.app.LyricSyncApp;
 import com.lyricsync.app.R;
 import com.lyricsync.app.detection.MediaSessionTracker;
-import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.transliteration.AiSyllableTransliterationService;
 import com.lyricsync.app.ai.transliteration.ScriptDetector;
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
@@ -94,6 +90,7 @@ import com.lyricsync.app.util.NowPlaying;
 import com.lyricsync.app.util.Permissions;
 import com.lyricsync.app.util.SeekBars;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -109,14 +106,22 @@ public class FloatingOverlayService extends Service {
 
     /** Read by MainActivity to render Start vs Stop without binding to the service. */
     private static volatile boolean running = false;
-    private static volatile FloatingOverlayService activeInstance = null;
+
+    /**
+     * Weak reference to the live service. A strong static field would pin the Service
+     * (a Context) and everything it owns even after onDestroy; a WeakReference lets GC
+     * reclaim it, so a stale static link can never keep a Context alive.
+     */
+    private static volatile WeakReference<FloatingOverlayService> activeInstanceRef = null;
 
     public static boolean isRunning() {
         return running;
     }
 
+    /** Returns the live service, or null once it has been destroyed/collected. Callers must null-check. */
     public static FloatingOverlayService getInstance() {
-        return activeInstance;
+        WeakReference<FloatingOverlayService> ref = activeInstanceRef;
+        return ref != null ? ref.get() : null;
     }
 
     private WindowManager windowManager;
@@ -220,7 +225,6 @@ public class FloatingOverlayService extends Service {
     private ImageView aiWebSearchChip;
     private TextView aiMoodBadge;
     private ScrollView aiChatEmptyState;
-    private TextView aiEmptyHintText;
     private LinearLayout aiPromptTemplatesContainer;
     private HorizontalScrollView aiWebSourcesScroll;
     private LinearLayout aiWebSourcesContainer;
@@ -239,11 +243,9 @@ public class FloatingOverlayService extends Service {
     private WindowManager.LayoutParams aiBubbleParams;
     private boolean isAiBubbleAttached = false;
 
-    private SongMeaningService songMeaningService;
     private SongChatManager songChatManager;
     private AiChatHistoryManager aiChatHistoryManager;
     private AntigravityQuotaClient quotaClient;
-    private AntigravityApiClient.Cancellable activeMeaningCall;
     private AntigravityApiClient.Cancellable activeChatCall;
     private AntigravityApiClient.Cancellable activeTransliterationCall;
     private AiStreamingAnimator activeAiBubbleAnimator;
@@ -260,6 +262,10 @@ public class FloatingOverlayService extends Service {
     private Bitmap lastPaletteArt;
     /** Same guard for URI-loaded art; the palette runs on the decoded bitmap. */
     private String lastPaletteArtUri;
+    /** In-flight Glide target for URI album art; cleared on replacement and in onDestroy. */
+    private com.bumptech.glide.request.target.CustomTarget<Bitmap> coverArtTarget;
+    /** RequestManager owning coverArtTarget, so it can be cleared without re-resolving Glide. */
+    private com.bumptech.glide.RequestManager glideRequestManager;
     /** Guards against a slow Glide load landing after the track already changed. */
     private String pendingArtUri;
 
@@ -353,7 +359,7 @@ public class FloatingOverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        activeInstance = this;
+        activeInstanceRef = new WeakReference<>(this);
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
@@ -436,7 +442,6 @@ public class FloatingOverlayService extends Service {
         });
         aiTranslationService = new com.lyricsync.app.lyrics.translation.AiTranslationService(
                 this, authManager, apiClient, translateService);
-        songMeaningService = new SongMeaningService(sharedPrefs, apiClient);
         songChatManager = new SongChatManager(apiClient);
         aiChatHistoryManager = new AiChatHistoryManager(this);
         songChatManager.setHistoryManager(aiChatHistoryManager);
@@ -444,8 +449,11 @@ public class FloatingOverlayService extends Service {
         lyricsCacheManager = new LyricsCacheManager(this);
         aiLyricsAgentService = new AiLyricsAgentService(this, apiClient);
         quotaClient = new AntigravityQuotaClient(authManager);
+        // Capture the SharedPreferences instance, not the service, so this static supplier
+        // does not keep the Service (a Context) alive after onDestroy.
+        final SharedPreferences chatModelPrefs = sharedPrefs;
         AntigravityToolExecutor.setChatModelSupplier(() ->
-                sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
+                chatModelPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
         translationEnabled = sharedPrefs.getBoolean(
                 com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
         loadTypefaces();
@@ -1133,11 +1141,6 @@ public class FloatingOverlayService extends Service {
             initAiChatView();
         }
 
-        if (currentTrack != null) {
-            if (aiChatTitle != null) aiChatTitle.setText(currentTrack.title);
-            if (aiChatArtist != null) aiChatArtist.setText(currentTrack.artist);
-        }
-
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         int screenWidth = metrics.widthPixels;
         int chatWidth = Math.min((int) (screenWidth * 0.92f), dpToPx(440));
@@ -1225,7 +1228,6 @@ public class FloatingOverlayService extends Service {
         aiWebSearchChip = aiChatView.findViewById(R.id.ai_web_search_chip);
         aiMoodBadge = aiChatView.findViewById(R.id.ai_mood_badge);
         aiChatEmptyState = aiChatView.findViewById(R.id.ai_chat_empty_state);
-        aiEmptyHintText = aiChatView.findViewById(R.id.ai_empty_hint_text);
         aiPromptTemplatesContainer = aiChatView.findViewById(R.id.ai_prompt_templates_container);
         aiWebSourcesScroll = aiChatView.findViewById(R.id.ai_web_sources_scroll);
         aiWebSourcesContainer = aiChatView.findViewById(R.id.ai_web_sources_container);
@@ -1509,85 +1511,6 @@ public class FloatingOverlayService extends Service {
         });
     }
 
-    private void triggerSongMeaningAnalysis() {
-        if (currentTrack == null || songMeaningService == null) return;
-
-        AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
-        if (auth == null || !auth.isAuthenticated()) {
-            if (aiEmptyHintText != null) {
-                CleanMarkdownFormatter.applyMarkdown(aiEmptyHintText,
-                        "Please login to Google Antigravity in LyricSync to use AI features.", false);
-            }
-            return;
-        }
-
-        if (activeMeaningCall != null) {
-            activeMeaningCall.cancel();
-            activeMeaningCall = null;
-        }
-
-        if (aiEmptyHintText != null) {
-            CleanMarkdownFormatter.applyMarkdown(aiEmptyHintText, getString(R.string.ai_empty_hint), false);
-        }
-        if (aiMoodBadge != null) {
-            aiMoodBadge.setVisibility(View.GONE);
-        }
-        if (overlayMoodBadge != null) {
-            overlayMoodBadge.setVisibility(View.GONE);
-        }
-
-        StringBuilder sb = new StringBuilder();
-        if (currentLyrics != null && currentLyrics.lines != null) {
-            for (LyricsData.LyricsLine line : currentLyrics.lines) {
-                if (line != null && line.text != null && !line.isInterlude) {
-                    sb.append(line.text).append("\n");
-                }
-            }
-        }
-        String fullLyrics = sb.toString().trim();
-
-        activeMeaningCall = songMeaningService.getSongMeaning(
-                currentTrack.title,
-                currentTrack.artist,
-                fullLyrics,
-                aiWebSearchEnabled,
-                new SongMeaningService.MeaningCallback() {
-                    @Override
-                    public void onResult(SongMeaning meaning, boolean fromCache) {
-                        handler.post(() -> {
-                            if (meaning == null) return;
-                            if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
-                                String moodText = meaning.mood.trim();
-                                if (aiMoodBadge != null) {
-                                    aiMoodBadge.setText(moodText);
-                                    aiMoodBadge.setVisibility(View.VISIBLE);
-                                }
-                                if (overlayMoodBadge != null) {
-                                    overlayMoodBadge.setText(moodText);
-                                    overlayMoodBadge.setVisibility(View.VISIBLE);
-                                }
-                            }
-                            if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
-                                displayWebSources(meaning.webSources);
-                            }
-                            if (songChatManager != null && currentTrack != null) {
-                                songChatManager.setCurrentSong(currentTrack.title, currentTrack.artist, fullLyrics, meaning);
-                            }
-                        });
-                    }
-
-                    @Override
-                    public void onError(Exception e) {
-                        handler.post(() -> {
-                            if (aiEmptyHintText != null) {
-                                CleanMarkdownFormatter.applyMarkdown(aiEmptyHintText,
-                                        "Error: " + (e != null ? e.getMessage() : "Unknown error"), false);
-                            }
-                        });
-                    }
-                });
-    }
-
     private void displayWebSources(List<String> sources) {
         if (aiWebSourcesContainer == null || aiWebSourcesScroll == null) return;
         aiWebSourcesContainer.removeAllViews();
@@ -1795,7 +1718,9 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
                         activeTransliterationCall = null;
-                        if (isDestroyed || !fetchKey.equals(pendingFetchKey)) {
+                        // Null-safe: pendingFetchKey is null when no track fetch is in flight,
+                        // and a null context must not NPE the callback thread.
+                        if (isDestroyed || !java.util.Objects.equals(fetchKey, pendingFetchKey)) {
                             if (actionCallback != null) actionCallback.onError("Konteks lagu telah kedaluwarsa");
                             return;
                         }
@@ -1913,7 +1838,8 @@ public class FloatingOverlayService extends Service {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
                         activeTransliterationCall = null;
-                        if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
+                        // Null-safe guard: see performTransliteration.
+                        if (isDestroyed || !java.util.Objects.equals(fetchKey, pendingFetchKey)) return;
                         currentLyrics = enrichedData;
                         if (lyricsCacheManager != null && track != null) {
                             lyricsCacheManager.cache(track, enrichedData);
@@ -2454,7 +2380,7 @@ public class FloatingOverlayService extends Service {
                             if (webSources != null && !webSources.isEmpty()) {
                                 displayWebSources(webSources);
                             }
-                            addSourceChipsBelowBubble(aiBubble, webSources);
+                            addSourceChipsBelowBubble(webSources);
                             if (aiChatScroll != null) {
                                 aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
                             }
@@ -2499,7 +2425,7 @@ public class FloatingOverlayService extends Service {
     }
 
     /** Clickable web-source chips appended below the last AI chat bubble (max 5). */
-    private void addSourceChipsBelowBubble(TextView aiBubble, List<String> webSources) {
+    private void addSourceChipsBelowBubble(List<String> webSources) {
         if (aiChatMessages == null || webSources == null) return;
         int added = 0;
         java.util.Set<String> seen = new java.util.HashSet<>();
@@ -2715,7 +2641,7 @@ public class FloatingOverlayService extends Service {
             }
 
             if (session.webSources != null && !session.webSources.isEmpty()) {
-                addSourceChipsBelowBubble(null, session.webSources);
+                addSourceChipsBelowBubble(session.webSources);
             }
 
             if (aiChatScroll != null) {
@@ -2737,11 +2663,7 @@ public class FloatingOverlayService extends Service {
                 .create();
 
         if (dialog.getWindow() != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
-            } else {
-                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
-            }
+            dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         }
 
@@ -2846,11 +2768,7 @@ public class FloatingOverlayService extends Service {
                         .setNegativeButton(android.R.string.cancel, null)
                         .create();
                 if (confirmDialog.getWindow() != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        confirmDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
-                    } else {
-                        confirmDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
-                    }
+                    confirmDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
                 }
                 confirmDialog.show();
             });
@@ -2869,11 +2787,7 @@ public class FloatingOverlayService extends Service {
                 .create();
 
         if (dialog.getWindow() != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
-            } else {
-                dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_PHONE);
-            }
+            dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
             dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         }
@@ -3358,6 +3272,7 @@ public class FloatingOverlayService extends Service {
 
     private void updateTrackInfo(TrackInfo track) {
         if (isDestroyed) return;
+        clearCoverArtTarget();
         Anim.setTextAnimated(overlayTitle, track.title);
         Anim.setTextAnimated(overlayArtist, track.artist);
 
@@ -3379,11 +3294,9 @@ public class FloatingOverlayService extends Service {
             // re-tinted the overlay at all.
             final String artUri = track.albumArtUri;
             pendingArtUri = artUri;
-            Glide.with(this)
-                    .asBitmap()
-                    .load(artUri)
-                    .transform(new RoundedCorners(dpToPx(10)))
-                    .into(new com.bumptech.glide.request.target.CustomTarget<Bitmap>() {
+            glideRequestManager = Glide.with(this);
+            com.bumptech.glide.request.target.CustomTarget<Bitmap> target =
+                    new com.bumptech.glide.request.target.CustomTarget<Bitmap>() {
                         @Override
                         public void onResourceReady(@androidx.annotation.NonNull Bitmap resource,
                                                     @Nullable com.bumptech.glide.request.transition.Transition<? super Bitmap> transition) {
@@ -3401,12 +3314,34 @@ public class FloatingOverlayService extends Service {
                         @Override
                         public void onLoadCleared(@Nullable android.graphics.drawable.Drawable placeholder) {
                         }
-                    });
+                    };
+            glideRequestManager
+                    .asBitmap()
+                    .load(artUri)
+                    .transform(new RoundedCorners(dpToPx(10)))
+                    .into(target);
+            coverArtTarget = target;
         } else {
             pendingArtUri = null;
             lastPaletteArtUri = null;
             Glide.with(this).clear(overlayCover);
             overlayCover.setImageDrawable(null);
+        }
+    }
+
+    /**
+     * Clears (through the owning RequestManager) any in-flight URI album-art Glide request so a
+     * late callback cannot touch a torn-down view. Safe to call repeatedly and after destroy.
+     */
+    private void clearCoverArtTarget() {
+        com.bumptech.glide.request.target.CustomTarget<Bitmap> target = coverArtTarget;
+        if (target == null) return;
+        coverArtTarget = null;
+        com.bumptech.glide.RequestManager manager = glideRequestManager;
+        if (manager != null) {
+            manager.clear(target);
+        } else {
+            Glide.with(this).clear(target);
         }
     }
 
@@ -3679,10 +3614,6 @@ public class FloatingOverlayService extends Service {
         if (aiTranslationService != null) {
             aiTranslationService.cancel();
         }
-        if (activeMeaningCall != null) {
-            activeMeaningCall.cancel();
-            activeMeaningCall = null;
-        }
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
@@ -3880,7 +3811,7 @@ public class FloatingOverlayService extends Service {
                 new com.lyricsync.app.lyrics.translation.GoogleTranslateService.TranslationCallback() {
             @Override
             public void onSuccess(com.lyricsync.app.lyrics.translation.GoogleTranslateParser.ParseResult result, String resolvedLang) {
-                if (isDestroyed || !fetchKey.equals(pendingFetchKey)) {
+                if (isDestroyed || !java.util.Objects.equals(fetchKey, pendingFetchKey)) {
                     if (actionCallback != null) actionCallback.onError("Konteks lagu telah kedaluwarsa");
                     return;
                 }
@@ -4102,7 +4033,9 @@ public class FloatingOverlayService extends Service {
     public void onDestroy() {
         isDestroyed = true;
         running = false;
-        if (activeInstance == this) activeInstance = null;
+        clearCoverArtTarget();
+        WeakReference<FloatingOverlayService> ref = activeInstanceRef;
+        if (ref != null && ref.get() == this) activeInstanceRef = null;
         super.onDestroy();
         cancelAiLyricsRetrieval();
         if (aiLyricsAgentService != null) {
@@ -4113,10 +4046,6 @@ public class FloatingOverlayService extends Service {
         }
         if (translateService != null) {
             translateService.cancel();
-        }
-        if (activeMeaningCall != null) {
-            activeMeaningCall.cancel();
-            activeMeaningCall = null;
         }
         if (activeChatCall != null) {
             activeChatCall.cancel();

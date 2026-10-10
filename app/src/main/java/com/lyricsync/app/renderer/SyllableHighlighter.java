@@ -89,7 +89,7 @@ public class SyllableHighlighter {
                 // Safety limit: never merge more than 4 syllables or 16 romaji characters into one DisplayWord
                 // to ensure WordFlowLayout can always wrap words and never overflow off-screen.
                 boolean canMerge = prev.isPartOfWord
-                        && cur.syllables.size() < 5
+                        && cur.syllables.size() < 4
                         && (cur.romanji.length() + r.length()) <= 16;
                 if (canMerge) {
                     cur.text += (w.text != null ? w.text : "");
@@ -385,7 +385,6 @@ public class SyllableHighlighter {
                         WordFlowLayout.LayoutParams.WRAP_CONTENT,
                         WordFlowLayout.LayoutParams.WRAP_CONTENT);
                 wlp.rightMargin = dpToPx(7);
-                wlp.isWordBoundary = true;
                 wv.setLayoutParams(wlp);
 
                 flow.addView(wv);
@@ -485,7 +484,6 @@ public class SyllableHighlighter {
                         WordFlowLayout.LayoutParams.WRAP_CONTENT,
                         WordFlowLayout.LayoutParams.WRAP_CONTENT);
                 rwlp.rightMargin = !originalScriptEnabled ? dpToPx(6) : dpToPx(4);
-                rwlp.isWordBoundary = true;
                 rwv.setLayoutParams(rwlp);
 
                 romajiFlow.addView(rwv);
@@ -637,7 +635,6 @@ public class SyllableHighlighter {
 
             boolean isActive = currentPosition >= line.startTime && currentPosition < line.endTime;
             boolean isPast = currentPosition >= line.endTime;
-            boolean isUpcoming = !isActive && !isPast && (line.startTime - currentPosition) < 3000;
             int state = isActive ? STATE_ACTIVE : (isPast ? STATE_PAST : STATE_UPCOMING);
             boolean stateChanged = state != lv.lastState;
 
@@ -840,7 +837,7 @@ public class SyllableHighlighter {
             }
         }
 
-        updateBackgroundVocals(lv, position, stateChanged);
+        updateBackgroundVocals(lv, position);
     }
 
     private void updatePerLineHighlight(LineView lv, long position, double deltaTime,
@@ -898,10 +895,10 @@ public class SyllableHighlighter {
             lv.lastProgress = isPast ? 100f : 0f;
         }
 
-        updateBackgroundVocals(lv, position, stateChanged);
+        updateBackgroundVocals(lv, position);
     }
 
-    private void updateBackgroundVocals(LineView lv, long position, boolean stateChanged) {
+    private void updateBackgroundVocals(LineView lv, long position) {
         if (lv.backgroundWordViews == null || lv.line.backgroundVocals == null) return;
         for (int b = 0; b < lv.backgroundWordViews.size() && b < lv.line.backgroundVocals.size(); b++) {
             List<GradientWordView> bgWords = lv.backgroundWordViews.get(b);

@@ -223,11 +223,15 @@ public class AntigravityAuthManager {
                         .apply();
             }
 
-            if (loopbackServer != null) {
-                try {
-                    loopbackServer.stop();
-                } catch (Exception ignored) {}
-                loopbackServer = null;
+            // Guard the server field with the same monitor as startBrowserLogin(): using
+            // refreshLock alone let a login and a logout race, stranding a bound loopback port.
+            synchronized (AntigravityAuthManager.this) {
+                if (loopbackServer != null) {
+                    try {
+                        loopbackServer.stop();
+                    } catch (Exception ignored) {}
+                    loopbackServer = null;
+                }
             }
 
             callbacksToCancel = new ArrayList<>(pendingTokenCallbacks);

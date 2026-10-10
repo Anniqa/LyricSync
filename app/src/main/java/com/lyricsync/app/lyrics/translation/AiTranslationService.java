@@ -50,6 +50,8 @@ public class AiTranslationService {
     private AntigravityApiClient.Cancellable activeAiCall;
     private ScheduledFuture<?> timeoutFuture;
     private final AtomicBoolean isCancelled = new AtomicBoolean(false);
+    /** Bumped on every translateLyrics/cancel so late callbacks from a superseded request are ignored. */
+    private final java.util.concurrent.atomic.AtomicInteger requestGeneration = new java.util.concurrent.atomic.AtomicInteger(0);
 
     public AiTranslationService(Context context,
                                 AntigravityApiClient apiClient,
@@ -322,6 +324,7 @@ public class AiTranslationService {
      */
     public synchronized void cancel() {
         isCancelled.set(true);
+        requestGeneration.incrementAndGet();
         cancelTimeout();
         cancelAiCall();
         if (fallbackService != null) {
@@ -351,6 +354,7 @@ public class AiTranslationService {
                                             final GoogleTranslateService.TranslationCallback callback) {
         cancel();
         isCancelled.set(false);
+        final int myGeneration = requestGeneration.get();
 
         final List<LyricsData.LyricsLine> translatable = GoogleTranslateService.filterTranslatableLines(allLines);
         if (translatable.isEmpty()) {
@@ -373,7 +377,7 @@ public class AiTranslationService {
 
         // Schedule timeout fallback
         timeoutFuture = timeoutExecutor.schedule(() -> {
-            if (isCancelled.get()) return;
+            if (isCancelled.get() || requestGeneration.get() != myGeneration) return;
             if (handled.compareAndSet(false, true)) {
                 cancelAiCall();
                 fallbackToGoogle(allLines, targetLang, callback);
@@ -385,7 +389,7 @@ public class AiTranslationService {
                     new AntigravityApiClient.CompletionCallback() {
                 @Override
                 public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
-                    if (isCancelled.get()) return;
+                    if (isCancelled.get() || requestGeneration.get() != myGeneration) return;
                     if (handled.compareAndSet(false, true)) {
                         cancelTimeout();
                         try {
@@ -404,7 +408,7 @@ public class AiTranslationService {
 
                 @Override
                 public void onError(Exception error) {
-                    if (isCancelled.get()) return;
+                    if (isCancelled.get() || requestGeneration.get() != myGeneration) return;
                     if (handled.compareAndSet(false, true)) {
                         cancelTimeout();
                         fallbackToGoogle(allLines, targetLang, callback);

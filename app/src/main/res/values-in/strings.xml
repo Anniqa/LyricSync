@@ -22,7 +22,6 @@
     <string name="overlay_stopped">Overlay lirik dihentikan</string>
 
     <!-- Now playing -->
-    <string name="now_playing">Sedang Diputar</string>
     <string name="nothing_playing">Tidak ada lagu yang diputar</string>
     <string name="nothing_playing_desc">Putar lagu di aplikasi musik apa pun</string>
 
@@ -34,7 +33,6 @@
     <string name="anim_motion_label">Gerakan</string>
     <string name="anim_effect_label">Efek Visual</string>
     <string name="overlay_dimensions_title">Dimensi Overlay</string>
-    <string name="overlay_size">Ukuran overlay</string>
     <string name="overlay_width">Lebar</string>
     <string name="overlay_height">Tinggi</string>
     <string name="overlay_resize_tip">Tarik pegangan di sudut kanan bawah overlay untuk mengubah ukuran bebas.</string>
@@ -60,23 +58,37 @@
 
     <!-- Spotify Account & Syllable Sync -->
     <string name="spotify_account_title">Spotify &amp; Sinkron Suku Kata</string>
-    <string name="spotify_account_desc">Dapatkan tingkat keberhasilan 100% lirik kata-per-kata stabil dengan menghubungkan sesi Spotify (sp_dc cookie)</string>
-    <string name="spotify_connect_button">Hubungkan Sesi Spotify (sp_dc)</string>
-    <string name="spotify_connected_status">Akun Terhubung · 100% Syllable Rate Aktif</string>
-    <string name="spotify_disconnected_status">Mode Anonim (Rentan terkena batas kuota SpicyLyrics 500)</string>
+    <string name="spotify_account_desc">Hubungkan sesi Spotify untuk lirik per suku kata yang stabil.</string>
+    <string name="spotify_section_session">Sesi Spotify</string>
+    <string name="spotify_connect_button">Hubungkan Spotify</string>
+    <string name="spotify_connected_status">Terhubung · rate suku kata penuh</string>
+    <string name="spotify_disconnected_status">Belum terhubung</string>
     <string name="spotify_disconnect">Putuskan</string>
     <string name="spotify_cookie_dialog_title">Hubungkan Spotify (sp_dc Cookie)</string>
-    <string name="spotify_cookie_dialog_msg">1. Buka open.spotify.com di browser (Chrome/Kiwi/Brave)\n2. DevTools -> Application -> Cookies -> salin nilai sp_dc\n3. Tempelkan nilainya di bawah ini untuk mengaktifkan 100% lirik suku kata:</string>
+    <string name="spotify_cookie_dialog_msg" formatted="false">1. Buka open.spotify.com di browser (Chrome/Kiwi/Brave)\n2. DevTools -> Application -> Cookies -> salin nilai sp_dc\n3. Tempelkan nilainya di bawah ini untuk mengaktifkan 100% lirik suku kata:</string>
     <string name="spotify_cookie_hint">Tempel nilai cookie sp_dc atau access token…</string>
     <string name="spotify_cookie_save">Verifikasi &amp; Simpan</string>
-    <string name="spotify_connected_toast">Spotify terhubung! Tingkat keberhasilan 100% lirik suku kata aktif.</string>
+    <string name="spotify_connected_toast" formatted="false">Spotify terhubung! Tingkat keberhasilan 100% lirik suku kata aktif.</string>
+
+    <!-- Spicy Lyrics official API key -->
+    <string name="spicy_key_title">Kunci Spicy Lyrics</string>
+    <string name="spicy_key_desc">Tempel client key dari developers.spicylyrics.org (sl_pk_…).</string>
+    <string name="spicy_key_button">Atur kunci</string>
+    <string name="spicy_key_status_set">Kunci kamu · API resmi aktif</string>
+    <string name="spicy_key_status_none">Kunci bawaan · API resmi aktif</string>
+    <string name="spicy_key_dialog_title">Kunci Client Spicy Lyrics</string>
+    <string name="spicy_key_dialog_msg">Tempel client key kamu (sl_pk_…). Kosongkan untuk menghapus.</string>
+    <string name="spicy_key_hint">sl_pk_…</string>
+    <string name="spicy_key_save">Simpan</string>
+    <string name="spicy_key_saved_toast">Kunci Spicy Lyrics tersimpan</string>
+    <string name="spicy_key_removed_toast">Kunci Spicy Lyrics dihapus</string>
+    <string name="spicy_key_invalid_toast">Kunci tidak valid (harus diawali sl_pk_ atau sl_sk_)</string>
 
     <!-- Developer -->
     <string name="developer_title">Pengembang</string>
     <string name="logs">Log</string>
     <string name="clear_logs">Hapus log</string>
     <string name="share_logs">Bagikan log</string>
-    <string name="logs_cleared">Log dibersihkan</string>
     <string name="share_logs_failed">Gagal membagikan log</string>
 
     <!-- Overlay -->
@@ -87,7 +99,6 @@
 
     <!-- Content descriptions -->
     <string name="cd_album_art">Sampul album</string>
-    <string name="cd_open">Buka</string>
     <string name="cd_collapse">Tutup lirik</string>
     <string name="cd_settings">Pengaturan overlay</string>
     <string name="cd_close">Tutup overlay</string>
@@ -112,11 +123,8 @@
     <string name="ai_manual_token_title">Masukkan Refresh Token</string>
     <string name="ai_manual_token_hint">Tempel refresh token Antigravity Anda di sini</string>
     <string name="ai_disconnect">Keluar</string>
-    <string name="ai_model_label">Model AI</string>
-    <string name="ai_effort_label">Tingkat Penalaran</string>
     <string name="ai_quota_weekly">Kuota Mingguan</string>
     <string name="ai_quota_5h">Kuota 5-Jam</string>
-    <string name="ai_web_search_label">Google Web Search Grounding</string>
     <string name="ai_search_model_label">Model Grounding Pencarian</string>
     <string name="ai_search_model_unified">Terpadu (Sama dengan model chat)</string>
     <string name="ai_search_model_unified_sub">Semua ditangani 1 model (%s)</string>
@@ -138,30 +146,20 @@
     <string name="ai_chat_input_hint">Tanyakan apa saja tentang lagu ini…</string>
     <string name="ai_send">Kirim</string>
     <string name="ai_toggle_web_search">Alihkan Pencarian Web</string>
+    <string name="ai_chat_open_fullscreen">Buka Obrolan AI</string>
+    <string name="cd_expand_chat">Perluas obrolan</string>
+    <string name="cd_voice_input">Input suara</string>
+    <string name="ai_voice_no_result">Tidak ada suara yang dikenali</string>
+    <string name="ai_voice_error">Input suara tidak tersedia</string>
+    <string name="ai_voice_permission">Izin mikrofon diperlukan untuk input suara</string>
+    <string name="ai_voice_listening">Mendengarkan…</string>
+    <string name="cd_ai_chat_bubble">Obrolan AI</string>
     <string name="ai_tool_searching">Mencari di Google…</string>
     <string name="ai_tool_fetching">Membaca artikel…</string>
     <string name="ai_tool_search_done">Ditemukan %1$d sumber</string>
     <string name="ai_tool_fetch_done">Artikel terbaca</string>
     <string name="ai_web_sources_label">Sumber Web</string>
     <string name="ai_no_track">Putar lagu untuk berdiskusi dengan AI.</string>
-    <string name="ai_prompt_meaning_title">Makna &amp; Kisah Lagu</string>
-    <string name="ai_prompt_meaning_desc">Eksplorasi cerita, tema utama, dan narasi lagu</string>
-    <string name="ai_prompt_meaning_prompt">Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.</string>
-    <string name="ai_prompt_breakdown_title">Bedah Lirik &amp; Metafora</string>
-    <string name="ai_prompt_breakdown_desc">Analisis baris lirik penting dan bahasa kiasan</string>
-    <string name="ai_prompt_breakdown_prompt">Bedah baris-baris lirik penting dan metafora yang digunakan dalam lagu ini.</string>
-    <string name="ai_prompt_intent_title">Tujuan &amp; Inspirasi Penulis</string>
-    <string name="ai_prompt_intent_desc">Inspirasi artis dan pesan yang ingin disampaikan</string>
-    <string name="ai_prompt_intent_prompt">Apa yang menginspirasi pencipta lagu ini dan apa pesan yang ingin disampaikan?</string>
-    <string name="ai_prompt_mood_title">Nuansa Emosi &amp; Mood</string>
-    <string name="ai_prompt_mood_desc">Suasana emosional, vibe, dan resonansi perasaan</string>
-    <string name="ai_prompt_mood_prompt">Analisis nuansa emosional, mood, dan suasana dalam lagu ini.</string>
-    <string name="ai_prompt_trivia_title">Trivia &amp; Konteks Budaya</string>
-    <string name="ai_prompt_trivia_desc">Fakta menarik, proses rekaman, dan pengaruh budaya</string>
-    <string name="ai_prompt_trivia_prompt">Ceritakan fakta menarik, latar belakang pembuatan, dan dampak budaya lagu ini.</string>
-    <string name="ai_prompt_composition_title">Komposisi Musik</string>
-    <string name="ai_prompt_composition_desc">Akord, melodi, aransemen, dan gaya produksi</string>
-    <string name="ai_prompt_composition_prompt">Analisis struktur melodi, tempo, instrumen, dan aransemen musiknya.</string>
     <string name="ai_thinking">Berpikir…</string>
     <string name="ai_login_required">Silakan hubungkan akun Google di pengaturan AI.</string>
     <string name="ai_web_search_active">AI Web Search aktif</string>
@@ -171,8 +169,6 @@
     <string name="ai_select_model">Pilih Model AI</string>
     <string name="ai_model_selector_desc">Pilih kecerdasan AI untuk analisis lagu dan percakapan</string>
     <string name="ai_model_gemini_flash_desc">Cepat, serbaguna &amp; pencarian Google</string>
-    <string name="ai_model_gemini_pro_desc">Penalaran mendalam &amp; analisis lirik kompleks</string>
-    <string name="ai_model_claude_desc">Model Anthropic, pemahaman puitis bernuansa</string>
     <string name="ai_source_web">Sumber Web</string>
     <string name="action_change">Ubah</string>
     <string name="ai_btn_new_chat">Obrolan Baru</string>
@@ -185,7 +181,6 @@
     <string name="ai_history_clear_success">Riwayat obrolan berhasil dihapus</string>
     <string name="ai_history_delete_session">Hapus</string>
     <string name="ai_new_chat_started">Obrolan baru dimulai</string>
-    <string name="ai_new_chat_ready">Obrolan baru sudah siap</string>
     <string name="ai_history_restore">Buka Obrolan</string>
     <string name="ai_history_session_messages">%1$d pesan</string>
     <string name="ai_history_deleted_one">Percakapan dihapus</string>
@@ -210,19 +205,25 @@
     <string name="toggle_transliteration">Transliterasi</string>
     <string name="save">Simpan</string>
     <string name="cancel">Batal</string>
-    <string name="romaji_enabled">Romaji diaktifkan</string>
-    <string name="romaji_disabled">Romaji dinonaktifkan</string>
 
     <!-- Lyric Retry & AI Retrieval -->
     <string name="btn_retry_standard">Coba Lagi</string>
     <string name="btn_retry_ai">Bantu Cari via AI</string>
     <string name="ai_step_searching_syllable">Menelusuri format suku kata (KRC / YRC / TTML)…</string>
-    <string name="ai_step_fetching_web">Menghubungi database provider lirik…</string>
     <string name="ai_step_fallback_lrc">Suku kata tidak ditemukan, mencari format baris (LRC)…</string>
     <string name="ai_step_web_search">Mencari dan menyelaraskan lirik di internet dengan AI…</string>
-    <string name="ai_step_syncing">Menyelaraskan lirik…</string>
     <string name="ai_error_not_found">Lirik tersinkron tidak ditemukan untuk versi ini.</string>
-    <string name="ai_error_auth_required">Diperlukan autentikasi AI. Buka pengaturan.</string>
     <string name="action_cancel">Batal</string>
     <string name="action_view_details">Lihat Detail</string>
+
+    <string name="settings_open_failed">Tidak dapat membuka layar pengaturan</string>
+    <string name="spotify_validating_session">Memvalidasi sesi Spotify…</string>
+    <string name="google_signin_opening">Membuka browser untuk login Google…</string>
+    <string name="google_signin_success">Berhasil login: %1$s</string>
+    <string name="google_signin_failed">Gagal login: %1$s</string>
+    <string name="google_signed_out">Berhasil logout</string>
+    <string name="google_connected">Berhasil terhubung: %1$s</string>
+    <string name="google_connect_failed">Gagal: %1$s</string>
+    <string name="ai_model_set">Model AI diatur ke: %1$s</string>
+    <string name="transliteration_failed">Transliterasi gagal</string>
 </resources>

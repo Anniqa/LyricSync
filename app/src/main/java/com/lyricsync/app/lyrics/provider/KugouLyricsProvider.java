@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -158,10 +157,6 @@ public class KugouLyricsProvider implements LyricsProvider {
         double score;
     }
 
-    Candidate searchCandidate(String query, String title, String artist, long duration) throws IOException {
-        return searchCandidate(query, title, Collections.emptyList(), artist, duration);
-    }
-
     Candidate searchCandidate(String query, String title, List<String> aliases, String artist, long duration) throws IOException {
         String encodedKeyword = URLEncoder.encode(query, "UTF-8");
         String url = SEARCH_URL + "?ver=1&man=yes&client=mobi"
@@ -228,10 +223,6 @@ public class KugouLyricsProvider implements LyricsProvider {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private String downloadLyricContent(String id, String accesskey) throws IOException {
-        return downloadLyricContent(id, accesskey, "krc");
     }
 
     private String downloadLyricContent(String id, String accesskey, String fmt) throws IOException {

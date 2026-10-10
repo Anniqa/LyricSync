@@ -1,7 +1,5 @@
 package com.lyricsync.app.lyrics.provider;
 
-import android.net.Uri;
-
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -343,7 +341,7 @@ public class LRCLIBProvider implements LyricsProvider {
     private void splitLineIntoWords(LyricsData.LyricsLine line) {
         if (line.text == null || line.text.isEmpty()) return;
 
-        String[] words = line.text.split(" ");
+        String[] words = line.text.split("\\s+");
         if (words.length <= 1) {
             if (words.length == 1 && !words[0].isEmpty()) {
                 line.words.add(new LyricsData.Word(line.startTime, line.endTime, words[0]));

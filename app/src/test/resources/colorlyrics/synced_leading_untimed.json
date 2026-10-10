@@ -1,0 +1,14 @@
+{
+  "lyrics": {
+    "syncType": "LINE_SYNCED",
+    "lines": [
+      {
+        "words": "orphan"
+      },
+      {
+        "startTimeMs": "5000",
+        "words": "real"
+      }
+    ]
+  }
+}

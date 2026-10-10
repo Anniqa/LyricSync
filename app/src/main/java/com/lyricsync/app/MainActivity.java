@@ -44,8 +44,6 @@ import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.AntigravityModel;
 import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
-import com.lyricsync.app.ai.service.SongMeaningService;
-import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.util.AiStreamingAnimator;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
@@ -56,7 +54,7 @@ import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
 import com.lyricsync.app.lyrics.auth.SpotifyAuthManager;
-import android.text.method.LinkMovementMethod;
+import com.lyricsync.app.lyrics.provider.SpicyLyricsProvider;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -227,9 +225,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private AntigravityAuthManager authManager;
     private AntigravityApiClient apiClient;
     private AntigravityQuotaClient quotaClient;
-    private SongMeaningService songMeaningService;
     private SongChatManager songChatManager;
-    private AntigravityApiClient.Cancellable activeMeaningCall;
     private AntigravityApiClient.Cancellable activeChatCall;
     private AntigravityApiClient.Cancellable activeTransliterationCall;
     private AiStreamingAnimator activeStudioAnimator;
@@ -315,10 +311,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         stopEqualizer();
         if (heroTintAnimator != null) heroTintAnimator.cancel();
         if (startTintAnimator != null) startTintAnimator.cancel();
-        if (activeMeaningCall != null) {
-            activeMeaningCall.cancel();
-            activeMeaningCall = null;
-        }
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
@@ -467,7 +459,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             startActivity(intent);
         } catch (Exception e) {
             AppLog.e(TAG, "Cannot open settings screen: " + e.getMessage());
-            Toast.makeText(this, "Couldn't open that settings screen", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, R.string.settings_open_failed, Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -665,7 +657,57 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             });
         }
 
+        View btnSpicyKey = findViewById(R.id.btn_spicy_key);
+        if (btnSpicyKey != null) {
+            btnSpicyKey.setOnClickListener(v -> {
+                Haptics.tick(v);
+                showSpicyKeyDialog();
+            });
+        }
+
         updateSpotifyAccountState();
+        updateSpicyKeyState();
+    }
+
+    private void showSpicyKeyDialog() {
+        final EditText input = new EditText(this);
+        input.setHint(R.string.spicy_key_hint);
+        input.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+        input.setTextColor(getResources().getColor(R.color.text_primary));
+        input.setHintTextColor(getResources().getColor(R.color.text_dim));
+        String existing = prefs.getString(SpicyLyricsProvider.PREF_SPICY_CLIENT_KEY, "");
+        if (existing != null && !existing.isEmpty()) {
+            input.setText(existing);
+            input.setSelection(existing.length());
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.spicy_key_dialog_title)
+                .setMessage(R.string.spicy_key_dialog_msg)
+                .setView(input)
+                .setPositiveButton(R.string.spicy_key_save, (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    if (value.isEmpty()) {
+                        prefs.edit().remove(SpicyLyricsProvider.PREF_SPICY_CLIENT_KEY).apply();
+                        Toast.makeText(this, R.string.spicy_key_removed_toast, Toast.LENGTH_SHORT).show();
+                    } else if (value.matches("sl_(pk|sk)_[A-Za-z0-9_-]+")) {
+                        prefs.edit().putString(SpicyLyricsProvider.PREF_SPICY_CLIENT_KEY, value).apply();
+                        Toast.makeText(this, R.string.spicy_key_saved_toast, Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, R.string.spicy_key_invalid_toast, Toast.LENGTH_LONG).show();
+                    }
+                    updateSpicyKeyState();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void updateSpicyKeyState() {
+        TextView tv = findViewById(R.id.tv_spicy_key_status);
+        if (tv == null) return;
+        String key = prefs.getString(SpicyLyricsProvider.PREF_SPICY_CLIENT_KEY, "");
+        boolean set = key != null && !key.trim().isEmpty();
+        tv.setText(set ? R.string.spicy_key_status_set : R.string.spicy_key_status_none);
     }
 
     private void updateSpotifyAccountState() {
@@ -693,8 +735,8 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     String value = input.getText().toString().trim();
                     if (value.isEmpty()) return;
 
-                    Toast.makeText(this, "Memvalidasi sesi Spotify...", Toast.LENGTH_SHORT).show();
-                    if (value.startsWith("BQA") || value.startsWith("BQC") || (value.length() > 100 && !value.contains("="))) {
+                    Toast.makeText(this, R.string.spotify_validating_session, Toast.LENGTH_SHORT).show();
+                    if (value.startsWith("BQA") || value.startsWith("BQC")) {
                         // Direct access token
                         SpotifyAuthManager.getInstance(this).loginWithRawToken(value);
                         Toast.makeText(this, R.string.spotify_connected_toast, Toast.LENGTH_SHORT).show();
@@ -743,12 +785,12 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (btnConnect != null) {
             btnConnect.setOnClickListener(v -> {
                 Haptics.tick(v);
-                Toast.makeText(this, "Membuka browser untuk login Google...", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.google_signin_opening, Toast.LENGTH_SHORT).show();
                 authManager.startBrowserLogin(this, new AntigravityAuthManager.AuthCallback() {
                     @Override
                     public void onSuccess(String email) {
                         runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "Berhasil login: " + email, Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, getString(R.string.google_signin_success, email), Toast.LENGTH_SHORT).show();
                             updateAiAccountState();
                         });
                     }
@@ -756,7 +798,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onError(String message) {
                         runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "Gagal login: " + message, Toast.LENGTH_LONG).show();
+                            Toast.makeText(MainActivity.this, getString(R.string.google_signin_failed, message), Toast.LENGTH_LONG).show();
                         });
                     }
                 });
@@ -776,7 +818,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             btnDisconnect.setOnClickListener(v -> {
                 Haptics.tick(v);
                 authManager.logout();
-                Toast.makeText(this, "Berhasil logout", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.google_signed_out, Toast.LENGTH_SHORT).show();
                 updateAiAccountState();
             });
         }
@@ -872,14 +914,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ai_manual_token_title)
                 .setView(input)
-                .setPositiveButton("Simpan", (dialog, which) -> {
+                .setPositiveButton(R.string.save, (dialog, which) -> {
                     String token = input.getText().toString().trim();
                     if (!token.isEmpty()) {
                         authManager.manualTokenLogin(token, new AntigravityAuthManager.AuthCallback() {
                             @Override
                             public void onSuccess(String email) {
                                 runOnUiThread(() -> {
-                                    Toast.makeText(MainActivity.this, "Berhasil terhubung: " + email, Toast.LENGTH_SHORT).show();
+                                    Toast.makeText(MainActivity.this, getString(R.string.google_connected, email), Toast.LENGTH_SHORT).show();
                                     updateAiAccountState();
                                 });
                             }
@@ -887,13 +929,13 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             @Override
                             public void onError(String message) {
                                 runOnUiThread(() -> {
-                                    Toast.makeText(MainActivity.this, "Gagal: " + message, Toast.LENGTH_LONG).show();
+                                    Toast.makeText(MainActivity.this, getString(R.string.google_connect_failed, message), Toast.LENGTH_LONG).show();
                                 });
                             }
                         });
                     }
                 })
-                .setNegativeButton("Batal", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -1253,9 +1295,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     });
                 }
             });
-        }
-        if (songMeaningService == null) {
-            songMeaningService = new SongMeaningService(prefs, apiClient);
         }
         if (songChatManager == null) {
             songChatManager = new SongChatManager(apiClient);
@@ -2061,7 +2100,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ai_custom_model_title)
                 .setView(input)
-                .setPositiveButton("Simpan", (d, which) -> {
+                .setPositiveButton(R.string.save, (d, which) -> {
                     String customId = input.getText().toString().trim();
                     if (!customId.isEmpty()) {
                         prefs.edit().putString("pref_ai_model", customId).apply();
@@ -2069,10 +2108,10 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                             songChatManager.setModelId(customId);
                         }
                         updateAiStudioModelUi(customId);
-                        Toast.makeText(this, "Model AI diatur ke: " + customId, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, getString(R.string.ai_model_set, customId), Toast.LENGTH_SHORT).show();
                     }
                 })
-                .setNegativeButton("Batal", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -2083,10 +2122,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                 currentTrackArtist = null;
                 currentTrack = null;
                 lyricsData = null;
-                if (activeMeaningCall != null) {
-                    activeMeaningCall.cancel();
-                    activeMeaningCall = null;
-                }
                 if (activeChatCall != null) {
                     activeChatCall.cancel();
                     activeChatCall = null;
@@ -2145,10 +2180,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         currentTrack.title = currentTrackTitle;
         currentTrack.artist = currentTrackArtist;
 
-        if (activeMeaningCall != null) {
-            activeMeaningCall.cancel();
-            activeMeaningCall = null;
-        }
         if (activeChatCall != null) {
             activeChatCall.cancel();
             activeChatCall = null;
@@ -2208,10 +2239,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         return ScriptDetector.isNonLatin(sb.toString());
     }
 
-    private void performTransliteration() {
-        performTransliteration(true, true);
-    }
-
     private void performTransliteration(final boolean includeTranslation, final boolean showOriginalScript) {
         if (lyricsData == null || aiTransliterationService == null || currentTrack == null) return;
         if (activeTransliterationCall != null) {
@@ -2251,85 +2278,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
                     @Override
                     public void onError(String message) {
                         activeTransliterationCall = null;
-                        Toast.makeText(MainActivity.this, message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
-                    }
-                });
-    }
-
-    public void onNowPlayingChanged(NowPlaying track) {
-        if (activeTransliterationCall != null) {
-            activeTransliterationCall.cancel();
-            activeTransliterationCall = null;
-        }
-        onNowPlayingChanged(NowPlaying.current());
-    }
-
-    private void fetchSongMeaning(final String title, final String artist) {
-        if (authManager == null) {
-            authManager = AntigravityAuthManager.getInstance(this);
-        }
-        if (!authManager.isAuthenticated()) {
-            if (aiStudioSummary != null) {
-                aiStudioSummary.setText(R.string.ai_login_required);
-            }
-            if (aiStudioMoodBadge != null) {
-                aiStudioMoodBadge.setVisibility(View.GONE);
-            }
-            return;
-        }
-
-        if (songMeaningService == null) return;
-
-        if (aiStudioSummary != null) {
-            CleanMarkdownFormatter.applyMarkdown(aiStudioSummary, getString(R.string.ai_thinking), false);
-        }
-        if (aiStudioMoodBadge != null) {
-            aiStudioMoodBadge.setVisibility(View.GONE);
-        }
-
-        activeMeaningCall = songMeaningService.getSongMeaning(
-                title,
-                artist,
-                "",
-                aiWebSearchEnabled,
-                new SongMeaningService.MeaningCallback() {
-                    @Override
-                    public void onResult(SongMeaning meaning, boolean fromCache) {
-                        runOnUiThread(() -> {
-                            activeMeaningCall = null;
-                            if (isFinishing() || isDestroyed()) return;
-                            if (title == null || !title.equals(currentTrackTitle)) return;
-                            if (meaning == null) return;
-
-                            if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
-                                if (aiStudioMoodBadge != null) {
-                                    aiStudioMoodBadge.setText(meaning.mood.trim());
-                                    aiStudioMoodBadge.setVisibility(View.VISIBLE);
-                                }
-                            }
-                            if (aiStudioSummary != null && meaning.summary != null) {
-                                CleanMarkdownFormatter.applyMarkdown(aiStudioSummary, meaning.summary, false);
-                            }
-                            if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
-                                displayWebSources(meaning.webSources);
-                            }
-                            if (songChatManager != null && title.equals(currentTrackTitle)) {
-                                songChatManager.setCurrentSong(title, artist, "", meaning);
-                            }
-                        });
-                    }
-
-                    @Override
-                    public void onError(Exception e) {
-                        runOnUiThread(() -> {
-                            activeMeaningCall = null;
-                            if (isFinishing() || isDestroyed()) return;
-                            if (title == null || !title.equals(currentTrackTitle)) return;
-                            if (aiStudioSummary != null) {
-                                CleanMarkdownFormatter.applyMarkdown(aiStudioSummary,
-                                        "Error: " + (e != null ? e.getMessage() : "Failed to analyze"), false);
-                            }
-                        });
+                        Toast.makeText(MainActivity.this, message != null ? message : getString(R.string.transliteration_failed), Toast.LENGTH_SHORT).show();
                     }
                 });
     }

@@ -76,8 +76,17 @@ public class AntigravityApiClientTest {
         assertEquals(1, parts.size());
         assertEquals("Hello world", parts.get(0).getAsJsonObject().get("text").getAsString());
 
-        // tools should NOT be present when enableWebSearch is false
-        assertFalse(req.has("tools"));
+        // Lyric tools are always injected; web_search/web_fetch only when enabled.
+        assertTrue("Request should always contain tools", req.has("tools"));
+        JsonArray tools = req.getAsJsonArray("tools");
+        assertEquals(1, tools.size());
+        JsonArray decls = tools.get(0).getAsJsonObject().getAsJsonArray("functionDeclarations");
+        assertNotNull(decls);
+        for (JsonElement decl : decls) {
+            String name = decl.getAsJsonObject().get("name").getAsString();
+            assertFalse("web_search/web_fetch must be absent when enableWebSearch is false",
+                    "web_search".equals(name) || "web_fetch".equals(name));
+        }
 
         // No maxOutputTokens artificial clamping
         assertFalse("Payload must NOT clamp maxOutputTokens", json.contains("maxOutputTokens"));

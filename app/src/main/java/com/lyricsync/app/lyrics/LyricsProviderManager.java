@@ -15,7 +15,6 @@ import com.lyricsync.app.lyrics.util.TrackMetadataSanitizer;
 import com.lyricsync.app.util.AppLog;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -47,10 +46,12 @@ public class LyricsProviderManager {
         } catch (Throwable ignored) {}
         this.mainHandler = looper != null ? new android.os.Handler(looper) : null;
 
-        // Prioritize fast, high-coverage SYLLABLE providers first!
+        // SpicyLyrics first: it serves the highest-quality word-by-word (syllable)
+        // lyrics through the official API. The rest are fallbacks for tracks it
+        // cannot answer, and the loop below stops as soon as a SYLLABLE result lands.
+        providers.add(new SpicyLyricsProvider(context));
         providers.add(new KugouLyricsProvider());
         providers.add(new NeteaseLyricsProvider());
-        providers.add(new SpicyLyricsProvider(context));
         providers.add(new SpotifyColorLyricsProvider(context));
         providers.add(new LRCLIBProvider());
     }
@@ -97,14 +98,20 @@ public class LyricsProviderManager {
             inFlightRequests.put(fetchKey, list);
         }
 
-        executor.execute(() -> {
-            try {
-                performFetch(track, targetProvider, fetchKey);
-            } catch (Throwable t) {
-                AppLog.e(TAG, "Unexpected error in fetchLyrics", t);
-                dispatchError(fetchKey, "Fetch failed: " + t.getMessage());
-            }
-        });
+        try {
+            executor.execute(() -> {
+                try {
+                    performFetch(track, targetProvider, fetchKey);
+                } catch (Throwable t) {
+                    AppLog.e(TAG, "Unexpected error in fetchLyrics", t);
+                    dispatchError(fetchKey, "Fetch failed: " + t.getMessage());
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // Executor already shut down: never leave the caller waiting or leak the entry.
+            AppLog.w(TAG, "Lyrics fetch rejected (executor shut down)");
+            dispatchError(fetchKey, "Fetch rejected: " + e.getMessage());
+        }
     }
 
     public static boolean isSyllableTarget(String target) {

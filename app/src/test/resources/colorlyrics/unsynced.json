@@ -1,0 +1,24 @@
+{
+  "lyrics": {
+    "syncType": "UNSYNCED",
+    "provider": "Musixmatch",
+    "language": "en",
+    "lines": [
+      {
+        "startTimeMs": "0",
+        "words": "line one",
+        "syllables": []
+      },
+      {
+        "startTimeMs": "0",
+        "words": "line two",
+        "syllables": []
+      },
+      {
+        "startTimeMs": "0",
+        "words": "line three",
+        "syllables": []
+      }
+    ]
+  }
+}

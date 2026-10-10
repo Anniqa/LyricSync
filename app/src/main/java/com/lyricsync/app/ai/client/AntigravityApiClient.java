@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -212,11 +213,8 @@ public class AntigravityApiClient {
         public String thoughtSignature;
         public final List<String> webSearchQueries = new ArrayList<>();
         public FunctionCall functionCall;
-        public final List<FunctionCall> functionCalls = new ArrayList<>();
         public int promptTokens = 0;
         public int candidateTokens = 0;
-        public int totalTokens = 0;
-        public String finishReason;
         public String errorMessage;
     }
 
@@ -402,7 +400,7 @@ public class AntigravityApiClient {
                 // Normalize role: null -> "user", "assistant" -> "model"
                 String role = "user";
                 if (msg.role != null && !msg.role.trim().isEmpty()) {
-                    String trimmedRole = msg.role.trim().toLowerCase();
+                    String trimmedRole = msg.role.trim().toLowerCase(Locale.ROOT);
                     if ("assistant".equals(trimmedRole)) {
                         role = "model";
                     } else {
@@ -465,7 +463,7 @@ public class AntigravityApiClient {
             JsonObject generationConfig = new JsonObject();
             JsonObject thinkingConfig = new JsonObject();
             thinkingConfig.addProperty("includeThoughts", false);
-            thinkingConfig.addProperty("thinkingLevel", effortLevel.trim().toLowerCase());
+            thinkingConfig.addProperty("thinkingLevel", effortLevel.trim().toLowerCase(Locale.ROOT));
             generationConfig.add("thinkingConfig", thinkingConfig);
             request.add("generationConfig", generationConfig);
         }
@@ -589,7 +587,6 @@ public class AntigravityApiClient {
                                     if (thoughtSig == null) thoughtSig = result.thoughtSignature;
                                     if (name != null && !name.trim().isEmpty()) {
                                         FunctionCall fc = new FunctionCall(name.trim(), args, callId, thoughtSig, part);
-                                        result.functionCalls.add(fc);
                                         if (result.functionCall == null) {
                                             result.functionCall = fc;
                                         }
@@ -598,11 +595,6 @@ public class AntigravityApiClient {
                                 }
                             }
                         }
-                    }
-
-                    // Finish reason
-                    if (cand.has("finishReason") && !cand.get("finishReason").isJsonNull() && cand.get("finishReason").isJsonPrimitive()) {
-                        result.finishReason = cand.get("finishReason").getAsString();
                     }
 
                     // Candidate groundingMetadata
@@ -655,12 +647,6 @@ public class AntigravityApiClient {
                     hasMeaningfulData = true;
                 }
 
-                // Total tokens
-                if (usage.has("totalTokenCount") && !usage.get("totalTokenCount").isJsonNull() && usage.get("totalTokenCount").isJsonPrimitive()) {
-                    result.totalTokens = usage.get("totalTokenCount").getAsInt();
-                } else if (usage.has("totalTokens") && !usage.get("totalTokens").isJsonNull() && usage.get("totalTokens").isJsonPrimitive()) {
-                    result.totalTokens = usage.get("totalTokens").getAsInt();
-                }
             }
 
             return hasMeaningfulData ? result : null;
@@ -993,63 +979,70 @@ public class AntigravityApiClient {
         final String toolName = functionCall.getName();
         final JsonObject toolArgs = functionCall.getArgs();
 
-        String queryOrUrl = "";
-        if ("web_search".equals(toolName)) {
-            queryOrUrl = toolArgs.has("query") && !toolArgs.get("query").isJsonNull()
-                    ? toolArgs.get("query").getAsString()
-                    : toolArgs.toString();
-        } else if ("web_fetch".equals(toolName)) {
-            queryOrUrl = toolArgs.has("url") && !toolArgs.get("url").isJsonNull()
-                    ? toolArgs.get("url").getAsString()
-                    : toolArgs.toString();
-        } else if ("translate_lyrics".equals(toolName)) {
-            queryOrUrl = toolArgs.has("target_language") && !toolArgs.get("target_language").isJsonNull()
-                    ? toolArgs.get("target_language").getAsString() : "id";
-        } else if ("transliterate_lyrics".equals(toolName)) {
-            queryOrUrl = toolArgs.has("mode") && !toolArgs.get("mode").isJsonNull()
-                    ? toolArgs.get("mode").getAsString() : "romaji";
-        } else if ("set_sync_offset".equals(toolName)) {
-            queryOrUrl = toolArgs.has("offset_ms") && !toolArgs.get("offset_ms").isJsonNull()
-                    ? toolArgs.get("offset_ms").getAsString() : "0";
-        } else if ("modify_lyric_line".equals(toolName)) {
-            queryOrUrl = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
-                    ? "Baris " + (toolArgs.get("line_index").getAsInt() + 1) : "Baris lirik";
-        } else if ("toggle_display".equals(toolName)) {
-            queryOrUrl = (toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull() ? toolArgs.get("feature").getAsString() : "")
-                    + " (" + (toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull() && toolArgs.get("enabled").getAsBoolean() ? "on" : "off") + ")";
-        } else if ("batch_edit_lyrics".equals(toolName)) {
-            int lineCount = 0;
-            if (toolArgs.has("lines") && toolArgs.get("lines").isJsonArray()) {
-                lineCount = toolArgs.getAsJsonArray("lines").size();
-            }
-            queryOrUrl = lineCount + " baris lirik";
-        } else if ("fetch_external_syllable_lyrics".equals(toolName)) {
-            String title = toolArgs.has("title") && !toolArgs.get("title").isJsonNull()
-                    ? toolArgs.get("title").getAsString() : "";
-            String artist = toolArgs.has("artist") && !toolArgs.get("artist").isJsonNull()
-                    ? toolArgs.get("artist").getAsString() : "";
-            queryOrUrl = (title + " - " + artist).trim();
-        } else if ("parse_and_apply_lyrics".equals(toolName)) {
-            String fmt = toolArgs.has("format") && !toolArgs.get("format").isJsonNull()
-                    ? toolArgs.get("format").getAsString() : "auto";
-            queryOrUrl = "format:" + fmt;
-        } else if ("control_playback".equals(toolName)) {
-            String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "playback";
-            if ("seek_to_line".equals(act) && toolArgs.has("line_index")) {
-                queryOrUrl = "Lompat ke baris " + (toolArgs.get("line_index").getAsInt() + 1);
+        String queryOrUrl;
+        try {
+            queryOrUrl = "";
+            if ("web_search".equals(toolName)) {
+                queryOrUrl = toolArgs.has("query") && !toolArgs.get("query").isJsonNull()
+                        ? toolArgs.get("query").getAsString()
+                        : toolArgs.toString();
+            } else if ("web_fetch".equals(toolName)) {
+                queryOrUrl = toolArgs.has("url") && !toolArgs.get("url").isJsonNull()
+                        ? toolArgs.get("url").getAsString()
+                        : toolArgs.toString();
+            } else if ("translate_lyrics".equals(toolName)) {
+                queryOrUrl = toolArgs.has("target_language") && !toolArgs.get("target_language").isJsonNull()
+                        ? toolArgs.get("target_language").getAsString() : "id";
+            } else if ("transliterate_lyrics".equals(toolName)) {
+                queryOrUrl = toolArgs.has("mode") && !toolArgs.get("mode").isJsonNull()
+                        ? toolArgs.get("mode").getAsString() : "romaji";
+            } else if ("set_sync_offset".equals(toolName)) {
+                queryOrUrl = toolArgs.has("offset_ms") && !toolArgs.get("offset_ms").isJsonNull()
+                        ? toolArgs.get("offset_ms").getAsString() : "0";
+            } else if ("modify_lyric_line".equals(toolName)) {
+                queryOrUrl = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
+                        ? "Baris " + (toolArgs.get("line_index").getAsInt() + 1) : "Baris lirik";
+            } else if ("toggle_display".equals(toolName)) {
+                queryOrUrl = (toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull() ? toolArgs.get("feature").getAsString() : "")
+                        + " (" + (toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull() && toolArgs.get("enabled").getAsBoolean() ? "on" : "off") + ")";
+            } else if ("batch_edit_lyrics".equals(toolName)) {
+                int lineCount = 0;
+                if (toolArgs.has("lines") && toolArgs.get("lines").isJsonArray()) {
+                    lineCount = toolArgs.getAsJsonArray("lines").size();
+                }
+                queryOrUrl = lineCount + " baris lirik";
+            } else if ("fetch_external_syllable_lyrics".equals(toolName)) {
+                String title = toolArgs.has("title") && !toolArgs.get("title").isJsonNull()
+                        ? toolArgs.get("title").getAsString() : "";
+                String artist = toolArgs.has("artist") && !toolArgs.get("artist").isJsonNull()
+                        ? toolArgs.get("artist").getAsString() : "";
+                queryOrUrl = (title + " - " + artist).trim();
+            } else if ("parse_and_apply_lyrics".equals(toolName)) {
+                String fmt = toolArgs.has("format") && !toolArgs.get("format").isJsonNull()
+                        ? toolArgs.get("format").getAsString() : "auto";
+                queryOrUrl = "format:" + fmt;
+            } else if ("control_playback".equals(toolName)) {
+                String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "playback";
+                if ("seek_to_line".equals(act) && toolArgs.has("line_index")) {
+                    queryOrUrl = "Lompat ke baris " + (toolArgs.get("line_index").getAsInt() + 1);
+                } else {
+                    queryOrUrl = act;
+                }
+            } else if ("adjust_overlay_appearance".equals(toolName)) {
+                queryOrUrl = "Tampilan overlay";
+            } else if ("manage_lyric_lines".equals(toolName)) {
+                String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "baris";
+                int idx = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull() ? toolArgs.get("line_index").getAsInt() + 1 : 0;
+                queryOrUrl = act + " baris " + idx;
+            } else if ("get_current_playing_track".equals(toolName)) {
+                queryOrUrl = "Status lagu aktif";
             } else {
-                queryOrUrl = act;
+                queryOrUrl = toolArgs.toString();
             }
-        } else if ("adjust_overlay_appearance".equals(toolName)) {
-            queryOrUrl = "Tampilan overlay";
-        } else if ("manage_lyric_lines".equals(toolName)) {
-            String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "baris";
-            int idx = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull() ? toolArgs.get("line_index").getAsInt() + 1 : 0;
-            queryOrUrl = act + " baris " + idx;
-        } else if ("get_current_playing_track".equals(toolName)) {
-            queryOrUrl = "Status lagu aktif";
-        } else {
-            queryOrUrl = toolArgs.toString();
+        } catch (Exception e) {
+            // Non-numeric/non-primitive tool arguments (e.g. "line_index":"3") must
+            // not abort the callback chain and leave the stream without a terminal event.
+            queryOrUrl = toolArgs != null ? toolArgs.toString() : "";
         }
 
         dispatchOnToolExecuting(listener, toolName, queryOrUrl);
@@ -1386,11 +1379,9 @@ public class AntigravityApiClient {
     private static void dispatchOnDelta(StreamListener listener, String delta) {
         if (listener != null) {
             try {
+                // onDelta() delegates to onChunk() by default, so calling only onDelta()
+                // delivers each delta exactly once whether the listener overrides either method.
                 listener.onDelta(delta);
-            } catch (Throwable ignored) {
-            }
-            try {
-                listener.onChunk(delta);
             } catch (Throwable ignored) {
             }
         }

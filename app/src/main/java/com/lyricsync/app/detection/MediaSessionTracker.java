@@ -49,6 +49,13 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     private HandlerThread pollThread;
     private Handler pollHandler;
     private volatile TrackInfo currentTrack;
+    // Guards the playback anchor group (currentState, currentPosition,
+    // lastPositionUpdateElapsed, positionInitialized, playbackSpeed). Those fields
+    // describe ONE playback sample; the main thread (MediaController callbacks) and the
+    // 16ms poll thread both write them, so readers must never observe a torn mix (e.g. a
+    // new position paired with a stale update-time). Keep the critical sections tiny:
+    // no callbacks, no logging, no blocking calls inside.
+    private final Object anchorLock = new Object();
     private volatile int currentState = PlaybackState.STATE_NONE;
     private volatile long currentPosition = 0;
     private volatile long lastPositionUpdateElapsed = 0;
@@ -230,9 +237,11 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
                 currentTrack = track;
 
                 if (changed && trackCallback != null) {
-                    currentPosition = 0;
-                    lastPositionUpdateElapsed = SystemClock.elapsedRealtime();
-                    positionInitialized = false;
+                    synchronized (anchorLock) {
+                        currentPosition = 0;
+                        lastPositionUpdateElapsed = SystemClock.elapsedRealtime();
+                        positionInitialized = false;
+                    }
                     AppLog.i(TAG, "Track: " + track.title + " - " + track.artist
                             + " [" + track.packageName + "] id=" + track.trackId);
                     mainHandler.post(() -> trackCallback.onTrackChanged(track));
@@ -248,8 +257,15 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
             updatePlaybackState(state);
 
             if (playbackCallback != null) {
-                long callbackPosition = getCurrentPosition();
-                mainHandler.post(() -> playbackCallback.onPlaybackStateChanged(currentState, callbackPosition));
+                // Snapshot state + position as one consistent sample under the lock, then
+                // post the values (the lambda would otherwise read the field off-thread).
+                int callbackState;
+                long callbackPosition;
+                synchronized (anchorLock) {
+                    callbackState = currentState;
+                    callbackPosition = getCurrentPosition();
+                }
+                mainHandler.post(() -> playbackCallback.onPlaybackStateChanged(callbackState, callbackPosition));
             }
         }
     }
@@ -298,61 +314,64 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     }
 
     private void updatePlaybackState(PlaybackState state) {
-        int previousState = currentState;
-        currentState = state.getState();
-        // Resuming from a pause/buffer stall: force a fresh time anchor so the elapsed
-        // timer does not include the stalled interval and make the position jump ahead.
-        boolean resumedPlaying = currentState == PlaybackState.STATE_PLAYING
-                && previousState != PlaybackState.STATE_PLAYING;
-        long newPosition = Math.max(0, state.getPosition());
-        long updateElapsed = state.getLastPositionUpdateTime();
-        long now = SystemClock.elapsedRealtime();
-        // MediaController.getPlaybackState() returns a cached snapshot that only changes
-        // when the player pushes a new one (~1s), while we poll every 16ms. We must not
-        // re-anchor on every identical re-read (that would freeze interpolation), only on
-        // genuine new samples.
-        //
-        // Trust the player-supplied update time only when it is a sane elapsedRealtime
-        // value AND recent (within the trust window). Some players report this in a
-        // different timebase or stamp it at load time; trusting a stale/mistimed value
-        // makes "now - updateElapsed" huge and the interpolated position races ahead.
-        boolean updateTimeUsable = updateElapsed > 0
-                && updateElapsed <= now
-                && (now - updateElapsed) <= UPDATE_TIME_TRUST_WINDOW_MS;
+        synchronized (anchorLock) {
+            int previousState = currentState;
+            currentState = state.getState();
+            // Resuming from a pause/buffer stall: force a fresh time anchor so the elapsed
+            // timer does not include the stalled interval and make the position jump ahead.
+            boolean resumedPlaying = currentState == PlaybackState.STATE_PLAYING
+                    && previousState != PlaybackState.STATE_PLAYING;
+            long newPosition = Math.max(0, state.getPosition());
+            long updateElapsed = state.getLastPositionUpdateTime();
+            long now = SystemClock.elapsedRealtime();
+            // MediaController.getPlaybackState() returns a cached snapshot that only changes
+            // when the player pushes a new one (~1s), while we poll every 16ms. We must not
+            // re-anchor on every identical re-read (that would freeze interpolation), only on
+            // genuine new samples.
+            //
+            // Trust the player-supplied update time only when it is a sane elapsedRealtime
+            // value AND recent (within the trust window). Some players report this in a
+            // different timebase or stamp it at load time; trusting a stale/mistimed value
+            // makes "now - updateElapsed" huge and the interpolated position races ahead.
+            boolean updateTimeUsable = updateElapsed > 0
+                    && updateElapsed <= now
+                    && (now - updateElapsed) <= UPDATE_TIME_TRUST_WINDOW_MS;
 
-        if (updateTimeUsable) {
-            lastPositionUpdateElapsed = updateElapsed;
-            currentPosition = newPosition;
-            positionInitialized = true;
-        } else {
-            // No usable timestamp. Decide whether this snapshot is a genuine new sample.
-            long projectedNow = projectedPosition(now);
-            long drift = Math.abs(newPosition - projectedNow);
-            boolean positionChanged = newPosition != currentPosition;
-            // Auto-resync: the reported (truth) position drifted from our projection
-            // beyond the threshold -> snap the anchor back to the real position. This
-            // corrects the "1-2s ahead" case on its own the moment the player pushes a
-            // fresh snapshot, without needing the user to replay the song.
-            boolean needsResync = positionInitialized
-                    && currentState == PlaybackState.STATE_PLAYING
-                    && drift > RESYNC_THRESHOLD_MS;
-
-            if (positionChanged || !positionInitialized || resumedPlaying || needsResync) {
-                lastPositionUpdateElapsed = now;
+            if (updateTimeUsable) {
+                lastPositionUpdateElapsed = updateElapsed;
                 currentPosition = newPosition;
                 positionInitialized = true;
+            } else {
+                // No usable timestamp. Decide whether this snapshot is a genuine new sample.
+                long projectedNow = projectedPosition(now);
+                long drift = Math.abs(newPosition - projectedNow);
+                boolean positionChanged = newPosition != currentPosition;
+                // Auto-resync: the reported (truth) position drifted from our projection
+                // beyond the threshold -> snap the anchor back to the real position. This
+                // corrects the "1-2s ahead" case on its own the moment the player pushes a
+                // fresh snapshot, without needing the user to replay the song.
+                boolean needsResync = positionInitialized
+                        && currentState == PlaybackState.STATE_PLAYING
+                        && drift > RESYNC_THRESHOLD_MS;
+
+                if (positionChanged || !positionInitialized || resumedPlaying || needsResync) {
+                    lastPositionUpdateElapsed = now;
+                    currentPosition = newPosition;
+                    positionInitialized = true;
+                }
+                // else: stale snapshot (same position, small drift) -> keep anchor so the
+                // already-running interpolation keeps advancing smoothly.
             }
-            // else: stale snapshot (same position, small drift) -> keep anchor so the
-            // already-running interpolation keeps advancing smoothly.
+            playbackSpeed = state.getPlaybackSpeed();
+            // Guard against players reporting garbage speeds (0 while playing, or absurdly
+            // large values) which would freeze or fling the interpolated position.
+            if (playbackSpeed <= 0 && currentState == PlaybackState.STATE_PLAYING) {
+                playbackSpeed = 1.0f;
+            }
+            if (playbackSpeed < 0f) playbackSpeed = 0f;
+            if (playbackSpeed > 4f) playbackSpeed = 4f;
+
         }
-        playbackSpeed = state.getPlaybackSpeed();
-        // Guard against players reporting garbage speeds (0 while playing, or absurdly
-        // large values) which would freeze or fling the interpolated position.
-        if (playbackSpeed <= 0 && currentState == PlaybackState.STATE_PLAYING) {
-            playbackSpeed = 1.0f;
-        }
-        if (playbackSpeed < 0f) playbackSpeed = 0f;
-        if (playbackSpeed > 4f) playbackSpeed = 4f;
     }
 
     private void startBurstPolling() {
@@ -413,11 +432,13 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
             currentController = null;
         }
         currentTrack = null;
-        currentState = PlaybackState.STATE_NONE;
-        currentPosition = 0;
-        lastPositionUpdateElapsed = 0;
-        positionInitialized = false;
-        trackDurationMs = 0;
+        synchronized (anchorLock) {
+            currentState = PlaybackState.STATE_NONE;
+            currentPosition = 0;
+            lastPositionUpdateElapsed = 0;
+            positionInitialized = false;
+            trackDurationMs = 0;
+        }
 
         if (trackCallback != null) {
             mainHandler.post(trackCallback::onTrackCleared);
@@ -425,9 +446,11 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     }
 
     public long getCurrentPosition() {
-        long pos = projectedPosition(SystemClock.elapsedRealtime());
-        long adjusted = pos - syncOffsetMs;
-        return adjusted < 0 ? 0 : adjusted;
+        synchronized (anchorLock) {
+            long pos = projectedPosition(SystemClock.elapsedRealtime());
+            long adjusted = pos - syncOffsetMs;
+            return adjusted < 0 ? 0 : adjusted;
+        }
     }
 
     /**
@@ -436,17 +459,19 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
      * drift away from the audio, and clamps to the track length.
      */
     private long projectedPosition(long nowElapsed) {
-        long pos = currentPosition;
-        if (currentState == PlaybackState.STATE_PLAYING) {
-            long elapsed = Math.max(0, nowElapsed - lastPositionUpdateElapsed);
-            // Cap how far we trust pure projection: past this we likely lost the anchor.
-            elapsed = Math.min(elapsed, MAX_EXTRAPOLATION_MS);
-            pos += (long) (elapsed * playbackSpeed);
+        synchronized (anchorLock) {
+            long pos = currentPosition;
+            if (currentState == PlaybackState.STATE_PLAYING) {
+                long elapsed = Math.max(0, nowElapsed - lastPositionUpdateElapsed);
+                // Cap how far we trust pure projection: past this we likely lost the anchor.
+                elapsed = Math.min(elapsed, MAX_EXTRAPOLATION_MS);
+                pos += (long) (elapsed * playbackSpeed);
+            }
+            if (pos < 0) pos = 0;
+            long dur = trackDurationMs;
+            if (dur > 0 && pos > dur) pos = dur;
+            return pos;
         }
-        if (pos < 0) pos = 0;
-        long dur = trackDurationMs;
-        if (dur > 0 && pos > dur) pos = dur;
-        return pos;
     }
 
     public void setSyncOffsetMs(long offsetMs) {
@@ -472,9 +497,11 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         if (dur > 0 && target > dur) target = dur;
         try {
             controller.getTransportControls().seekTo(target);
-            currentPosition = target;
-            lastPositionUpdateElapsed = SystemClock.elapsedRealtime();
-            positionInitialized = true;
+            synchronized (anchorLock) {
+                currentPosition = target;
+                lastPositionUpdateElapsed = SystemClock.elapsedRealtime();
+                positionInitialized = true;
+            }
         } catch (Exception e) {
             AppLog.w(TAG, "seekTo failed: " + e.getMessage());
         }
@@ -483,8 +510,12 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     public void togglePlayPause() {
         MediaController controller = currentController;
         if (controller == null) return;
+        boolean playing;
+        synchronized (anchorLock) {
+            playing = currentState == PlaybackState.STATE_PLAYING;
+        }
         try {
-            if (currentState == PlaybackState.STATE_PLAYING) {
+            if (playing) {
                 controller.getTransportControls().pause();
             } else {
                 controller.getTransportControls().play();
@@ -535,8 +566,10 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
     }
 
     public boolean isPlaying() {
-        return currentState == PlaybackState.STATE_PLAYING
-                || currentState == PlaybackState.STATE_BUFFERING;
+        synchronized (anchorLock) {
+            return currentState == PlaybackState.STATE_PLAYING
+                    || currentState == PlaybackState.STATE_BUFFERING;
+        }
     }
 
     private final MediaController.Callback controllerCallback = new MediaController.Callback() {

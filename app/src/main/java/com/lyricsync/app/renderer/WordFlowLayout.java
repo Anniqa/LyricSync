@@ -24,9 +24,12 @@ public class WordFlowLayout extends ViewGroup {
         setClipToPadding(false);
     }
 
-    public static class LayoutParams extends MarginLayoutParams {
-        public boolean isWordBoundary = true;
+    // Reused across layout passes so onLayout allocates nothing; the rows are rebuilt
+    // from scratch each pass, so clear() at the start is all the reset needed.
+    private final java.util.List<View> rowViews = new java.util.ArrayList<>();
+    private final java.util.List<Integer> rowLefts = new java.util.ArrayList<>();
 
+    public static class LayoutParams extends MarginLayoutParams {
         public LayoutParams(int width, int height) {
             super(width, height);
         }
@@ -102,8 +105,8 @@ public class WordFlowLayout extends ViewGroup {
         int left = getPaddingLeft();
         int top = getPaddingTop();
 
-        java.util.List<View> rowViews = new java.util.ArrayList<>();
-        java.util.List<Integer> rowLefts = new java.util.ArrayList<>();
+        rowViews.clear();
+        rowLefts.clear();
         int x = left;
         int rowHeight = 0;
         int maxBaseline = 0;

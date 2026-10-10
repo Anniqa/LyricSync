@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background_primary">
@@ -207,7 +208,7 @@
                             android:padding="2dp"
                             android:src="@drawable/ic_sparkles"
                             app:tint="@color/accent"
-                            android:contentDescription="AI Song Studio" />
+                            android:contentDescription="@string/ai_studio_title" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -721,7 +722,7 @@
                             android:id="@+id/font_size_label"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="100%"
+                            tools:text="100%"
                             android:textAppearance="@style/TextAppearance.LyricSync.Value" />
                     </LinearLayout>
 
@@ -775,7 +776,7 @@
                             android:id="@+id/overlay_width_label"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="88%"
+                            tools:text="88%"
                             android:textAppearance="@style/TextAppearance.LyricSync.Value" />
                     </LinearLayout>
 
@@ -808,7 +809,7 @@
                             android:id="@+id/overlay_height_label"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="36%"
+                            tools:text="36%"
                             android:textAppearance="@style/TextAppearance.LyricSync.Value" />
                     </LinearLayout>
 
@@ -968,7 +969,7 @@
                         android:id="@+id/sync_offset_label"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="0 ms"
+                        tools:text="0 ms"
                         android:textAppearance="@style/TextAppearance.LyricSync.Value"
                         android:textSize="18sp"
                         android:layout_marginTop="8dp"
@@ -1114,12 +1115,22 @@
                         android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/spotify_account_desc"
                         android:textAppearance="@style/TextAppearance.LyricSync.Hint"
                         android:layout_marginTop="2dp"
                         android:layout_marginBottom="14dp" />
+
+                    <!-- Spotify session -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/spotify_section_session"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
 
                     <!-- Disconnected state -->
                     <LinearLayout
@@ -1135,13 +1146,13 @@
                             android:text="@string/spotify_connect_button"
                             android:textSize="14sp"
                             android:textStyle="bold"
-                            android:backgroundTint="#1DB954"
-                            android:textColor="@color/white"
+                            android:backgroundTint="@color/accent"
+                            android:textColor="@color/black"
                             app:cornerRadius="14dp"
                             app:icon="@drawable/ic_music_note"
                             app:iconGravity="textStart"
                             app:iconPadding="8dp"
-                            app:iconTint="@color/white" />
+                            app:iconTint="@color/black" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -1172,7 +1183,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:text="@string/spotify_connected_status"
-                                android:textColor="#1DB954"
+                                android:textColor="@color/state_ok"
                                 android:textSize="13sp"
                                 android:textStyle="bold" />
 
@@ -1186,6 +1197,50 @@
                                 android:textSize="12sp" />
                         </LinearLayout>
                     </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="16dp"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/spicy_key_title"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/spicy_key_desc"
+                        android:textAppearance="@style/TextAppearance.LyricSync.Hint" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_spicy_key"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/spicy_key_button"
+                        android:textColor="@color/accent"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        app:cornerRadius="14dp" />
+
+                    <TextView
+                        android:id="@+id/tv_spicy_key_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/spicy_key_status_none"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -1316,7 +1371,7 @@
                                     android:layout_height="wrap_content"
                                     android:textColor="@color/accent"
                                     android:textSize="11sp"
-                                    android:text="100%" />
+                                    tools:text="100%" />
                             </LinearLayout>
 
                             <ProgressBar
@@ -1355,7 +1410,7 @@
                                     android:layout_height="wrap_content"
                                     android:textColor="@color/accent"
                                     android:textSize="11sp"
-                                    android:text="100%" />
+                                    tools:text="100%" />
                             </LinearLayout>
 
                             <ProgressBar

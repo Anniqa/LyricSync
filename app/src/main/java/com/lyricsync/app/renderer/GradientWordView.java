@@ -7,9 +7,10 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Shader;
 import android.util.TypedValue;
-import android.widget.TextView;
 
-public class GradientWordView extends TextView {
+import androidx.appcompat.widget.AppCompatTextView;
+
+public class GradientWordView extends AppCompatTextView {
     // SpicyLyrics: --gradient-alpha 0.85 (sung/bright), --gradient-alpha-end 0.35 (not-sung/dim)
     // bg-line: --gradient-alpha 0.6, --gradient-alpha-end 0.3 (dimmer, secondary)
     private static final float FADE_WIDTH = 0.20f;
@@ -130,6 +131,7 @@ public class GradientWordView extends TextView {
     private long[] letterStartTimes;
     private long[] letterEndTimes;
     private float[] letterProgress;
+    private float[] letterCenters;
     private Spring[] letterScaleSprings;
     private Spring[] letterGlowSprings;
 
@@ -189,6 +191,7 @@ public class GradientWordView extends TextView {
         if (!letterEmphasisEnabled) {
             letterCapable = false;
             letters = null;
+            letterCenters = null;
             letterScaleSprings = null;
             letterGlowSprings = null;
         }
@@ -203,10 +206,6 @@ public class GradientWordView extends TextView {
 
     public long getStartTime() {
         return startTime;
-    }
-
-    public long getEndTime() {
-        return endTime;
     }
 
     /** Index of this word within its line; the Wave variant uses it as ripple phase. */
@@ -271,14 +270,6 @@ public class GradientWordView extends TextView {
         cachedTextWidth = -1f;
     }
 
-    public void setCompactPadding(boolean compact) {
-        int horizontalPad = compact ? Math.max(1, Math.round(getPaint().getTextSize() * 0.02f))
-                : Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
-        int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.16f));
-        setPadding(horizontalPad, verticalPad, horizontalPad, verticalPad);
-        cachedTextWidth = -1f;
-    }
-
     public void initLetterEmphasis(String wordText, long wordStart, long wordEnd) {
         cachedTextWidth = -1f;
         if (wordText == null || wordText.isEmpty()) {
@@ -333,6 +324,7 @@ public class GradientWordView extends TextView {
         letterStartTimes = null;
         letterEndTimes = null;
         letterProgress = null;
+        letterCenters = null;
         letterScaleSprings = null;
         letterGlowSprings = null;
         letterScatter = null;
@@ -762,7 +754,9 @@ public class GradientWordView extends TextView {
         float dStop = p + FADE_WIDTH;
 
         int n = letters.length;
-        float[] centers = new float[n];
+        // Reused across frames; only (re)allocated when the letter count changes.
+        float[] centers = (letterCenters == null || letterCenters.length != n)
+                ? (letterCenters = new float[n]) : letterCenters;
         float cursor = startX;
         float denom = Math.max(1f, totalTextW);
         for (int i = 0; i < n; i++) {
@@ -1029,6 +1023,7 @@ public class GradientWordView extends TextView {
         isActive = false;
         letterCapable = false;
         letters = null;
+        letterCenters = null;
         letterScaleSprings = null;
         letterGlowSprings = null;
         letterProgress = null;

@@ -153,7 +153,9 @@ public final class AnimStyleChips {
         TextView name = new TextView(context);
         name.setText(def.displayName);
         name.setTextSize(10.5f);
-        name.setTextColor(COLOR_TEXT_DIM);
+        // Track the selection: styleChip() runs before the label exists, so the
+        // selected-state accent has to be applied here.
+        name.setTextColor(selected ? COLOR_ACCENT : COLOR_TEXT_DIM);
         name.setPadding(0, Math.round(5 * density), 0, 0);
         chip.addView(name);
 

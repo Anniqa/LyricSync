@@ -18,42 +18,30 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class SpicyLyricsProvider implements LyricsProvider {
     private static final String TAG = "SpicyLyrics";
-    private static final String API_URL = "https://api.spicylyrics.org/query";
-    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-    private static final String SPICY_VERSION = "6.3.12";
-    private static final String SPICY_ORIGIN = "https://xpui.app.spotify.com";
+    private static final String OFFICIAL_API_URL = "https://api.spicylyrics.org/v1/lyrics/";
+    /** User-supplied Spicy Lyrics client key (sl_pk_...), stored in the shared prefs. */
+    public static final String PREF_SPICY_CLIENT_KEY = "pref_spicy_client_key";
+    /**
+     * Publishable key shipped with the app so the official API works out of the box.
+     * A key pasted in Settings overrides this. Publishable keys are meant to live in
+     * client apps (that is what "publishable" means); rotate it in the dashboard if abused.
+     */
+    private static final String DEFAULT_CLIENT_KEY =
+            "sl_pk_KKPqmweywKoS6MWFkaru-nRLsZMDkpAu7WMvtnTfXis";
     private static final String SPICY_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Spotify/1.2.52.442";
-    private static final String EMBED_URL = "https://open.spotify.com/embed/track/";
-    private static final long EMBED_TOKEN_MAX_AGE_MS = 8 * 60 * 1000L;
-    private static final long MIN_REQUEST_INTERVAL_MS = 1500;
-    private static final int MAX_RETRIES = 2;
-    private static final long[] RETRY_DELAYS_MS = {1200, 2500};
 
     private final Context context;
     private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .build();
-    private volatile long lastRequestTime = 0;
-    private volatile String cachedEmbedToken = null;
-    private volatile long embedTokenFetchedAt = 0;
-
-    public void invalidateEmbedToken() {
-        cachedEmbedToken = null;
-        embedTokenFetchedAt = 0;
-        try {
-            SpotifyAuthManager.getInstance(context).invalidateToken();
-        } catch (Exception ignored) {}
-    }
 
     public SpicyLyricsProvider(Context context) {
         this.context = context;
@@ -74,229 +62,94 @@ public class SpicyLyricsProvider implements LyricsProvider {
             throw new IOException("No Spotify track ID available");
         }
 
-        String jsonBody = "{\"queries\":[{\"operation\":\"lyrics\",\"variables\":{\"id\":\""
-                + trackId + "\",\"auth\":\"SpicyLyrics-WebAuth\"}}],\"client\":{\"version\":\"" + SPICY_VERSION + "\"}}";
-
-        // Rate limiting: enforce minimum interval between requests
-        long now = System.currentTimeMillis();
-        long elapsed = now - lastRequestTime;
-        if (elapsed < MIN_REQUEST_INTERVAL_MS) {
-            Thread.sleep(MIN_REQUEST_INTERVAL_MS - elapsed);
-        }
-
-        // Retry with backoff on 429, server errors, or token failure
-        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            lastRequestTime = System.currentTimeMillis();
-            if (attempt > 0) {
-                invalidateEmbedToken();
-            }
-            String token = getCachedToken(trackId);
-
-            Request.Builder builder = new Request.Builder()
-                    .url(API_URL)
-                    .post(RequestBody.create(jsonBody, JSON))
-                    .header("Accept", "*/*")
-                    .header("Accept-Language", "en-US,en;q=0.9")
-                    .header("Content-Type", "application/json")
-                    .header("Origin", SPICY_ORIGIN)
-                    .header("Referer", SPICY_ORIGIN + "/")
-                    .header("Sec-Fetch-Dest", "empty")
-                    .header("Sec-Fetch-Mode", "cors")
-                    .header("Sec-Fetch-Site", "cross-site")
-                    .header("SpicyLyrics-Version", SPICY_VERSION)
-                    .header("X-mode", "2")
-                    .header("User-Agent", SPICY_USER_AGENT);
-
-            if (token != null) {
-                builder.header("SpicyLyrics-WebAuth", "Bearer " + token);
-            }
-            Request request = builder.build();
-
-            try (Response response = client.newCall(request).execute()) {
-                if (response.code() == 429) {
-                    invalidateEmbedToken();
-                    if (attempt < MAX_RETRIES) {
-                        long delay = RETRY_DELAYS_MS[attempt];
-                        AppLog.w(TAG, "Rate limited (429), retrying in " + delay + "ms (attempt " + (attempt + 1) + ")");
-                        Thread.sleep(delay);
-                        continue;
-                    }
-                    throw new IOException("HTTP 429 Too Many Requests (after " + MAX_RETRIES + " retries)");
-                }
-                if (!response.isSuccessful()) {
-                    invalidateEmbedToken();
-                    if (attempt < MAX_RETRIES && response.code() >= 500) {
-                        long delay = RETRY_DELAYS_MS[attempt];
-                        AppLog.w(TAG, "Server error (" + response.code() + "), retrying in " + delay + "ms");
-                        Thread.sleep(delay);
-                        continue;
-                    }
-                    throw new IOException("HTTP " + response.code());
-                }
-
-                if (response.body() == null) throw new IOException("Empty response body");
-                String body = response.body().string();
-                try {
-                    return parseResponse(body);
-                } catch (IOException e) {
-                    invalidateEmbedToken();
-                    if (attempt < MAX_RETRIES) {
-                        long delay = RETRY_DELAYS_MS[attempt];
-                        AppLog.w(TAG, "API error: " + e.getMessage() + ", retrying with fresh token in " + delay + "ms");
-                        Thread.sleep(delay);
-                        continue;
-                    }
-                    throw e;
-                }
-            }
-        }
-        throw new IOException("SpicyLyrics request failed");
+        // Official developer API (/v1/lyrics) — the supported route.
+        return fetchOfficialLyrics(trackId, getClientKey());
     }
 
-    private String getCachedToken(String trackId) {
+    /** The user's Spicy Lyrics client key, or null when not configured/invalid. */
+    private String getClientKey() {
         try {
-            SpotifyAuthManager authMgr = SpotifyAuthManager.getInstance(context);
-            String userToken = authMgr.getValidAccessTokenSync();
-            if (userToken != null && !userToken.trim().isEmpty()) {
-                return userToken.trim();
+            String stored = context.getSharedPreferences(SpotifyAuthManager.PREF_NAME, Context.MODE_PRIVATE)
+                    .getString(PREF_SPICY_CLIENT_KEY, null);
+            if (stored != null) {
+                String key = stored.trim();
+                if (key.matches("sl_(pk|sk)_[A-Za-z0-9_-]+")) return key;
             }
         } catch (Exception ignored) {}
-
-        if (cachedEmbedToken != null && (System.currentTimeMillis() - embedTokenFetchedAt) < EMBED_TOKEN_MAX_AGE_MS) {
-            return cachedEmbedToken;
-        }
-        return fetchEmbedToken(trackId);
+        return DEFAULT_CLIENT_KEY;
     }
 
-    private String fetchEmbedToken(String trackId) {
-        String target = (trackId != null && !trackId.isEmpty()) ? trackId : "4fouWK6XVHhzl78KzQ1UjL";
-        String token = tryFetchEmbedPage(target);
-        if (token != null) return token;
-        if (!target.equals("4fouWK6XVHhzl78KzQ1UjL")) {
-            return tryFetchEmbedPage("4fouWK6XVHhzl78KzQ1UjL");
+    /**
+     * Fetches lyrics from the official developer API:
+     * GET https://api.spicylyrics.org/v1/lyrics/{trackId}
+     * with `Authorization: Bearer sl_pk_...`. The response is {"Status":200,"Type":"object",
+     * "Body":{Type, Content|Lines, ...}} and Body has the same lyric shape we already parse.
+     */
+    private LyricsData fetchOfficialLyrics(String trackId, String clientKey) throws Exception {
+        Request request = new Request.Builder()
+                .url(OFFICIAL_API_URL + trackId)
+                .get()
+                .header("Authorization", "Bearer " + clientKey)
+                .header("Accept", "application/json")
+                .header("User-Agent", SPICY_USER_AGENT)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (response.body() == null) throw new IOException("Empty response body");
+            return parseOfficialResponse(response.body().string());
         }
-        return null;
     }
 
-    private String tryFetchEmbedPage(String trackId) {
+    /**
+     * Parses a /v1/lyrics response envelope. `Body` carries the same lyric shape the
+     * legacy route used, so the parsers below are shared. Package-private so a unit
+     * test can run it against a captured payload without any network.
+     */
+    static LyricsData parseOfficialResponse(String raw) throws IOException {
+        JsonObject envelope;
         try {
-            Request request = new Request.Builder()
-                    .url(EMBED_URL + trackId)
-                    .get()
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    .build();
-            try (Response response = client.newCall(request).execute()) {
-                if (!response.isSuccessful() || response.body() == null) return null;
-                String html = response.body().string();
-                int idx = html.indexOf("\"accessToken\":\"");
-                if (idx < 0) return null;
-                int start = idx + 15;
-                int end = html.indexOf("\"", start);
-                if (end < 0) return null;
-                String token = html.substring(start, end);
-                if (token.length() < 20) return null;
-                cachedEmbedToken = token;
-                embedTokenFetchedAt = System.currentTimeMillis();
-                AppLog.i(TAG, "Fetched Spotify embed token len=" + token.length() + " for track " + trackId);
-                return token;
-            }
+            envelope = JsonParser.parseString(raw).getAsJsonObject();
         } catch (Exception e) {
-            AppLog.w(TAG, "Failed to fetch embed token for " + trackId + ": " + e.getMessage());
-            return null;
+            throw new IOException("Spicy Lyrics invalid response");
         }
-    }
-
-    private LyricsData parseResponse(String body) throws Exception {
-        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
-        JsonArray queries = root.getAsJsonArray("queries");
-
-        if (queries == null || queries.isEmpty()) {
-            throw new IOException("No lyrics queries result");
-        }
-
-        JsonObject result = null;
-        for (JsonElement q : queries) {
-            JsonObject obj = q.getAsJsonObject();
-            if (obj.has("result")) {
-                JsonObject res = obj.getAsJsonObject("result");
-                if (res.has("data")) {
-                    JsonElement dataElem = res.get("data");
-                    if (dataElem.isJsonObject()) {
-                        result = dataElem.getAsJsonObject();
-                    } else if (dataElem.isJsonArray()) {
-                        try {
-                            JsonElement unpacked = SpicyLyricsObjPack.unpack(dataElem.getAsJsonArray());
-                            if (unpacked != null && unpacked.isJsonObject()) {
-                                result = unpacked.getAsJsonObject();
-                            }
-                        } catch (Exception e) {
-                            AppLog.e(TAG, "Failed to unpack SpicyLyrics SLObjPack data", e);
-                        }
-                    }
-                }
-                break;
+        int status = envelope.has("Status") && !envelope.get("Status").isJsonNull()
+                ? envelope.get("Status").getAsInt() : -1;
+        if (status != 200) {
+            String message = "";
+            if (envelope.has("Body") && envelope.get("Body").isJsonObject()) {
+                message = safeString(envelope.getAsJsonObject("Body"), "message", "error");
             }
+            throw new IOException("Spicy Lyrics HTTP " + status
+                    + (message.isEmpty() ? "" : ": " + message));
+        }
+        if (!envelope.has("Body") || !envelope.get("Body").isJsonObject()) {
+            throw new IOException("Spicy Lyrics: missing Body");
         }
 
-        if (result == null) {
-            throw new IOException("No lyrics data found");
-        }
-
-        // Check for error in response
-        if (result.has("error")) {
-            String err = safeString(result, "error");
-            if (!err.isEmpty() && !err.equals("None")) {
-                throw new IOException("API error: " + err);
-            }
-        }
-
+        JsonObject data = envelope.getAsJsonObject("Body");
         LyricsData lyrics = new LyricsData();
-        lyrics.provider = getName();
+        lyrics.provider = "SpicyLyrics";
 
-        String type = safeString(result, "Type", "type");
-
-        // Log response structure for debugging
-        StringBuilder resultKeys = new StringBuilder();
-        for (String k : result.keySet()) resultKeys.append(k).append(",");
-        AppLog.d(TAG, "Response keys: [" + resultKeys + "] Type=" + type);
-
-        // Infer type from structure if empty
-        if (type.isEmpty()) {
-            if (result.has("Content")) {
-                JsonArray content = result.getAsJsonArray("Content");
-                if (content != null && content.size() > 0) {
-                    JsonObject first = content.get(0).getAsJsonObject();
-                    if (first.has("Lead")) type = "Syllable";
-                    else if (first.has("Text") || first.has("text")) type = "Line";
-                    else type = "Line";
-                }
-            } else if (result.has("Lines")) {
-                type = "Static";
-            }
-            if (type.isEmpty()) type = "Static"; // ultimate fallback
-            AppLog.d(TAG, "Type was empty, inferred: " + type);
-        }
-
+        String type = safeString(data, "Type", "type");
         switch (type) {
             case "Syllable":
                 lyrics.type = LyricsData.Type.SYLLABLE;
-                parseSyllableLyrics(result, lyrics);
+                parseSyllableLyrics(data, lyrics);
                 break;
             case "Line":
                 lyrics.type = LyricsData.Type.LINE;
-                parseLineLyrics(result, lyrics);
+                parseLineLyrics(data, lyrics);
                 break;
-            case "Static":
             default:
                 lyrics.type = LyricsData.Type.STATIC;
-                parseStaticLyrics(result, lyrics);
+                parseStaticLyrics(data, lyrics);
                 break;
         }
-
+        AppLog.i(TAG, "Official API v1: Type=" + type + " lines=" + lyrics.lines.size());
         return lyrics;
     }
 
-    private void parseSyllableLyrics(JsonObject data, LyricsData lyrics) {
+    static void parseSyllableLyrics(JsonObject data, LyricsData lyrics) {
         JsonArray content = data.getAsJsonArray("Content");
         if (content == null) return;
 
@@ -390,7 +243,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
      * syllables are grouped into one Word until a syllable that is not part of a word
      * starts a new one. The merged, space-joined text is appended to {@code lineText}.
      */
-    private List<LyricsData.Word> buildWordsFromSyllables(JsonArray syllables, StringBuilder lineText) {
+    static List<LyricsData.Word> buildWordsFromSyllables(JsonArray syllables, StringBuilder lineText) {
         List<LyricsData.Word> words = new ArrayList<>();
         if (syllables == null) return words;
 
@@ -470,7 +323,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
         return words;
     }
 
-    private void parseLineLyrics(JsonObject data, LyricsData lyrics) {
+    static void parseLineLyrics(JsonObject data, LyricsData lyrics) {
         JsonArray content = data.getAsJsonArray("Content");
         if (content == null) content = data.getAsJsonArray("Lines");
         if (content == null) return;
@@ -517,7 +370,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
         AppLog.d(TAG, "Line lyrics: " + lyrics.lines.size() + " lines");
     }
 
-    private void parseStaticLyrics(JsonObject data, LyricsData lyrics) {
+    static void parseStaticLyrics(JsonObject data, LyricsData lyrics) {
         // SpicyLyrics API uses "Lines" for Static type, not "Content"
         JsonArray content = data.getAsJsonArray("Lines");
         if (content == null) content = data.getAsJsonArray("Content");
@@ -536,7 +389,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
         AppLog.d(TAG, "Static lyrics: " + lyrics.lines.size() + " lines");
     }
 
-    private long getTimeMs(JsonObject obj, String... keys) {
+    static long getTimeMs(JsonObject obj, String... keys) {
         for (String key : keys) {
             if (obj.has(key)) {
                 try {
@@ -587,7 +440,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
             }
         }
 
-        String isrcResolvedId = SpotifyTrackResolver.resolve(title, artist);
+        String isrcResolvedId = SpotifyTrackResolver.resolve(title, artist, track.duration);
         if (isrcResolvedId != null) {
             track.trackId = "spotify:track:" + isrcResolvedId;
             AppLog.i(TAG, "Resolved trackId via SpotifyTrackResolver: " + isrcResolvedId + " for " + title);

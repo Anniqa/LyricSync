@@ -318,7 +318,7 @@ public final class AnimStyleDef {
                     .build());
             MOTION = Collections.unmodifiableList(m);
 
-            NONE = new Builder("none", "Tanpa", Category.EFFECT).build();
+            NONE = new Builder("none", "None", Category.EFFECT).build();
             List<AnimStyleDef> e = new ArrayList<>();
             e.add(NONE);
             e.add(new Builder("glow", "Neon Glow", Category.EFFECT)

@@ -22,7 +22,6 @@
     <string name="overlay_stopped">Lyrics overlay stopped</string>
 
     <!-- Now playing -->
-    <string name="now_playing">Now Playing</string>
     <string name="nothing_playing">Nothing playing</string>
     <string name="nothing_playing_desc">Start a song in any music app</string>
 
@@ -34,7 +33,6 @@
     <string name="anim_motion_label">Motion</string>
     <string name="anim_effect_label">Visual Effect</string>
     <string name="overlay_dimensions_title">Overlay Dimensions</string>
-    <string name="overlay_size">Overlay size</string>
     <string name="overlay_width">Width</string>
     <string name="overlay_height">Height</string>
     <string name="overlay_resize_tip">Drag the handle at the bottom-right corner of the overlay to resize freely.</string>
@@ -60,23 +58,37 @@
 
     <!-- Spotify Account & Syllable Sync -->
     <string name="spotify_account_title">Spotify &amp; Syllable Sync</string>
-    <string name="spotify_account_desc">Unlock 100% stable word-by-word lyrics rate using your Spotify session (sp_dc cookie)</string>
-    <string name="spotify_connect_button">Connect Spotify Session (sp_dc)</string>
-    <string name="spotify_connected_status">Connected · 100% Syllable Rate Active</string>
-    <string name="spotify_disconnected_status">Anonymous Mode (Prone to SpicyLyrics 500 rate limits)</string>
+    <string name="spotify_account_desc">Connect your Spotify session for stable word-by-word lyrics.</string>
+    <string name="spotify_section_session">Spotify session</string>
+    <string name="spotify_connect_button">Connect Spotify</string>
+    <string name="spotify_connected_status">Connected · full syllable rate</string>
+    <string name="spotify_disconnected_status">Not connected</string>
     <string name="spotify_disconnect">Disconnect</string>
     <string name="spotify_cookie_dialog_title">Connect Spotify (sp_dc Cookie)</string>
-    <string name="spotify_cookie_dialog_msg">1. Open open.spotify.com in your browser\n2. DevTools -> Application -> Cookies -> copy sp_dc value\n3. Paste it below to enable 100% stable syllable lyrics:</string>
+    <string name="spotify_cookie_dialog_msg" formatted="false">1. Open open.spotify.com in your browser\n2. DevTools -> Application -> Cookies -> copy sp_dc value\n3. Paste it below to enable 100% stable syllable lyrics:</string>
     <string name="spotify_cookie_hint">Paste sp_dc cookie or raw access token…</string>
     <string name="spotify_cookie_save">Verify &amp; Save</string>
-    <string name="spotify_connected_toast">Spotify connected! 100% syllable lyrics rate active.</string>
+    <string name="spotify_connected_toast" formatted="false">Spotify connected! 100% syllable lyrics rate active.</string>
+
+    <!-- Spicy Lyrics official API key -->
+    <string name="spicy_key_title">Spicy Lyrics key</string>
+    <string name="spicy_key_desc">Paste your client key from developers.spicylyrics.org (sl_pk_…).</string>
+    <string name="spicy_key_button">Set key</string>
+    <string name="spicy_key_status_set">Your key · official API active</string>
+    <string name="spicy_key_status_none">Built-in key · official API active</string>
+    <string name="spicy_key_dialog_title">Spicy Lyrics Client Key</string>
+    <string name="spicy_key_dialog_msg">Paste your client key (sl_pk_…). Leave empty to remove it.</string>
+    <string name="spicy_key_hint">sl_pk_…</string>
+    <string name="spicy_key_save">Save</string>
+    <string name="spicy_key_saved_toast">Spicy Lyrics key saved</string>
+    <string name="spicy_key_removed_toast">Spicy Lyrics key removed</string>
+    <string name="spicy_key_invalid_toast">Invalid key (must start with sl_pk_ or sl_sk_)</string>
 
     <!-- Developer -->
     <string name="developer_title">Developer</string>
     <string name="logs">Logs</string>
     <string name="clear_logs">Clear logs</string>
     <string name="share_logs">Share logs</string>
-    <string name="logs_cleared">Logs cleared</string>
     <string name="share_logs_failed">Failed to share logs</string>
 
     <!-- Overlay -->
@@ -87,7 +99,6 @@
 
     <!-- Content descriptions -->
     <string name="cd_album_art">Album art</string>
-    <string name="cd_open">Open</string>
     <string name="cd_collapse">Collapse lyrics</string>
     <string name="cd_settings">Overlay settings</string>
     <string name="cd_close">Close overlay</string>
@@ -112,11 +123,8 @@
     <string name="ai_manual_token_title">Enter Refresh Token</string>
     <string name="ai_manual_token_hint">Paste your Antigravity refresh token here</string>
     <string name="ai_disconnect">Logout</string>
-    <string name="ai_model_label">AI Model</string>
-    <string name="ai_effort_label">Reasoning Effort</string>
     <string name="ai_quota_weekly">Weekly Quota</string>
     <string name="ai_quota_5h">5-Hour Quota</string>
-    <string name="ai_web_search_label">Google Web Search Grounding</string>
     <string name="ai_search_model_label">Search Grounding Model</string>
     <string name="ai_search_model_unified">Unified (Same as chat model)</string>
     <string name="ai_search_model_unified_sub">Everything handled by 1 model (%s)</string>
@@ -139,6 +147,7 @@
     <string name="ai_toggle_web_search">Toggle Web Search</string>
     <string name="ai_chat_open_fullscreen">Open AI Chat</string>
     <string name="cd_expand_chat">Expand chat</string>
+    <string name="cd_ai_chat_bubble">AI chat</string>
     <string name="cd_voice_input">Voice input</string>
     <string name="ai_voice_no_result">No speech recognized</string>
     <string name="ai_voice_error">Voice input unavailable</string>
@@ -150,24 +159,6 @@
     <string name="ai_tool_fetch_done">Article read</string>
     <string name="ai_web_sources_label">Web Sources</string>
     <string name="ai_no_track">Play a song to chat with AI.</string>
-    <string name="ai_prompt_meaning_title">Song Meaning &amp; Story</string>
-    <string name="ai_prompt_meaning_desc">Deep dive into themes and narrative</string>
-    <string name="ai_prompt_meaning_prompt">Explain the story, themes, and deeper meaning behind this song.</string>
-    <string name="ai_prompt_breakdown_title">Line-by-Line Breakdown</string>
-    <string name="ai_prompt_breakdown_desc">Analyze metaphors and poetic lyrics</string>
-    <string name="ai_prompt_breakdown_prompt">Break down the key lines and metaphors in these lyrics.</string>
-    <string name="ai_prompt_intent_title">Songwriter\'s Intent</string>
-    <string name="ai_prompt_intent_desc">Artist inspiration and backstory</string>
-    <string name="ai_prompt_intent_prompt">What inspired the artist to write this song and what was their intent?</string>
-    <string name="ai_prompt_mood_title">Emotional Tone &amp; Mood</string>
-    <string name="ai_prompt_mood_desc">Mood, vibe, and emotional resonance</string>
-    <string name="ai_prompt_mood_prompt">Analyze the emotional mood, tone, and feel of this song.</string>
-    <string name="ai_prompt_trivia_title">Trivia &amp; Context</string>
-    <string name="ai_prompt_trivia_desc">Behind-the-scenes facts and impact</string>
-    <string name="ai_prompt_trivia_prompt">Tell me interesting trivia, background facts, and cultural context about this song.</string>
-    <string name="ai_prompt_composition_title">Musical Composition</string>
-    <string name="ai_prompt_composition_desc">Chords, melody, and arrangement</string>
-    <string name="ai_prompt_composition_prompt">Analyze the musical structure, tempo, instrumentation, and composition of this song.</string>
     <string name="ai_thinking">Thinking…</string>
     <string name="ai_login_required">Please connect Google account in AI settings.</string>
     <string name="ai_web_search_active">AI Web Search enabled</string>
@@ -177,8 +168,6 @@
     <string name="ai_select_model">Select AI Model</string>
     <string name="ai_model_selector_desc">Choose the AI intelligence powering song analysis and chat</string>
     <string name="ai_model_gemini_flash_desc">Fast, versatile &amp; Google Search grounding</string>
-    <string name="ai_model_gemini_pro_desc">Deep reasoning &amp; complex lyric analysis</string>
-    <string name="ai_model_claude_desc">Anthropic model, nuanced poetic prose</string>
     <string name="ai_source_web">Web Source</string>
     <string name="action_change">Change</string>
     <string name="ai_btn_new_chat">New Chat</string>
@@ -191,7 +180,6 @@
     <string name="ai_history_clear_success">Chat history cleared</string>
     <string name="ai_history_delete_session">Delete</string>
     <string name="ai_new_chat_started">New chat started</string>
-    <string name="ai_new_chat_ready">New chat is ready</string>
     <string name="ai_history_restore">Restore Chat</string>
     <string name="ai_history_session_messages">%1$d messages</string>
     <string name="ai_history_deleted_one">Conversation deleted</string>
@@ -216,19 +204,26 @@
     <string name="toggle_transliteration">Transliteration</string>
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
-    <string name="romaji_enabled">Romaji enabled</string>
-    <string name="romaji_disabled">Romaji disabled</string>
 
     <!-- Lyric Retry & AI Retrieval -->
     <string name="btn_retry_standard">Retry</string>
     <string name="btn_retry_ai">Find with AI</string>
     <string name="ai_step_searching_syllable">Searching syllable lyrics (KRC / YRC / TTML)…</string>
-    <string name="ai_step_fetching_web">Querying provider databases…</string>
     <string name="ai_step_fallback_lrc">Syllable not found, searching line format (LRC)…</string>
     <string name="ai_step_web_search">Searching and synchronizing lyrics on the web with AI…</string>
-    <string name="ai_step_syncing">Syncing lyrics…</string>
     <string name="ai_error_not_found">No synced lyrics found for this version.</string>
-    <string name="ai_error_auth_required">AI authentication required. Open settings.</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_view_details">Details</string>
+
+    <!-- Account & settings feedback (localized) -->
+    <string name="settings_open_failed">Couldn\'t open that settings screen</string>
+    <string name="spotify_validating_session">Validating Spotify session…</string>
+    <string name="google_signin_opening">Opening browser for Google sign-in…</string>
+    <string name="google_signin_success">Signed in: %1$s</string>
+    <string name="google_signin_failed">Sign-in failed: %1$s</string>
+    <string name="google_signed_out">Signed out</string>
+    <string name="google_connected">Connected: %1$s</string>
+    <string name="google_connect_failed">Failed: %1$s</string>
+    <string name="ai_model_set">AI model set to: %1$s</string>
+    <string name="transliteration_failed">Transliteration failed</string>
 </resources>

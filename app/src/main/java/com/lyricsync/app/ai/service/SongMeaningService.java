@@ -16,6 +16,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -104,8 +105,8 @@ public class SongMeaningService {
      * Computes MD5 of lowercase trimmed artist + "_" + title.
      */
     public static String getCacheKey(String artist, String title) {
-        String a = artist != null ? artist.trim().toLowerCase() : "";
-        String t = title != null ? title.trim().toLowerCase() : "";
+        String a = artist != null ? artist.trim().toLowerCase(Locale.ROOT) : "";
+        String t = title != null ? title.trim().toLowerCase(Locale.ROOT) : "";
         String input = a + "_" + t;
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
@@ -134,7 +135,7 @@ public class SongMeaningService {
         }
 
         // 1. Strip case-insensitive ```json or ``` code fences
-        String lower = text.toLowerCase();
+        String lower = text.toLowerCase(Locale.ROOT);
         int startFence = lower.indexOf("```json");
         int fenceTagLen = 7;
         if (startFence == -1) {

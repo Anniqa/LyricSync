@@ -1,0 +1,20 @@
+{
+  "lyrics": {
+    "syncType": "LINE_SYNCED",
+    "provider": "Musixmatch",
+    "lines": [
+      {
+        "words": "alpha",
+        "syllables": []
+      },
+      {
+        "words": "beta",
+        "syllables": []
+      },
+      {
+        "words": "gamma",
+        "syllables": []
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -184,16 +185,20 @@ public class SongChatManager {
      * To explicitly start a new session, call {@link #startNewSession()}.
      */
     public synchronized void setCurrentSong(String title, String artist, String fullLyrics, SongMeaning meaning) {
+        boolean sameTrack = Objects.equals(this.title, title) && Objects.equals(this.artist, artist);
         this.title = title;
         this.artist = artist;
         if (fullLyrics != null && !fullLyrics.trim().isEmpty()) {
             this.fullLyrics = fullLyrics;
-        } else if (title == null) {
+        } else if (title == null || !sameTrack) {
+            // New track (or no track): drop the previous song's lyrics instead of
+            // leaking them into this song's AI context. Same-track refreshes (e.g. a
+            // late meaning result) intentionally keep already-loaded lyrics.
             this.fullLyrics = null;
         }
         if (meaning != null) {
             this.meaning = meaning;
-        } else if (title == null) {
+        } else if (title == null || !sameTrack) {
             this.meaning = null;
         }
     }

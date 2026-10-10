@@ -15,7 +15,7 @@
         android:layout_gravity="center"
         android:src="@drawable/ic_sparkles"
         app:tint="@color/accent"
-        android:contentDescription="AI Chat Bubble" />
+        android:contentDescription="@string/cd_ai_chat_bubble" />
 
     <View
         android:id="@+id/ai_bubble_badge"

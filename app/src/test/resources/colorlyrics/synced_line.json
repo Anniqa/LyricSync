@@ -1,0 +1,24 @@
+{
+  "lyrics": {
+    "syncType": "LINE_SYNCED",
+    "provider": "Musixmatch",
+    "language": "en",
+    "lines": [
+      {
+        "startTimeMs": "1000",
+        "words": "first line",
+        "syllables": []
+      },
+      {
+        "startTimeMs": "4000",
+        "words": "second line",
+        "syllables": []
+      },
+      {
+        "startTimeMs": "9000",
+        "words": "third line",
+        "syllables": []
+      }
+    ]
+  }
+}

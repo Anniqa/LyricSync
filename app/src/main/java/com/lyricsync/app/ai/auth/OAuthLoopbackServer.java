@@ -122,8 +122,29 @@ public class OAuthLoopbackServer {
             "</body>\n" +
             "</html>\n";
 
+    private static final String ERROR_HTML = "<!DOCTYPE html>\n" +
+            "<html lang=\"id\">\n" +
+            "<head>\n" +
+            "  <meta charset=\"UTF-8\">\n" +
+            "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+            "  <title>Login Gagal - LyricSync</title>\n" +
+            "  <style>\n" +
+            "    * { box-sizing: border-box; margin: 0; padding: 0; }\n" +
+            "    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }\n" +
+            "    .card { background: #161b22; border: 1px solid #30363d; border-radius: 20px; padding: 40px 32px; max-width: 440px; width: 100%; text-align: center; }\n" +
+            "    h1 { font-size: 24px; font-weight: 700; color: #ffffff; margin-bottom: 8px; }\n" +
+            "    p { font-size: 15px; line-height: 1.6; color: #c9d1d9; }\n" +
+            "  </style>\n" +
+            "</head>\n" +
+            "<body>\n" +
+            "  <div class=\"card\">\n" +
+            "    <h1>Login Gagal</h1>\n" +
+            "    <p>Otorisasi Antigravity AI tidak selesai. Silakan kembali ke aplikasi <strong>LyricSync</strong> dan coba lagi.<br><br><em>You can return to LyricSync.</em></p>\n" +
+            "  </div>\n" +
+            "</body>\n" +
+            "</html>\n";
+
     private ServerSocket serverSocket;
-    private Thread serverThread;
     private volatile boolean running = false;
 
     /**
@@ -134,26 +155,31 @@ public class OAuthLoopbackServer {
             return;
         }
 
+        ServerSocket newSocket = null;
         try {
-            serverSocket = new ServerSocket();
-            serverSocket.setReuseAddress(true);
-            serverSocket.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 1);
-            running = true;
+            newSocket = new ServerSocket();
+            newSocket.setReuseAddress(true);
+            newSocket.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 1);
         } catch (IOException e) {
+            closeQuietly(newSocket);
             if (callback != null) {
                 callback.onError(e);
             }
             return;
         }
 
-        serverThread = new Thread(new Runnable() {
+        final ServerSocket socket = newSocket;
+        serverSocket = socket;
+        running = true;
+
+        Thread thread = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    while (running && serverSocket != null && !serverSocket.isClosed()) {
+                    while (running && !socket.isClosed()) {
                         Socket clientSocket;
                         try {
-                            clientSocket = serverSocket.accept();
+                            clientSocket = socket.accept();
                             clientSocket.setSoTimeout(CLIENT_SOCKET_TIMEOUT_MS);
                         } catch (SocketException e) {
                             // Server socket closed intentionally
@@ -165,22 +191,22 @@ public class OAuthLoopbackServer {
                             break;
                         }
 
-                        handleClient(clientSocket, callback);
+                        handleClient(clientSocket, socket, callback);
                     }
                 } finally {
-                    stop();
+                    closeServerSocket(socket);
                 }
             }
         }, "OAuthLoopbackServer-Thread");
-        serverThread.setDaemon(true);
-        serverThread.start();
+        thread.setDaemon(true);
+        thread.start();
     }
 
     /**
      * Handles an incoming HTTP client request, draining headers to prevent TCP RST on mobile browsers
      * and ensuring proper socket cleanup.
      */
-    private void handleClient(Socket clientSocket, Callback callback) {
+    private void handleClient(Socket clientSocket, final ServerSocket boundSocket, Callback callback) {
         boolean shouldStop = false;
         try (Socket socket = clientSocket) {
             BufferedReader reader = new BufferedReader(
@@ -216,7 +242,7 @@ public class OAuthLoopbackServer {
                 String state = queryParams.get("state");
                 String error = queryParams.get("error");
 
-                sendHtmlResponse(socket, 200, SUCCESS_HTML);
+                sendHtmlResponse(socket, 200, authCode != null ? SUCCESS_HTML : ERROR_HTML);
                 shouldStop = true;
 
                 if (callback != null) {
@@ -239,7 +265,7 @@ public class OAuthLoopbackServer {
             }
         } finally {
             if (shouldStop) {
-                stop();
+                closeServerSocket(boundSocket);
             }
         }
     }
@@ -309,10 +335,27 @@ public class OAuthLoopbackServer {
      * Stops the loopback server and releases the socket.
      */
     public synchronized void stop() {
-        running = false;
-        if (serverSocket != null && !serverSocket.isClosed()) {
+        closeServerSocket(serverSocket);
+    }
+
+    /**
+     * Closes the given listener and, when it is still this instance's active one,
+     * marks the server stopped. Using the socket the caller owns (instead of the
+     * {@code serverSocket} field) keeps a finishing accept-thread from closing a
+     * socket that a later restart has already replaced.
+     */
+    private synchronized void closeServerSocket(ServerSocket socket) {
+        closeQuietly(socket);
+        if (socket != null && socket == serverSocket) {
+            serverSocket = null;
+            running = false;
+        }
+    }
+
+    private static void closeQuietly(ServerSocket socket) {
+        if (socket != null && !socket.isClosed()) {
             try {
-                serverSocket.close();
+                socket.close();
             } catch (IOException ignored) {}
         }
     }

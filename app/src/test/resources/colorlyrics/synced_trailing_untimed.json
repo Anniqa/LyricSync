@@ -1,0 +1,14 @@
+{
+  "lyrics": {
+    "syncType": "LINE_SYNCED",
+    "lines": [
+      {
+        "startTimeMs": "1000",
+        "words": "one"
+      },
+      {
+        "words": "two"
+      }
+    ]
+  }
+}

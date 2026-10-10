@@ -6,6 +6,4 @@
     <dimen name="card_gap">16dp</dimen>
     <dimen name="row_padding">14dp</dimen>
     <dimen name="pill_radius">100dp</dimen>
-    <dimen name="icon_button">36dp</dimen>
-    <dimen name="hero_height">150dp</dimen>
 </resources>

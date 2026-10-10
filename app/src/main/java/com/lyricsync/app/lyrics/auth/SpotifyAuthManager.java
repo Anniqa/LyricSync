@@ -7,7 +7,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lyricsync.app.util.AppLog;
 
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -15,8 +14,6 @@ import java.util.Locale;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
-import okhttp3.Call;
-import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -33,9 +30,6 @@ public class SpotifyAuthManager {
     public static final String PREF_TOKEN_TIME = "pref_spotify_token_time";
     public static final String PREF_USER_NAME = "pref_spotify_user_name";
 
-    public static final String FALLBACK_SP_DC =
-            "AQDRJHhFAKesAc4v71wZkSl1eJ4S7RnD2syxUSV70dgK4BCdfsSABhWfnsHSpX-7JzpvTxqYuWwBv_XqfYYDYndAakZpOrRSls8Maef64q52G_Vh5tpb9G8qjqkOJJke2ivCyCCRu_6ybuXR6sP1RytY__qCroQIOiCvven4pogiIdd03ZdmPoUIvZqkzLsfUdJ--HwdcATDTPtpVt0";
-
     private static final String TOKEN_API_BASE = "https://open.spotify.com/api/token";
     private static final String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36";
@@ -47,12 +41,23 @@ public class SpotifyAuthManager {
     private static final int DEFAULT_SECRET_VERSION = 61;
     private static volatile byte[] cachedSecret = FALLBACK_SECRET;
     private static volatile int cachedSecretVersion = DEFAULT_SECRET_VERSION;
-    private static volatile long secretCacheExpiry = 0;
 
     private static volatile SpotifyAuthManager instance;
     private final Context context;
     private final SharedPreferences prefs;
     private final OkHttpClient httpClient;
+
+    /** Held across a token refresh so concurrent callers share one sp_dc exchange. */
+    private final Object refreshLock = new Object();
+    /** Guards credential state: the token/time prefs pair and tokenGeneration. */
+    private final Object stateLock = new Object();
+    /**
+     * Bumped whenever persisted credentials are explicitly replaced or cleared
+     * (invalidateToken/logout/login). An exchange only persists the token it fetched
+     * if the generation it started with is still current, so a refresh that raced
+     * invalidation cannot resurrect the invalidated token.
+     */
+    private long tokenGeneration = 0L;
 
     public interface AuthCallback {
         void onSuccess(String accessToken, boolean isAnonymous);
@@ -98,20 +103,37 @@ public class SpotifyAuthManager {
         return s;
     }
 
+    /**
+     * The cleaned sp_dc the user saved, or null when no Spotify session is connected.
+     * There is no built-in fallback: a shared cookie is always rejected by Spotify (HTTP 401),
+     * so callers fall through to the anonymous web-player token instead.
+     */
     public String getEffectiveSpDc() {
         String spDc = prefs.getString(PREF_SP_DC, null);
-        if (spDc != null && !spDc.trim().isEmpty()) {
-            return cleanCookie(spDc);
+        if (spDc == null || spDc.trim().isEmpty()) {
+            return null;
         }
-        return FALLBACK_SP_DC;
+        return cleanCookie(spDc);
     }
 
+    /**
+     * True only when the user has actually connected a Spotify session
+     * (a saved sp_dc cookie or a pasted access token).
+     */
     public boolean isAuthenticated() {
-        return true;
+        String spDc = getStoredSpDc();
+        if (spDc != null && !cleanCookie(spDc).isEmpty()) {
+            return true;
+        }
+        String token = getStoredToken();
+        return token != null && !token.trim().isEmpty();
     }
 
     public void invalidateToken() {
-        prefs.edit().remove(PREF_ACCESS_TOKEN).remove(PREF_TOKEN_TIME).apply();
+        synchronized (stateLock) {
+            tokenGeneration++;
+            prefs.edit().remove(PREF_ACCESS_TOKEN).remove(PREF_TOKEN_TIME).apply();
+        }
         AppLog.i(TAG, "Invalidated Spotify access token, will refresh with sp_dc on next request");
     }
 
@@ -124,25 +146,57 @@ public class SpotifyAuthManager {
     }
 
     public String getValidAccessTokenSync() {
-        String token = prefs.getString(PREF_ACCESS_TOKEN, null);
-        long time = prefs.getLong(PREF_TOKEN_TIME, 0);
-        String spDc = getEffectiveSpDc();
-
-        if (spDc != null && !spDc.isEmpty()) {
-            if (token != null && (System.currentTimeMillis() - time) < TOKEN_VALIDITY_MS) {
-                return token;
+        synchronized (refreshLock) {
+            // Fast path: reuse a fresh token. The token/time pair is read atomically
+            // under stateLock so we never observe a mismatched snapshot.
+            String token;
+            synchronized (stateLock) {
+                token = prefs.getString(PREF_ACCESS_TOKEN, null);
+                long time = prefs.getLong(PREF_TOKEN_TIME, 0);
+                boolean fresh = token != null && !token.isEmpty()
+                        && (System.currentTimeMillis() - time) < TOKEN_VALIDITY_MS;
+                if (fresh) {
+                    return token;
+                }
             }
-            // Refresh token synchronously
-            String refreshed = exchangeSpDcSync(spDc);
-            if (refreshed != null && !refreshed.isEmpty()) {
-                return refreshed;
-            }
-        }
 
-        if (token != null && (System.currentTimeMillis() - time) < TOKEN_VALIDITY_MS) {
-            return token;
+            String spDc = getEffectiveSpDc();
+            if (spDc != null && !spDc.isEmpty()) {
+                // Refresh token synchronously from the user session. refreshLock makes
+                // concurrent callers wait here and then reuse the token just persisted,
+                // so only one exchange happens per stale token.
+                long epoch = currentGeneration();
+                String refreshed = exchangeSpDcSync(spDc, epoch);
+                if (refreshed != null && !refreshed.isEmpty()) {
+                    if (epoch == currentGeneration()) {
+                        return refreshed;
+                    }
+                    // invalidateToken() (or another credential change) ran while this
+                    // exchange was in flight: do not resurface the invalidated token.
+                    return null;
+                }
+            }
+
+            return token; // last resort: whatever we had, even if stale
         }
-        return null;
+    }
+
+    private long currentGeneration() {
+        synchronized (stateLock) {
+            return tokenGeneration;
+        }
+    }
+
+    private void persistTokenIfCurrent(String accessToken, long epoch) {
+        synchronized (stateLock) {
+            if (epoch != tokenGeneration) {
+                return;
+            }
+            prefs.edit()
+                    .putString(PREF_ACCESS_TOKEN, accessToken)
+                    .putLong(PREF_TOKEN_TIME, System.currentTimeMillis())
+                    .apply();
+        }
     }
 
     public static String generateTotp(long timeSeconds) {
@@ -176,21 +230,18 @@ public class SpotifyAuthManager {
         }
     }
 
-    private String buildTokenUrl() {
-        long nowSec = System.currentTimeMillis() / 1000L;
-        String totp = generateTotp(nowSec);
-        return TOKEN_API_BASE + "?reason=init&productType=web-player&totp="
-                + totp + "&totpVer=" + cachedSecretVersion + "&totpServer=" + totp;
-    }
-
     public String exchangeSpDcSync(String spDc) {
         if (spDc == null || spDc.trim().isEmpty()) return null;
-        String cleanDc = cleanCookie(spDc);
+        return exchangeSpDcSync(cleanCookie(spDc), currentGeneration());
+    }
+
+    private String exchangeSpDcSync(String cleanSpDc, long epoch) {
         long nowSec = System.currentTimeMillis() / 1000L;
         long[] offsets = new long[]{ 0, -30, 30 };
         for (long offset : offsets) {
-            String token = tryExchangeAtTime(cleanDc, nowSec + offset);
+            String token = tryExchangeAtTime(cleanSpDc, nowSec + offset);
             if (token != null && !token.isEmpty()) {
+                persistTokenIfCurrent(token, epoch);
                 return token;
             }
         }
@@ -221,10 +272,6 @@ public class SpotifyAuthManager {
                 if (root.has("accessToken") && !root.get("accessToken").isJsonNull()) {
                     String accessToken = root.get("accessToken").getAsString();
                     boolean isAnon = root.has("isAnonymous") && root.get("isAnonymous").getAsBoolean();
-                    prefs.edit()
-                            .putString(PREF_ACCESS_TOKEN, accessToken)
-                            .putLong(PREF_TOKEN_TIME, System.currentTimeMillis())
-                            .apply();
                     AppLog.i(TAG, "Exchanged sp_dc for accessToken len=" + accessToken.length() + " isAnon=" + isAnon);
                     return accessToken;
                 }
@@ -245,11 +292,14 @@ public class SpotifyAuthManager {
         new Thread(() -> {
             String token = exchangeSpDcSync(cleanSpDc);
             if (token != null && !token.isEmpty()) {
-                prefs.edit()
-                        .putString(PREF_SP_DC, cleanSpDc)
-                        .putString(PREF_ACCESS_TOKEN, token)
-                        .putLong(PREF_TOKEN_TIME, System.currentTimeMillis())
-                        .apply();
+                synchronized (stateLock) {
+                    tokenGeneration++;
+                    prefs.edit()
+                            .putString(PREF_SP_DC, cleanSpDc)
+                            .putString(PREF_ACCESS_TOKEN, token)
+                            .putLong(PREF_TOKEN_TIME, System.currentTimeMillis())
+                            .apply();
+                }
                 AppLog.i(TAG, "Successfully logged in with sp_dc, token len=" + token.length());
                 if (callback != null) callback.onSuccess(token, false);
             } else {
@@ -262,20 +312,26 @@ public class SpotifyAuthManager {
 
     public void loginWithRawToken(String token) {
         if (token == null || token.trim().isEmpty()) return;
-        prefs.edit()
-                .putString(PREF_ACCESS_TOKEN, token.trim())
-                .putLong(PREF_TOKEN_TIME, System.currentTimeMillis())
-                .remove(PREF_SP_DC)
-                .apply();
+        synchronized (stateLock) {
+            tokenGeneration++;
+            prefs.edit()
+                    .putString(PREF_ACCESS_TOKEN, token.trim())
+                    .putLong(PREF_TOKEN_TIME, System.currentTimeMillis())
+                    .remove(PREF_SP_DC)
+                    .apply();
+        }
     }
 
     public void logout() {
-        prefs.edit()
-                .remove(PREF_SP_DC)
-                .remove(PREF_ACCESS_TOKEN)
-                .remove(PREF_TOKEN_TIME)
-                .remove(PREF_USER_NAME)
-                .apply();
+        synchronized (stateLock) {
+            tokenGeneration++;
+            prefs.edit()
+                    .remove(PREF_SP_DC)
+                    .remove(PREF_ACCESS_TOKEN)
+                    .remove(PREF_TOKEN_TIME)
+                    .remove(PREF_USER_NAME)
+                    .apply();
+        }
         AppLog.i(TAG, "Spotify credentials cleared");
     }
 }

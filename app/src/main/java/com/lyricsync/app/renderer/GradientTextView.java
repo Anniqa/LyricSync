@@ -6,9 +6,10 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Shader;
 import android.util.AttributeSet;
-import android.widget.TextView;
 
-public class GradientTextView extends TextView {
+import androidx.appcompat.widget.AppCompatTextView;
+
+public class GradientTextView extends AppCompatTextView {
     private static final float MIN_PROGRESS_DELTA = 0.001f;
     private static final float FADE_WIDTH = 0.2f;
 
@@ -41,43 +42,65 @@ public class GradientTextView extends TextView {
         cachedWidth = -1f;
         lastShaderProgress = -1f;
         cachedShader = null;
+        ensureShader();
     }
 
     @Override
-    protected void onDraw(Canvas canvas) {
-        Paint paint = getPaint();
+    protected void onTextChanged(CharSequence text, int start, int lengthBefore, int lengthAfter) {
+        super.onTextChanged(text, start, lengthBefore, lengthAfter);
+        // measureText caches against the old string; the next draw rebuilds.
+        cachedWidth = -1f;
+        lastShaderProgress = -1f;
+        cachedShader = null;
+    }
 
+    /**
+     * Builds or refreshes the cached gradient shader. Kept out of onDraw so the draw
+     * pass never allocates; callers are the progress/size/text change points, and
+     * onDraw only falls back to it for the very first frame.
+     */
+    private void ensureShader() {
+        Paint paint = getPaint();
         if (cachedWidth < 0) {
             cachedWidth = paint.measureText(getText().toString());
         }
         float width = cachedWidth;
 
         float gradientProgress = Math.max(0f, Math.min(progress, 1f));
-
-        if (cachedShader == null || Math.abs(gradientProgress - lastShaderProgress) > MIN_PROGRESS_DELTA) {
-            // SpicyLyrics: gradient-position = -20% + 120% * progress.
-            // Bright (sung) edge at P, eased to dim over a +20% band.
-            float p = -0.20f + 1.20f * gradientProgress;
-            float dStop = p + FADE_WIDTH;
-
-            LinearGradient shader;
-            if (dStop <= 0f) {
-                shader = new LinearGradient(0, 0, width, 0, gradientColors[1], gradientColors[1], Shader.TileMode.CLAMP);
-            } else if (p >= 1f) {
-                shader = new LinearGradient(0, 0, width, 0, gradientColors[0], gradientColors[0], Shader.TileMode.CLAMP);
-            } else {
-                float b = Math.max(0f, p);
-                float d = Math.min(1f, dStop);
-                shader = new LinearGradient(0, 0, width, 0,
-                        new int[]{ gradientColors[0], gradientColors[1] },
-                        new float[]{ b, Math.max(b + 0.001f, d) },
-                        Shader.TileMode.CLAMP);
-            }
-            cachedShader = shader;
-            lastShaderProgress = gradientProgress;
+        if (cachedShader != null && Math.abs(gradientProgress - lastShaderProgress) <= MIN_PROGRESS_DELTA) {
+            return;
         }
 
+        // SpicyLyrics: gradient-position = -20% + 120% * progress.
+        // Bright (sung) edge at P, eased to dim over a +20% band.
+        float p = -0.20f + 1.20f * gradientProgress;
+        float dStop = p + FADE_WIDTH;
+
+        LinearGradient shader;
+        if (dStop <= 0f) {
+            shader = new LinearGradient(0, 0, width, 0, gradientColors[1], gradientColors[1], Shader.TileMode.CLAMP);
+        } else if (p >= 1f) {
+            shader = new LinearGradient(0, 0, width, 0, gradientColors[0], gradientColors[0], Shader.TileMode.CLAMP);
+        } else {
+            float b = Math.max(0f, p);
+            float d = Math.min(1f, dStop);
+            shader = new LinearGradient(0, 0, width, 0,
+                    new int[]{ gradientColors[0], gradientColors[1] },
+                    new float[]{ b, Math.max(b + 0.001f, d) },
+                    Shader.TileMode.CLAMP);
+        }
+        cachedShader = shader;
+        lastShaderProgress = gradientProgress;
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        Paint paint = getPaint();
+
+        ensureShader();
         paint.setShader(cachedShader);
+
+        float gradientProgress = Math.max(0f, Math.min(progress, 1f));
 
         // Subtle glow that peaks while the line is actively being sung (mid-progress),
         // giving the active line a soft radiance instead of a flat static shadow.
@@ -93,6 +116,7 @@ public class GradientTextView extends TextView {
         float normalized = Math.max(0f, Math.min(progress / 100f, 1f));
         if (Math.abs(normalized - this.progress) < MIN_PROGRESS_DELTA) return;
         this.progress = normalized;
+        ensureShader();
         postInvalidate();
     }
 }
