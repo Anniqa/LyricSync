@@ -397,18 +397,23 @@ public class SyllableHighlighter {
                 long wStart = dw.startTime + k * wordDur;
                 long wEnd = (k == units.size() - 1) ? dw.endTime : wStart + wordDur;
 
+                // Space-less scripts have no word gaps: keep their chunks flush so the
+                // line reads as continuous text instead of characters spread apart.
+                boolean joined = ScriptDetector.isNonLatin(tok);
+
                 GradientWordView wv = new GradientWordView(context);
                 wv.setAnimConfig(animConfig);
                 wv.setWordIndex(lv.wordViews.size());
                 wv.setText(tok);
                 wv.setTiming(wStart, wEnd);
+                wv.setJoinHorizontally(joined);
                 wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
                 wv.initLetterEmphasis(tok, wStart, wEnd);
 
                 WordFlowLayout.LayoutParams wlp = new WordFlowLayout.LayoutParams(
                         WordFlowLayout.LayoutParams.WRAP_CONTENT,
                         WordFlowLayout.LayoutParams.WRAP_CONTENT);
-                wlp.rightMargin = dpToPx(7);
+                wlp.rightMargin = joined ? 0 : dpToPx(7);
                 wv.setLayoutParams(wlp);
 
                 flow.addView(wv);

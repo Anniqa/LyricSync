@@ -128,6 +128,7 @@ public class GradientWordView extends AppCompatTextView {
     // Letter-level emphasis state
     private boolean letterCapable;
     private String[] letters;
+    private boolean joinHorizontally;
     private long[] letterStartTimes;
     private long[] letterEndTimes;
     private float[] letterProgress;
@@ -224,6 +225,25 @@ public class GradientWordView extends AppCompatTextView {
         dimColor = bg ? BG_COLOR_DIM : COLOR_DIM;
     }
 
+    /**
+     * Space-less scripts (Japanese, Chinese, Korean) are rendered as several word views per
+     * line so the line can wrap. The default per-view horizontal padding + the flow margin
+     * then show up as a gap between every pair of characters, which reads as broken
+     * spacing; joined views sit flush so the line looks like normal CJK text again.
+     */
+    public void setJoinHorizontally(boolean join) {
+        if (joinHorizontally == join) return;
+        joinHorizontally = join;
+        applyHorizontalPadding();
+    }
+
+    private void applyHorizontalPadding() {
+        int horizontalPad = joinHorizontally
+                ? 0 : Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
+        setPadding(horizontalPad, getPaddingTop(), horizontalPad, getPaddingBottom());
+        cachedTextWidth = -1f;
+    }
+
     public void setWordStyle(float sizeSp, int color, android.graphics.Typeface typeface) {
         setTextColor(color);
         // Only touch text size / typeface / padding when they actually change, so a
@@ -255,9 +275,9 @@ public class GradientWordView extends AppCompatTextView {
             // Generous padding: word scale peaks (~1.10-1.14x) and letter pops draw
             // outside the raw text bounds, so give the glyph room before the parent's
             // (disabled) clipping ever matters. Prevents "cut off" letters.
-            int horizontalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.10f));
             int verticalPad = Math.max(2, Math.round(getPaint().getTextSize() * 0.16f));
-            setPadding(horizontalPad, verticalPad, horizontalPad, verticalPad);
+            setPadding(0, verticalPad, 0, verticalPad);
+            applyHorizontalPadding();
             appliedSizeSp = sizeSp;
             appliedTypeface = typeface;
             cachedTextWidth = -1f;
