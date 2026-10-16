@@ -207,16 +207,6 @@ public class AntigravityToolExecutor {
         this.httpClient = httpClient != null ? httpClient : createDefaultHttpClient();
     }
 
-    public void setProjectId(String projectId) {
-        if (projectId != null && !projectId.trim().isEmpty()) {
-            this.projectId = projectId.trim();
-        }
-    }
-
-    public String getProjectId() {
-        return projectId;
-    }
-
     private static OkHttpClient createDefaultHttpClient() {
         return new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -730,7 +720,7 @@ public class AntigravityToolExecutor {
      * Builds the JSON request payload matching the Google Antigravity Cloudcode PA protocol
      * with Google Search Grounding enabled via gemini-2.5-flash.
      */
-    public static String buildSearchPayload(String projectId, String query, int maxResults) {
+    public static String buildSearchPayload(String projectId, String query) {
         JsonObject root = new JsonObject();
         root.addProperty("project", (projectId != null && !projectId.trim().isEmpty()) ? projectId.trim() : DEFAULT_PROJECT);
         root.addProperty("model", getSearchModel());
@@ -1070,7 +1060,7 @@ public class AntigravityToolExecutor {
                                       final boolean isRetry) {
         if (handle.isCancelled()) return;
 
-        String payload = buildSearchPayload(projectId, query, maxResults);
+        String payload = buildSearchPayload(projectId, query);
         Request request;
         try {
             Request.Builder reqBuilder = new Request.Builder()

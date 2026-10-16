@@ -100,11 +100,6 @@ public class NeteaseLyricsProvider implements LyricsProvider {
         return bestLineLyrics;
     }
 
-    public LyricsData fetchLyricsByQuery(String queryString, long durationMs) throws Exception {
-        if (queryString == null || queryString.trim().isEmpty()) return null;
-        List<Long> songIds = searchSongIds(queryString.trim(), queryString.trim(), "", durationMs);
-        return fetchBestByIds(songIds);
-    }
 
     private static String urlEncode(String val) {
         if (val == null) return "";

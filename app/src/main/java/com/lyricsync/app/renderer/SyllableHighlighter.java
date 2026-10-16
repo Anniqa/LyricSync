@@ -645,7 +645,7 @@ public class SyllableHighlighter {
             if (lv.usePerWord && lv.wordViews != null) {
                 updatePerWordHighlight(lv, currentPosition, deltaTime, stateChanged, isActive, isPast);
             } else if (lv.gradientView != null) {
-                updatePerLineHighlight(lv, currentPosition, deltaTime, stateChanged, isActive, isPast);
+                updatePerLineHighlight(lv, currentPosition, stateChanged, isActive, isPast);
             }
             updateLineScale(lv, isActive, deltaTime);
 
@@ -829,7 +829,7 @@ public class SyllableHighlighter {
         }
     }
 
-    private void updatePerLineHighlight(LineView lv, long position, double deltaTime,
+    private void updatePerLineHighlight(LineView lv, long position,
                                          boolean stateChanged, boolean isActive, boolean isPast) {
         GradientTextView gv = lv.gradientView;
         if (isActive) {

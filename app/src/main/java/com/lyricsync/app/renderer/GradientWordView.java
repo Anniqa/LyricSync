@@ -429,10 +429,8 @@ public class GradientWordView extends AppCompatTextView {
         if (cachedTextWidth < 0) {
             cachedTextWidth = getPaint().measureText(text);
         }
-        float viewW = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
-
         if (letterCapable && letters != null && letterScaleSprings != null) {
-            drawLetterEmphasis(canvas, viewW);
+            drawLetterEmphasis(canvas);
         } else {
             drawWordGradient(canvas, text, glowAlpha);
         }
@@ -764,7 +762,7 @@ public class GradientWordView extends AppCompatTextView {
     // gradient across the whole word (same sweep math as drawWordGradient), so the bright
     // edge glides across letters instead of snapping per-letter. The active letter still
     // pops in scale/glow for emphasis.
-    private void drawLetterEmphasis(Canvas canvas, float viewW) {
+    private void drawLetterEmphasis(Canvas canvas) {
         float baseline = getBaseline();
         float totalTextW = cachedTextWidth;
         float startX = getPaddingLeft();

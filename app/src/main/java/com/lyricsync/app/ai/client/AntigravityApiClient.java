@@ -142,9 +142,6 @@ public class AntigravityApiClient {
         this.lyricActionDelegate = delegate;
     }
 
-    public LyricActionDelegate getLyricActionDelegate() {
-        return this.lyricActionDelegate;
-    }
 
     public interface CompletionCallback {
         void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens);
@@ -229,18 +226,6 @@ public class AntigravityApiClient {
         this.authManager = authManager;
         this.httpClient = httpClient != null ? httpClient : createDefaultHttpClient();
         this.toolExecutor = toolExecutor != null ? toolExecutor : new AntigravityToolExecutor(authManager, this.httpClient);
-    }
-
-    public void setToolExecutor(AntigravityToolExecutor toolExecutor) {
-        this.toolExecutor = toolExecutor;
-    }
-
-    public AntigravityToolExecutor getToolExecutor() {
-        return toolExecutor;
-    }
-
-    public AntigravityAuthManager getAuthManager() {
-        return authManager;
     }
 
     public boolean isAuthenticated() {

@@ -88,16 +88,6 @@ public class LRCLIBProvider implements LyricsProvider {
                 .trim();
     }
 
-    public LyricsData fetchLyricsByQuery(String query, long durationMs) throws Exception {
-        if (query == null || query.trim().isEmpty()) {
-            throw new IOException("Empty search query");
-        }
-        TrackInfo queryTrack = new TrackInfo();
-        queryTrack.title = query.trim();
-        queryTrack.artist = "";
-        queryTrack.duration = durationMs;
-        return fetchLyrics(queryTrack);
-    }
 
     private JsonArray executeSearch(String url) throws IOException {
         Request request = new Request.Builder()

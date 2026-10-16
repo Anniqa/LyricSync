@@ -377,7 +377,7 @@ public class AntigravityToolExecutorTest {
 
     @Test
     public void testBuildSearchPayloadStructure() {
-        String payload = AntigravityToolExecutor.buildSearchPayload("custom-project-123", "Queen Bohemian Rhapsody meaning", 5);
+        String payload = AntigravityToolExecutor.buildSearchPayload("custom-project-123", "Queen Bohemian Rhapsody meaning");
         assertNotNull(payload);
 
         JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
@@ -412,7 +412,7 @@ public class AntigravityToolExecutorTest {
 
     @Test
     public void testBuildSearchPayloadDefaultProjectId() {
-        String payload = AntigravityToolExecutor.buildSearchPayload(null, "Queen song facts", 3);
+        String payload = AntigravityToolExecutor.buildSearchPayload(null, "Queen song facts");
         JsonObject root = JsonParser.parseString(payload).getAsJsonObject();
         assertEquals("aicode-consumers", root.get("project").getAsString());
         assertEquals(AntigravityToolExecutor.SEARCH_MODEL, root.get("model").getAsString());

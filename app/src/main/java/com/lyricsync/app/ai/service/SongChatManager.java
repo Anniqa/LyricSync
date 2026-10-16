@@ -3,7 +3,6 @@ package com.lyricsync.app.ai.service;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
-import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -81,7 +80,6 @@ public class SongChatManager {
     private volatile String title;
     private volatile String artist;
     private volatile String fullLyrics;
-    private volatile SongMeaning meaning;
     private volatile long currentSessionId = 0;
     private volatile AntigravityApiClient.Cancellable activeCall;
 
@@ -104,9 +102,6 @@ public class SongChatManager {
         this.historyManager = historyManager;
     }
 
-    public AiChatHistoryManager getHistoryManager() {
-        return this.historyManager;
-    }
 
     public synchronized String getActiveSessionId() {
         return activeSessionUuid;
@@ -184,7 +179,7 @@ public class SongChatManager {
      * while the conversation history and active session UUID remain intact.
      * To explicitly start a new session, call {@link #startNewSession()}.
      */
-    public synchronized void setCurrentSong(String title, String artist, String fullLyrics, SongMeaning meaning) {
+    public synchronized void setCurrentSong(String title, String artist, String fullLyrics) {
         boolean sameTrack = Objects.equals(this.title, title) && Objects.equals(this.artist, artist);
         this.title = title;
         this.artist = artist;
@@ -192,14 +187,8 @@ public class SongChatManager {
             this.fullLyrics = fullLyrics;
         } else if (title == null || !sameTrack) {
             // New track (or no track): drop the previous song's lyrics instead of
-            // leaking them into this song's AI context. Same-track refreshes (e.g. a
-            // late meaning result) intentionally keep already-loaded lyrics.
+            // leaking them into this song's AI context.
             this.fullLyrics = null;
-        }
-        if (meaning != null) {
-            this.meaning = meaning;
-        } else if (title == null || !sameTrack) {
-            this.meaning = null;
         }
     }
 
@@ -241,10 +230,6 @@ public class SongChatManager {
         this.fullLyrics = fullLyrics;
     }
 
-    public SongMeaning getMeaning() {
-        return meaning;
-    }
-
     public String getModelId() {
         return modelId;
     }
@@ -262,9 +247,6 @@ public class SongChatManager {
         return buildSongContext(false);
     }
 
-    public String getAppLanguage() {
-        return appLanguage;
-    }
 
     public void setAppLanguage(String lang) {
         this.appLanguage = (lang != null && (lang.equalsIgnoreCase("id") || lang.equalsIgnoreCase("in"))) ? "id" : "en";
@@ -291,22 +273,6 @@ public class SongChatManager {
         }
         if (artist != null && !artist.trim().isEmpty()) {
             sb.append(isIndo ? "Artis: " : "Artist: ").append(artist.trim()).append("\n");
-        }
-        if (meaning != null) {
-            if (meaning.mood != null && !meaning.mood.trim().isEmpty()) {
-                sb.append(isIndo ? "Nuansa / Mood: " : "Mood: ").append(meaning.mood.trim()).append("\n");
-            }
-            if (meaning.summary != null && !meaning.summary.trim().isEmpty()) {
-                sb.append(isIndo ? "Ringkasan Makna: " : "Meaning Summary: ").append(meaning.summary.trim()).append("\n");
-            }
-            if (meaning.webSources != null && !meaning.webSources.isEmpty()) {
-                sb.append(isIndo ? "Sumber Rujukan: " : "Grounding Sources: ");
-                for (int i = 0; i < meaning.webSources.size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(meaning.webSources.get(i));
-                }
-                sb.append("\n");
-            }
         }
         if (fullLyrics != null && !fullLyrics.trim().isEmpty()) {
             sb.append(isIndo ? "Lirik:\n" : "Lyrics:\n").append(fullLyrics.trim()).append("\n");

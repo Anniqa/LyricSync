@@ -52,7 +52,6 @@ import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
-import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.util.AiStreamingAnimator;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
@@ -204,7 +203,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
     // AI Insights UI & Subsystems
     private ImageView overlayAiButton;
-    private TextView overlayMoodBadge;
 
     // Secondary Window: Floating AI Chat
     private FrameLayout aiChatContainer;
@@ -216,7 +214,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     private ImageView aiMinimizeButton;
     private ImageView aiCloseButton;
     private ImageView aiWebSearchChip;
-    private TextView aiMoodBadge;
     private ScrollView aiChatEmptyState;
     private LinearLayout aiPromptTemplatesContainer;
     private HorizontalScrollView aiWebSourcesScroll;
@@ -597,7 +594,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         setupSyncOffsetUi();
 
         overlayAiButton = overlayView.findViewById(R.id.overlay_ai_button);
-        overlayMoodBadge = overlayView.findViewById(R.id.overlay_mood_badge);
         if (overlayAiButton != null) {
             overlayAiButton.setOnClickListener(v -> {
                 Haptics.tick(v);
@@ -606,12 +602,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 } else {
                     showAiChatOverlay();
                 }
-            });
-        }
-        if (overlayMoodBadge != null) {
-            overlayMoodBadge.setOnClickListener(v -> {
-                Haptics.tick(v);
-                showAiChatOverlay();
             });
         }
 
@@ -1092,18 +1082,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 songChatManager.setAppLanguage(LocaleHelper.getLanguage(this));
             }
         }
-        if (songChatManager != null && songChatManager.getMeaning() != null) {
-            SongMeaning existing = songChatManager.getMeaning();
-            if (existing.mood != null && !existing.mood.trim().isEmpty()) {
-                if (aiMoodBadge != null) {
-                    aiMoodBadge.setText(existing.mood.trim());
-                    aiMoodBadge.setVisibility(View.VISIBLE);
-                }
-            }
-            if (existing.webSources != null && !existing.webSources.isEmpty()) {
-                displayWebSources(existing.webSources);
-            }
-        }
         boolean hasHistory = songChatManager != null && !songChatManager.getHistory().isEmpty();
         if (aiChatEmptyState != null) {
             aiChatEmptyState.setVisibility(hasHistory ? View.GONE : View.VISIBLE);
@@ -1140,7 +1118,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         aiMinimizeButton = aiChatView.findViewById(R.id.ai_minimize_button);
         aiCloseButton = aiChatView.findViewById(R.id.ai_close_button);
         aiWebSearchChip = aiChatView.findViewById(R.id.ai_web_search_chip);
-        aiMoodBadge = aiChatView.findViewById(R.id.ai_mood_badge);
         aiChatEmptyState = aiChatView.findViewById(R.id.ai_chat_empty_state);
         aiPromptTemplatesContainer = aiChatView.findViewById(R.id.ai_prompt_templates_container);
         aiWebSourcesScroll = aiChatView.findViewById(R.id.ai_web_sources_scroll);
@@ -1711,19 +1688,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 });
     }
 
-    public void toggleRomaji() {
-        if (overlayRomajiSwitch != null) {
-            overlayRomajiSwitch.toggle();
-        } else if (highlighter != null) {
-            boolean newState = !highlighter.isTransliterationEnabled();
-            highlighter.setTransliterationEnabled(newState);
-            sharedPrefs.edit().putBoolean("pref_romaji_enabled", newState).apply();
-            String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
-                    ? overlayTransliterationLabel.getText().toString()
-                    : getString(R.string.toggle_latin_transliteration);
-            Toast.makeText(this, labelName + (newState ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
-        }
-    }
 
     /**
      * Reports the track the overlay is following right now, for the AI tools. The router
@@ -1885,29 +1849,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
     }
 
-    public void applyLyrics(LyricsData lyrics,
-                                AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (lyrics == null || lyrics.isEmpty()) {
-            if (callback != null) callback.onError("Lirik kosong atau tidak valid");
-            return;
-        }
-
-        currentLyrics = lyrics;
-        lyricsStatusText = describeLyrics(lyrics);
-        if (currentTrack != null) {
-            updateTrackInfo(currentTrack);
-            if (lyricsCacheManager != null) {
-                lyricsCacheManager.cache(currentTrack, lyrics);
-            }
-        }
-        renderOverlayLyrics(lyrics);
-        setupAiPromptTemplates();
-        publishNowPlaying();
-        updateSongChatLyrics(lyrics);
-        if (callback != null) {
-            callback.onSuccess("Lirik (" + lyrics.type + ", " + lyrics.lines.size() + " baris) berhasil diterapkan ke overlay pemutar.");
-        }
-    }
 
     public void controlPlayback(String action, int lineIndex, long positionMs,
                                     AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
@@ -3242,9 +3183,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
     }
 
-    public int getRetryState() {
-        return currentRetryState;
-    }
 
     // ── Lyrics ─────────────────────────────────────────────────────────────
 
@@ -3267,13 +3205,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             activeTransliterationCall = null;
         }
         if (songChatManager != null && track != null) {
-            songChatManager.setCurrentSong(track.title, track.artist, "", null);
-        }
-        if (aiMoodBadge != null) {
-            aiMoodBadge.setVisibility(View.GONE);
-        }
-        if (overlayMoodBadge != null) {
-            overlayMoodBadge.setVisibility(View.GONE);
+            songChatManager.setCurrentSong(track.title, track.artist, "");
         }
         if (aiWebSourcesContainer != null) {
             aiWebSourcesContainer.removeAllViews();
@@ -3335,7 +3267,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                                 }
                             }
                         }
-                        songChatManager.setCurrentSong(track.title, track.artist, sb.toString().trim(), null);
+                        songChatManager.setCurrentSong(track.title, track.artist, sb.toString().trim());
                     }
                 });
             }
@@ -3618,8 +3550,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         clearLyricsOnly();
         Anim.setTextAnimated(overlayTitle, getString(R.string.no_music));
         Anim.setTextAnimated(overlayArtist, "");
-        if (overlayMoodBadge != null) overlayMoodBadge.setVisibility(View.GONE);
-        if (aiMoodBadge != null) aiMoodBadge.setVisibility(View.GONE);
         if (aiChatTitle != null) aiChatTitle.setText(R.string.ai_insights_title);
         if (aiChatArtist != null) aiChatArtist.setText("");
         if (aiChatMessages != null) aiChatMessages.removeAllViews();

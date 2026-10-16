@@ -47,7 +47,7 @@ public class SongChatManagerTest {
     @Test
     public void testSetCurrentSongUpdatesContextAndPreservesSession() {
         String originalSession = chatManager.getActiveSessionId();
-        chatManager.setCurrentSong("Bohemian Rhapsody", "Queen", "Is this the real life?", null);
+        chatManager.setCurrentSong("Bohemian Rhapsody", "Queen", "Is this the real life?");
 
         assertEquals("Bohemian Rhapsody", chatManager.getTitle());
         assertEquals("Queen", chatManager.getArtist());
@@ -57,7 +57,7 @@ public class SongChatManagerTest {
 
     @Test
     public void testStartNewSession() {
-        chatManager.setCurrentSong("Song A", "Artist A", "Lyrics A", null);
+        chatManager.setCurrentSong("Song A", "Artist A", "Lyrics A");
         String oldSession = chatManager.getActiveSessionId();
 
         chatManager.startNewSession();
@@ -70,7 +70,7 @@ public class SongChatManagerTest {
 
     @Test
     public void testSetCurrentSongPreservesHistoryAcrossSongs() {
-        chatManager.setCurrentSong("Song A", "Artist A", "Lyrics A", null);
+        chatManager.setCurrentSong("Song A", "Artist A", "Lyrics A");
         String session = chatManager.getActiveSessionId();
 
         AiChatHistoryManager.ChatSession saved = new AiChatHistoryManager.ChatSession(
@@ -80,7 +80,7 @@ public class SongChatManagerTest {
         assertEquals(1, chatManager.getHistory().size());
 
         // Song changes to Song B
-        chatManager.setCurrentSong("Song B", "Artist B", "Lyrics B", null);
+        chatManager.setCurrentSong("Song B", "Artist B", "Lyrics B");
 
         // Session and history remain intact
         assertEquals(session, chatManager.getActiveSessionId());
@@ -134,7 +134,7 @@ public class SongChatManagerTest {
 
     @Test
     public void testCreateSessionSnapshot() {
-        chatManager.setCurrentSong("Yesterday", "Beatles", "Yesterday, all my troubles...", null);
+        chatManager.setCurrentSong("Yesterday", "Beatles", "Yesterday, all my troubles...");
         AiChatHistoryManager.ChatSession snapshot = chatManager.createSessionSnapshot();
 
         assertNotNull(snapshot);
@@ -146,7 +146,7 @@ public class SongChatManagerTest {
 
     @Test
     public void testBuildMessagesToSendSanitization() {
-        chatManager.setCurrentSong("Song", "Artist", "Lyrics", null);
+        chatManager.setCurrentSong("Song", "Artist", "Lyrics");
         List<AiChatMessage> messages = chatManager.buildMessagesToSend();
 
         // Must have system context user message + model acknowledgment

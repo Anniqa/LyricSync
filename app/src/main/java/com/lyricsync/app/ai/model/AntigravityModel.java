@@ -4,6 +4,9 @@ import java.util.Objects;
 
 /**
  * Represents an AI model discovered dynamically from Google Antigravity Cloudcode PA.
+ *
+ * <p>Plain public fields: every reader in this app already reads them directly, so a
+ * getter/setter layer would only be a second way to say the same thing.
  */
 public class AntigravityModel {
 
@@ -13,55 +16,12 @@ public class AntigravityModel {
     public boolean supportsThinking;
     public boolean isInternal;
 
-    public AntigravityModel() {
-    }
-
     public AntigravityModel(String id, String displayName, int maxOutputTokens, boolean supportsThinking, boolean isInternal) {
         this.id = id;
         this.displayName = displayName;
         this.maxOutputTokens = maxOutputTokens;
         this.supportsThinking = supportsThinking;
         this.isInternal = isInternal;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
-    }
-
-    public int getMaxOutputTokens() {
-        return maxOutputTokens;
-    }
-
-    public void setMaxOutputTokens(int maxOutputTokens) {
-        this.maxOutputTokens = maxOutputTokens;
-    }
-
-    public boolean isSupportsThinking() {
-        return supportsThinking;
-    }
-
-    public void setSupportsThinking(boolean supportsThinking) {
-        this.supportsThinking = supportsThinking;
-    }
-
-    public boolean isInternal() {
-        return isInternal;
-    }
-
-    public void setInternal(boolean internal) {
-        isInternal = internal;
     }
 
     @Override
