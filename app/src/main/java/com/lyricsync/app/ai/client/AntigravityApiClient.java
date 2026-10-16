@@ -10,8 +10,8 @@ import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor.SourceItem;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor.ToolCallback;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor.ToolResult;
-import com.lyricsync.app.lyrics.model.LyricsData;
-import com.lyricsync.app.lyrics.model.SyllableLyricsParser;
+import com.lyricsync.app.ai.tools.ToolArgs;
+import com.lyricsync.app.ai.util.ApiErrors;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -115,12 +115,6 @@ public class AntigravityApiClient {
             callback.onSuccess(edits.size() + " baris berhasil diperbarui.");
         }
         void toggleDisplay(String feature, boolean enabled, ActionCallback callback);
-        default void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) {
-            if (callback != null) callback.onError("fetchSyllableLyrics belum didukung");
-        }
-        default void applyLyrics(LyricsData lyrics, ActionCallback callback) {
-            if (callback != null) callback.onError("applyLyrics belum didukung");
-        }
         default void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback) {
             if (callback != null) callback.onError("controlPlayback belum didukung");
         }
@@ -346,17 +340,6 @@ public class AntigravityApiClient {
                 + "\"description\":\"Membuat terjemahan, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus.\","
                 + "\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"lines\":{\"type\":\"ARRAY\",\"description\":\"Daftar baris lirik yang diedit/diterjemahkan.\",\"items\":{\"type\":\"OBJECT\",\"properties\":{\"line_index\":{\"type\":\"INTEGER\",\"description\":\"Indeks baris lirik (mulai dari 0).\"},\"translation\":{\"type\":\"STRING\",\"description\":\"Terjemahan baru untuk baris tersebut.\"},\"text\":{\"type\":\"STRING\",\"description\":\"Teks lirik baru (opsional).\"},\"romanji\":{\"type\":\"STRING\",\"description\":\"Bacaan romaji baru (opsional).\"}},\"required\":[\"line_index\"]}}},\"required\":[\"lines\"]}}"
         ).getAsJsonObject());
-        declarations.add(makeTool("fetch_external_syllable_lyrics",
-                "Mencari dan mengambil lirik suku kata (syllable/karaoke YRC/KRC) dari provider internet dan langsung menerapkannya ke overlay. Panduan rate suku kata tertinggi: untuk lagu Jepang/Anime/K-Pop gunakan provider 'kugou' atau 'netease' (rate syllable tertinggi); untuk lagu Barat/English gunakan 'spotify' atau 'netease'; gunakan 'all' untuk pencarian otomatis terbaik. Catatan: jangan gunakan 'lrclib' jika butuh suku kata.",
-                new String[]{"title", "artist"},
-                "title", "STRING", "Judul lagu.",
-                "artist", "STRING", "Nama penyanyi / artis.",
-                "provider", "STRING", "Provider tujuan: 'all' (default), 'kugou' (terbaik untuk anime/J-Pop/K-Pop/Asia), 'netease' (YRC Barat/Asia), atau 'spotify' (word-by-word Barat)."));
-        declarations.add(makeTool("parse_and_apply_lyrics",
-                "Mem-parsing teks lirik mentah dalam berbagai format suku kata (YRC/KRC/TTML/ELRC/LRC) dan langsung menerapkannya ke overlay lirik.",
-                new String[]{"raw_lyrics", "format"},
-                "raw_lyrics", "STRING", "Konten mentah lirik (format YRC, KRC, TTML, ELRC, atau LRC).",
-                "format", "STRING", "Format lirik: 'yrc', 'krc', 'ttml', 'elrc', 'lrc', atau 'auto'."));
         declarations.add(makeTool("control_playback",
                 "Mengontrol pemutaran musik di pemutar pengguna (lompat ke baris lirik tertentu/seek to line, lompat ke milidetik tertentu, jeda/pause, putar/play, lagu berikutnya/sebelumnya).",
                 new String[]{"action"},
@@ -528,7 +511,7 @@ public class AntigravityApiClient {
                 JsonElement errorElem = resp.has("error") ? resp.get("error") : root.get("error");
                 SseChunkResult errResult = new SseChunkResult();
                 if (errorElem.isJsonObject()) {
-                    errResult.errorMessage = parseErrorMessage(errorElem.toString(), "In-band stream error");
+                    errResult.errorMessage = ApiErrors.message(errorElem.toString(), "In-band stream error");
                 } else if (errorElem.isJsonPrimitive()) {
                     errResult.errorMessage = errorElem.getAsString();
                 } else {
@@ -851,7 +834,7 @@ public class AntigravityApiClient {
                             if (!response.isSuccessful()) {
                                 if (call.isCanceled() || handle.isCancelled()) return;
                                 String errString = responseBody.string();
-                                String parsedMsg = parseErrorMessage(errString, "HTTP " + response.code() + ": " + response.message());
+                                String parsedMsg = ApiErrors.message(errString, "HTTP " + response.code() + ": " + response.message());
                                 activeHandles.remove(handle);
                                 dispatchOnError(listener, new IOException("Antigravity API request failed: " + parsedMsg));
                                 return;
@@ -979,71 +962,7 @@ public class AntigravityApiClient {
         final String toolName = functionCall.getName();
         final JsonObject toolArgs = functionCall.getArgs();
 
-        String queryOrUrl;
-        try {
-            queryOrUrl = "";
-            if ("web_search".equals(toolName)) {
-                queryOrUrl = toolArgs.has("query") && !toolArgs.get("query").isJsonNull()
-                        ? toolArgs.get("query").getAsString()
-                        : toolArgs.toString();
-            } else if ("web_fetch".equals(toolName)) {
-                queryOrUrl = toolArgs.has("url") && !toolArgs.get("url").isJsonNull()
-                        ? toolArgs.get("url").getAsString()
-                        : toolArgs.toString();
-            } else if ("translate_lyrics".equals(toolName)) {
-                queryOrUrl = toolArgs.has("target_language") && !toolArgs.get("target_language").isJsonNull()
-                        ? toolArgs.get("target_language").getAsString() : "id";
-            } else if ("transliterate_lyrics".equals(toolName)) {
-                queryOrUrl = toolArgs.has("mode") && !toolArgs.get("mode").isJsonNull()
-                        ? toolArgs.get("mode").getAsString() : "romaji";
-            } else if ("set_sync_offset".equals(toolName)) {
-                queryOrUrl = toolArgs.has("offset_ms") && !toolArgs.get("offset_ms").isJsonNull()
-                        ? toolArgs.get("offset_ms").getAsString() : "0";
-            } else if ("modify_lyric_line".equals(toolName)) {
-                queryOrUrl = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
-                        ? "Baris " + (toolArgs.get("line_index").getAsInt() + 1) : "Baris lirik";
-            } else if ("toggle_display".equals(toolName)) {
-                queryOrUrl = (toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull() ? toolArgs.get("feature").getAsString() : "")
-                        + " (" + (toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull() && toolArgs.get("enabled").getAsBoolean() ? "on" : "off") + ")";
-            } else if ("batch_edit_lyrics".equals(toolName)) {
-                int lineCount = 0;
-                if (toolArgs.has("lines") && toolArgs.get("lines").isJsonArray()) {
-                    lineCount = toolArgs.getAsJsonArray("lines").size();
-                }
-                queryOrUrl = lineCount + " baris lirik";
-            } else if ("fetch_external_syllable_lyrics".equals(toolName)) {
-                String title = toolArgs.has("title") && !toolArgs.get("title").isJsonNull()
-                        ? toolArgs.get("title").getAsString() : "";
-                String artist = toolArgs.has("artist") && !toolArgs.get("artist").isJsonNull()
-                        ? toolArgs.get("artist").getAsString() : "";
-                queryOrUrl = (title + " - " + artist).trim();
-            } else if ("parse_and_apply_lyrics".equals(toolName)) {
-                String fmt = toolArgs.has("format") && !toolArgs.get("format").isJsonNull()
-                        ? toolArgs.get("format").getAsString() : "auto";
-                queryOrUrl = "format:" + fmt;
-            } else if ("control_playback".equals(toolName)) {
-                String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "playback";
-                if ("seek_to_line".equals(act) && toolArgs.has("line_index")) {
-                    queryOrUrl = "Lompat ke baris " + (toolArgs.get("line_index").getAsInt() + 1);
-                } else {
-                    queryOrUrl = act;
-                }
-            } else if ("adjust_overlay_appearance".equals(toolName)) {
-                queryOrUrl = "Tampilan overlay";
-            } else if ("manage_lyric_lines".equals(toolName)) {
-                String act = toolArgs.has("action") && !toolArgs.get("action").isJsonNull() ? toolArgs.get("action").getAsString() : "baris";
-                int idx = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull() ? toolArgs.get("line_index").getAsInt() + 1 : 0;
-                queryOrUrl = act + " baris " + idx;
-            } else if ("get_current_playing_track".equals(toolName)) {
-                queryOrUrl = "Status lagu aktif";
-            } else {
-                queryOrUrl = toolArgs.toString();
-            }
-        } catch (Exception e) {
-            // Non-numeric/non-primitive tool arguments (e.g. "line_index":"3") must
-            // not abort the callback chain and leave the stream without a terminal event.
-            queryOrUrl = toolArgs != null ? toolArgs.toString() : "";
-        }
+        String queryOrUrl = describeToolCall(toolName, toolArgs);
 
         dispatchOnToolExecuting(listener, toolName, queryOrUrl);
 
@@ -1175,135 +1094,74 @@ public class AntigravityApiClient {
         Cancellable toolCancellable = null;
         try {
             if ("web_search".equals(toolName)) {
-                String query = toolArgs.has("query") && !toolArgs.get("query").isJsonNull()
-                        ? toolArgs.get("query").getAsString()
-                        : "";
-                int maxResults = toolArgs.has("num_search_results") && !toolArgs.get("num_search_results").isJsonNull()
-                        ? toolArgs.get("num_search_results").getAsInt()
-                        : 5;
-                toolCancellable = executor.executeWebSearch(query, maxResults, callback);
+                toolCancellable = executor.executeWebSearch(
+                        ToolArgs.str(toolArgs, "query", ""),
+                        ToolArgs.intValue(toolArgs, "num_search_results", 5),
+                        callback);
             } else if ("web_fetch".equals(toolName)) {
-                String url = toolArgs.has("url") && !toolArgs.get("url").isJsonNull()
-                        ? toolArgs.get("url").getAsString()
-                        : "";
-                toolCancellable = executor.executeWebFetch(url, callback);
+                toolCancellable = executor.executeWebFetch(ToolArgs.str(toolArgs, "url", ""), callback);
             } else if (lyricActionDelegate == null) {
-                callback.onResult(new ToolResult(true, "LyricActionDelegate tidak tersedia", Collections.<SourceItem>emptyList()));
+                callback.onResult(ToolResult.error("LyricActionDelegate tidak tersedia"));
             } else if ("translate_lyrics".equals(toolName)) {
-                String targetLang = toolArgs.has("target_language") && !toolArgs.get("target_language").isJsonNull()
-                        ? toolArgs.get("target_language").getAsString() : "id";
-                lyricActionDelegate.translateLyrics(targetLang, wrapActionCallback(callback, "Gagal menerjemahkan"));
+                lyricActionDelegate.translateLyrics(
+                        ToolArgs.str(toolArgs, "target_language", "id"),
+                        wrapActionCallback(callback, "Gagal menerjemahkan"));
             } else if ("transliterate_lyrics".equals(toolName)) {
-                String mode = toolArgs.has("mode") && !toolArgs.get("mode").isJsonNull()
-                        ? toolArgs.get("mode").getAsString() : "romaji";
-                boolean showOriginal = true;
-                if (toolArgs.has("show_original_script") && !toolArgs.get("show_original_script").isJsonNull()) {
-                    showOriginal = toolArgs.get("show_original_script").getAsBoolean();
-                } else if ("pure_romaji".equalsIgnoreCase(mode)) {
-                    showOriginal = false;
-                }
-                lyricActionDelegate.transliterateLyrics(mode, showOriginal, wrapActionCallback(callback, "Gagal mentransliterasikan lirik"));
+                String mode = ToolArgs.str(toolArgs, "mode", "romaji");
+                // An explicit flag wins; otherwise "pure_romaji" is the mode that drops the original.
+                boolean showOriginal = has(toolArgs, "show_original_script")
+                        ? ToolArgs.bool(toolArgs, "show_original_script", true)
+                        : !"pure_romaji".equalsIgnoreCase(mode);
+                lyricActionDelegate.transliterateLyrics(mode, showOriginal,
+                        wrapActionCallback(callback, "Gagal mentransliterasikan lirik"));
             } else if ("set_sync_offset".equals(toolName)) {
-                int offsetMs = toolArgs.has("offset_ms") && !toolArgs.get("offset_ms").isJsonNull()
-                        ? toolArgs.get("offset_ms").getAsInt() : 0;
-                lyricActionDelegate.setSyncOffset(offsetMs, wrapActionCallback(callback, "Gagal mengatur offset"));
+                lyricActionDelegate.setSyncOffset(
+                        ToolArgs.intValue(toolArgs, "offset_ms", 0),
+                        wrapActionCallback(callback, "Gagal mengatur offset"));
             } else if ("modify_lyric_line".equals(toolName)) {
-                int lineIndex = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
-                        ? toolArgs.get("line_index").getAsInt() : -1;
-                String text = toolArgs.has("text") && !toolArgs.get("text").isJsonNull()
-                        ? toolArgs.get("text").getAsString() : null;
-                String translation = toolArgs.has("translation") && !toolArgs.get("translation").isJsonNull()
-                        ? toolArgs.get("translation").getAsString() : null;
-                String romanji = toolArgs.has("romanji") && !toolArgs.get("romanji").isJsonNull()
-                        ? toolArgs.get("romanji").getAsString() : null;
-                lyricActionDelegate.modifyLine(lineIndex, text, translation, romanji, wrapActionCallback(callback, "Gagal mengubah baris"));
+                lyricActionDelegate.modifyLine(
+                        ToolArgs.intValue(toolArgs, "line_index", -1),
+                        ToolArgs.str(toolArgs, "text", null),
+                        ToolArgs.str(toolArgs, "translation", null),
+                        ToolArgs.str(toolArgs, "romanji", null),
+                        wrapActionCallback(callback, "Gagal mengubah baris"));
             } else if ("batch_edit_lyrics".equals(toolName)) {
-                List<LyricActionDelegate.LineEdit> edits = new ArrayList<>();
-                if (toolArgs.has("lines") && toolArgs.get("lines").isJsonArray()) {
-                    JsonArray arr = toolArgs.getAsJsonArray("lines");
-                    for (JsonElement el : arr) {
-                        if (!el.isJsonObject()) continue;
-                        JsonObject o = el.getAsJsonObject();
-                        int idx = o.has("line_index") && !o.get("line_index").isJsonNull() ? o.get("line_index").getAsInt() : -1;
-                        if (idx < 0) continue;
-                        String t = o.has("text") && !o.get("text").isJsonNull() ? o.get("text").getAsString() : null;
-                        String tr = o.has("translation") && !o.get("translation").isJsonNull() ? o.get("translation").getAsString() : null;
-                        String r = o.has("romanji") && !o.get("romanji").isJsonNull() ? o.get("romanji").getAsString() : null;
-                        edits.add(new LyricActionDelegate.LineEdit(idx, t, tr, r));
-                    }
-                }
-                lyricActionDelegate.batchEditLyrics(edits, wrapActionCallback(callback, "Gagal mengedit banyak baris"));
+                lyricActionDelegate.batchEditLyrics(lineEdits(toolArgs),
+                        wrapActionCallback(callback, "Gagal mengedit banyak baris"));
             } else if ("toggle_display".equals(toolName)) {
-                String feature = toolArgs.has("feature") && !toolArgs.get("feature").isJsonNull()
-                        ? toolArgs.get("feature").getAsString() : "";
-                boolean enabled = toolArgs.has("enabled") && !toolArgs.get("enabled").isJsonNull()
-                        && toolArgs.get("enabled").getAsBoolean();
-                lyricActionDelegate.toggleDisplay(feature, enabled, wrapActionCallback(callback, "Gagal mengubah tampilan"));
-            } else if ("fetch_external_syllable_lyrics".equals(toolName)) {
-                String title = toolArgs.has("title") && !toolArgs.get("title").isJsonNull()
-                        ? toolArgs.get("title").getAsString() : "";
-                String artist = toolArgs.has("artist") && !toolArgs.get("artist").isJsonNull()
-                        ? toolArgs.get("artist").getAsString() : "";
-                String provider = toolArgs.has("provider") && !toolArgs.get("provider").isJsonNull()
-                        ? toolArgs.get("provider").getAsString() : "all";
-                lyricActionDelegate.fetchSyllableLyrics(title, artist, provider,
-                        wrapActionCallback(callback, "Gagal mengambil lirik eksternal"));
-            } else if ("parse_and_apply_lyrics".equals(toolName)) {
-                String rawLyrics = toolArgs.has("raw_lyrics") && !toolArgs.get("raw_lyrics").isJsonNull()
-                        ? toolArgs.get("raw_lyrics").getAsString() : "";
-                String format = toolArgs.has("format") && !toolArgs.get("format").isJsonNull()
-                        ? toolArgs.get("format").getAsString() : "auto";
-                LyricsData parsed = SyllableLyricsParser.parse(rawLyrics, format);
-                if (parsed == null || parsed.isEmpty()) {
-                    callback.onResult(new ToolResult(true, "Gagal mem-parsing lirik: format tidak valid atau kosong", Collections.<SourceItem>emptyList()));
-                } else {
-                    lyricActionDelegate.applyLyrics(parsed,
-                            wrapActionCallback(callback, "Gagal menerapkan lirik"));
-                }
+                lyricActionDelegate.toggleDisplay(
+                        ToolArgs.str(toolArgs, "feature", ""),
+                        ToolArgs.bool(toolArgs, "enabled", false),
+                        wrapActionCallback(callback, "Gagal mengubah tampilan"));
             } else if ("control_playback".equals(toolName)) {
-                String action = toolArgs.has("action") && !toolArgs.get("action").isJsonNull()
-                        ? toolArgs.get("action").getAsString() : "";
-                int lineIndex = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
-                        ? toolArgs.get("line_index").getAsInt() : -1;
-                long positionMs = toolArgs.has("position_ms") && !toolArgs.get("position_ms").isJsonNull()
-                        ? toolArgs.get("position_ms").getAsLong() : 0L;
-                lyricActionDelegate.controlPlayback(action, lineIndex, positionMs,
+                lyricActionDelegate.controlPlayback(
+                        ToolArgs.str(toolArgs, "action", ""),
+                        ToolArgs.intValue(toolArgs, "line_index", -1),
+                        ToolArgs.longValue(toolArgs, "position_ms", 0L),
                         wrapActionCallback(callback, "Gagal mengontrol pemutaran"));
             } else if ("adjust_overlay_appearance".equals(toolName)) {
-                Float fontScale = toolArgs.has("font_scale") && !toolArgs.get("font_scale").isJsonNull()
-                        ? toolArgs.get("font_scale").getAsFloat() : null;
-                String animStyle = toolArgs.has("anim_style") && !toolArgs.get("anim_style").isJsonNull()
-                        ? toolArgs.get("anim_style").getAsString() : null;
-                Integer widthPercent = toolArgs.has("width_percent") && !toolArgs.get("width_percent").isJsonNull()
-                        ? toolArgs.get("width_percent").getAsInt() : null;
-                Integer heightPercent = toolArgs.has("height_percent") && !toolArgs.get("height_percent").isJsonNull()
-                        ? toolArgs.get("height_percent").getAsInt() : null;
-                lyricActionDelegate.adjustAppearance(fontScale, animStyle, widthPercent, heightPercent,
+                lyricActionDelegate.adjustAppearance(
+                        ToolArgs.floatOrNull(toolArgs, "font_scale"),
+                        ToolArgs.str(toolArgs, "anim_style", null),
+                        ToolArgs.intOrNull(toolArgs, "width_percent"),
+                        ToolArgs.intOrNull(toolArgs, "height_percent"),
                         wrapActionCallback(callback, "Gagal mengubah tampilan"));
             } else if ("manage_lyric_lines".equals(toolName)) {
-                String action = toolArgs.has("action") && !toolArgs.get("action").isJsonNull()
-                        ? toolArgs.get("action").getAsString() : "";
-                int lineIndex = toolArgs.has("line_index") && !toolArgs.get("line_index").isJsonNull()
-                        ? toolArgs.get("line_index").getAsInt() : -1;
-                long startMs = toolArgs.has("start_time_ms") && !toolArgs.get("start_time_ms").isJsonNull()
-                        ? toolArgs.get("start_time_ms").getAsLong() : 0L;
-                long endMs = toolArgs.has("end_time_ms") && !toolArgs.get("end_time_ms").isJsonNull()
-                        ? toolArgs.get("end_time_ms").getAsLong() : 0L;
-                String text = toolArgs.has("text") && !toolArgs.get("text").isJsonNull()
-                        ? toolArgs.get("text").getAsString() : null;
-                String translation = toolArgs.has("translation") && !toolArgs.get("translation").isJsonNull()
-                        ? toolArgs.get("translation").getAsString() : null;
-                String romanji = toolArgs.has("romanji") && !toolArgs.get("romanji").isJsonNull()
-                        ? toolArgs.get("romanji").getAsString() : null;
-                long shiftMs = toolArgs.has("shift_ms") && !toolArgs.get("shift_ms").isJsonNull()
-                        ? toolArgs.get("shift_ms").getAsLong() : 0L;
-                lyricActionDelegate.manageLines(action, lineIndex, startMs, endMs, text, translation, romanji, shiftMs,
+                lyricActionDelegate.manageLines(
+                        ToolArgs.str(toolArgs, "action", ""),
+                        ToolArgs.intValue(toolArgs, "line_index", -1),
+                        ToolArgs.longValue(toolArgs, "start_time_ms", 0L),
+                        ToolArgs.longValue(toolArgs, "end_time_ms", 0L),
+                        ToolArgs.str(toolArgs, "text", null),
+                        ToolArgs.str(toolArgs, "translation", null),
+                        ToolArgs.str(toolArgs, "romanji", null),
+                        ToolArgs.longValue(toolArgs, "shift_ms", 0L),
                         wrapActionCallback(callback, "Gagal mengelola baris lirik"));
             } else if ("get_current_playing_track".equals(toolName)) {
                 lyricActionDelegate.getCurrentPlayingTrack(new LyricActionDelegate.TrackInfoCallback() {
                     @Override
                     public void onSuccess(String title, String artist, String lyrics, boolean isPlaying, long positionMs) {
-                        com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+                        JsonObject obj = new JsonObject();
                         obj.addProperty("title", title != null ? title : "");
                         obj.addProperty("artist", artist != null ? artist : "");
                         obj.addProperty("is_playing", isPlaying);
@@ -1311,35 +1169,111 @@ public class AntigravityApiClient {
                         if (lyrics != null && !lyrics.isEmpty()) {
                             obj.addProperty("lyrics", lyrics.length() > 3000 ? lyrics.substring(0, 3000) + "..." : lyrics);
                         }
-                        callback.onResult(new ToolResult(false, obj.toString(), Collections.<SourceItem>emptyList()));
+                        callback.onResult(ToolResult.message(obj.toString()));
                     }
                     @Override
                     public void onError(String error) {
-                        callback.onResult(new ToolResult(true, "Gagal mendapatkan info lagu: " + error, Collections.<SourceItem>emptyList()));
+                        callback.onResult(ToolResult.error("Gagal mendapatkan info lagu: " + error));
                     }
                 });
             } else {
-                callback.onResult(new ToolResult(true, "Unknown tool: " + toolName, Collections.<SourceItem>emptyList()));
+                callback.onResult(ToolResult.error("Unknown tool: " + toolName));
                 return;
             }
         } catch (Exception e) {
-            callback.onResult(new ToolResult(true, "Tool execution error: " + e.getMessage(), Collections.<SourceItem>emptyList()));
+            callback.onResult(ToolResult.error("Tool execution error: " + e.getMessage()));
             return;
         }
 
         handle.setToolCancellable(toolCancellable);
     }
 
+    /**
+     * A short, human-readable summary of what a tool call is doing, shown as the inline
+     * status line while the tool runs. Arguments are read leniently so a mistyped one
+     * degrades the label instead of breaking the call.
+     */
+    private static String describeToolCall(String toolName, JsonObject args) {
+        String unexpected = args != null ? args.toString() : "";
+        if (toolName == null) return unexpected;
+        switch (toolName) {
+            case "web_search":
+                return ToolArgs.str(args, "query", unexpected);
+            case "web_fetch":
+                return ToolArgs.str(args, "url", unexpected);
+            case "translate_lyrics":
+                return ToolArgs.str(args, "target_language", "id");
+            case "transliterate_lyrics":
+                return ToolArgs.str(args, "mode", "romaji");
+            case "set_sync_offset":
+                return ToolArgs.str(args, "offset_ms", "0");
+            case "modify_lyric_line":
+                return has(args, "line_index")
+                        ? "Baris " + (ToolArgs.intValue(args, "line_index", 0) + 1)
+                        : "Baris lirik";
+            case "batch_edit_lyrics":
+                return lineCount(args) + " baris lirik";
+            case "toggle_display":
+                return ToolArgs.str(args, "feature", "")
+                        + " (" + (ToolArgs.bool(args, "enabled", false) ? "on" : "off") + ")";
+            case "control_playback": {
+                String action = ToolArgs.str(args, "action", "playback");
+                if ("seek_to_line".equals(action) && has(args, "line_index")) {
+                    return "Lompat ke baris " + (ToolArgs.intValue(args, "line_index", 0) + 1);
+                }
+                return action;
+            }
+            case "adjust_overlay_appearance":
+                return "Tampilan overlay";
+            case "manage_lyric_lines":
+                return ToolArgs.str(args, "action", "baris")
+                        + " baris " + (ToolArgs.intValue(args, "line_index", -1) + 1);
+            case "get_current_playing_track":
+                return "Status lagu aktif";
+            default:
+                return unexpected;
+        }
+    }
+
+    /** The "lines" array of a batch edit, as delegate edits. Malformed entries are skipped. */
+    private static List<LyricActionDelegate.LineEdit> lineEdits(JsonObject args) {
+        List<LyricActionDelegate.LineEdit> edits = new ArrayList<>();
+        if (args == null || !args.has("lines") || !args.get("lines").isJsonArray()) return edits;
+        for (JsonElement el : args.getAsJsonArray("lines")) {
+            if (el == null || !el.isJsonObject()) continue;
+            JsonObject line = el.getAsJsonObject();
+            int index = ToolArgs.intValue(line, "line_index", -1);
+            if (index < 0) continue;
+            edits.add(new LyricActionDelegate.LineEdit(
+                    index,
+                    ToolArgs.str(line, "text", null),
+                    ToolArgs.str(line, "translation", null),
+                    ToolArgs.str(line, "romanji", null)));
+        }
+        return edits;
+    }
+
+    private static int lineCount(JsonObject args) {
+        return (args != null && args.has("lines") && args.get("lines").isJsonArray())
+                ? args.getAsJsonArray("lines").size()
+                : 0;
+    }
+
+    /** Presence of a non-null argument, for callers that must tell "absent" from a default. */
+    private static boolean has(JsonObject args, String key) {
+        return args != null && args.has(key) && !args.get(key).isJsonNull();
+    }
+
     private static LyricActionDelegate.ActionCallback wrapActionCallback(final ToolCallback callback, final String failPrefix) {
         return new LyricActionDelegate.ActionCallback() {
             @Override
             public void onSuccess(String message) {
-                callback.onResult(new ToolResult(false, message, Collections.<SourceItem>emptyList()));
+                callback.onResult(ToolResult.message(message));
             }
 
             @Override
             public void onError(String error) {
-                callback.onResult(new ToolResult(true, failPrefix + ": " + error, Collections.<SourceItem>emptyList()));
+                callback.onResult(ToolResult.error(failPrefix + ": " + error));
             }
         };
     }
@@ -1424,26 +1358,6 @@ public class AntigravityApiClient {
         }
     }
 
-    private static String parseErrorMessage(String jsonBody, String fallback) {
-        try {
-            JsonObject json = JsonParser.parseString(jsonBody).getAsJsonObject();
-            if (json.has("error")) {
-                JsonElement errorElem = json.get("error");
-                if (errorElem.isJsonObject()) {
-                    JsonObject errorObj = errorElem.getAsJsonObject();
-                    if (errorObj.has("message") && !errorObj.get("message").isJsonNull()) {
-                        return errorObj.get("message").getAsString();
-                    }
-                } else if (errorElem.isJsonPrimitive()) {
-                    return errorElem.getAsString();
-                }
-            }
-            if (json.has("message") && !json.get("message").isJsonNull()) {
-                return json.get("message").getAsString();
-            }
-        } catch (Exception ignored) {}
-        return fallback;
-    }
 
     /**
      * Thread-safe Cancellable handle wrapping active OkHttp Call and tool execution Cancellable.

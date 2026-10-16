@@ -9,6 +9,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.lyricsync.app.ai.util.JsonResponse;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.model.AiChatMessage;
@@ -170,49 +171,7 @@ public class AiTranslationService {
      * Strips markdown fences (```json ... ``` or ``` ... ```) and extracts outermost JSON array or object.
      */
     public static String cleanJson(String raw) {
-        if (raw == null) return "";
-        String text = raw.trim();
-        if (text.isEmpty()) return "";
-
-        // 1. Strip markdown code fences case-insensitively
-        String lower = text.toLowerCase(Locale.ROOT);
-        int startFence = lower.indexOf("```json");
-        int fenceLen = 7;
-        if (startFence == -1) {
-            startFence = lower.indexOf("```");
-            fenceLen = 3;
-        }
-        if (startFence != -1) {
-            int contentStart = startFence + fenceLen;
-            int endFence = text.indexOf("```", contentStart);
-            if (endFence != -1) {
-                text = text.substring(contentStart, endFence).trim();
-            } else {
-                text = text.substring(contentStart).trim();
-            }
-        }
-
-        // 2. Extract outermost [ ... ] or { ... }
-        int firstBracket = text.indexOf('[');
-        int lastBracket = text.lastIndexOf(']');
-        int firstBrace = text.indexOf('{');
-        int lastBrace = text.lastIndexOf('}');
-
-        if (firstBracket != -1 && lastBracket != -1 && lastBracket > firstBracket) {
-            if (firstBrace == -1 || firstBracket < firstBrace) {
-                return text.substring(firstBracket, lastBracket + 1).trim();
-            }
-        }
-
-        if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
-            return text.substring(firstBrace, lastBrace + 1).trim();
-        }
-
-        if (firstBracket != -1 && lastBracket != -1 && lastBracket > firstBracket) {
-            return text.substring(firstBracket, lastBracket + 1).trim();
-        }
-
-        return text;
+        return JsonResponse.extract(raw);
     }
 
     /**

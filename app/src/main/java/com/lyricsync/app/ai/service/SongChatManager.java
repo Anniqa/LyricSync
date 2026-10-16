@@ -327,22 +327,13 @@ public class SongChatManager {
             sb.append("- 'modify_lyric_line': Gunakan jika pengguna meminta mengoreksi teks, arti, atau bacaan baris lirik tertentu.\n");
             sb.append("- 'batch_edit_lyrics': Gunakan jika ingin membuat terjemahan lengkap/sebagian, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus dalam satu pemanggilan (parameter: 'lines' berisi daftar objek baris dengan 'line_index', serta opsional 'translation', 'text', 'romanji').\n");
             sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
-            sb.append("- 'fetch_external_syllable_lyrics': Gunakan jika pengguna meminta mencari atau mengganti lirik ke format suku kata / syllable / karaoke (bukan sinkron baris biasa). PANDUAN PROVIDER DENGAN RATE SUKU KATA TERTINGGI:\n");
-            sb.append("  * Lagu Jepang / Anime / Vocaloid / J-Pop / K-Pop / Mandarin / CJK: Gunakan provider 'kugou' (format KRC) atau 'netease' (format YRC) karena memiliki rate suku kata dan karaoke per-karakter tertinggi di dunia!\n");
-            sb.append("  * Lagu Barat / Pop Global (English): Gunakan provider 'spotify' (SpicyLyrics word-by-word) atau 'netease' (YRC) yang memiliki rate suku kata sangat tinggi untuk lagu Barat populer.\n");
-            sb.append("  * Provider 'all' (default): Otomatis mencoba semua provider dan memprioritaskan hasil berformat SYLLABLE tertinggi.\n");
-            sb.append("  * PERHATIAN: Provider 'lrclib' HANYA memiliki lirik baris biasa (LINE), JANGAN gunakan jika pengguna meminta lirik suku kata/karaoke!\n");
-            sb.append("- 'parse_and_apply_lyrics': Gunakan jika Anda atau pengguna memiliki teks mentah lirik berformat suku kata (YRC, KRC, TTML, ELRC, atau LRC) untuk langsung diterapkan ke overlay.\n");
             sb.append("- 'control_playback': Gunakan jika pengguna meminta melompat ke baris tertentu ('seek_to_line'), lompat ke waktu tertentu ('seek_to_position'), atau mengontrol pemutaran ('play', 'pause', 'skip_next', 'skip_previous').\n");
             sb.append("- 'adjust_overlay_appearance': Gunakan jika pengguna meminta mengubah ukuran font lirik ('font_scale': misal 0.8 kecil, 1.2 besar), gaya animasi teks ('anim_style': glow/scale/pop/fade), atau ukuran overlay ('width_percent', 'height_percent').\n");
             sb.append("- 'manage_lyric_lines': Gunakan jika pengguna meminta menghapus baris tertentu ('delete'), menyisipkan baris baru ('insert'), atau menggeser timing baris ('shift_timing').\n");
             sb.append("- 'get_current_playing_track': Gunakan jika ingin mengetahui lagu apa yang saat ini sedang diputar di pemutar musik pengguna secara real-time (judul, artis, lirik aktif, status pemutaran). Panggil alat ini untuk memastikan lagu yang aktif jika pengguna bertanya tentang lagu saat ini!\n");
-            sb.append("\n[PANDUAN EKSPLISIT PENCARIAN & PENERAPAN LIRIK]\n");
-            sb.append("Ketika pengguna meminta mencari lirik (misal: 'cari lirik', 'carikan lirik lagu ini', 'pasang lirik lagu X', 'ganti lirik'):\n");
-            sb.append("1. PANGGIL alat 'fetch_external_syllable_lyrics' dengan judul dan artis yang sesuai (provider 'all'). Alat ini secara otomatis menelusuri database suku kata, multi-query, dan pencarian web AI mandiri!\n");
-            sb.append("2. Alternatif: Jika Anda memiliki teks lirik tersinkronisasi atau pengguna memberikan teks lirik, susun dalam format LRC bertimestamp lengkap ([mm:ss.xx] teks) dan PANGGIL 'parse_and_apply_lyrics'.\n");
-            sb.append("3. SANGAT PENTING: JANGAN HANYA MENULISKAN TEKS LIRIK SEBAGAI CHAT BIASA! Pengguna ingin lirik BENAR-BENAR DITERAPKAN ke overlay pemutar mereka. Oleh karena itu, Anda WAJIB memanggil 'fetch_external_syllable_lyrics' atau 'parse_and_apply_lyrics'!\n");
-            sb.append("4. Berikan konfirmasi kepada pengguna bahwa lirik telah berhasil dicari dan langsung diterapkan ke layar overlay pemutar.\n");
+            sb.append("\n[PENCARIAN LIRIK]\n");
+            sb.append("Pencarian dan pemuatan lirik ditangani otomatis oleh aplikasi lewat rantai penyedia lirik (SpicyLyrics, Kugou, Netease, LRCLIB) setiap kali lagu berganti. Anda TIDAK memiliki alat untuk mencari lirik, dan jangan menawarkan diri untuk mencarinya.\n");
+            sb.append("Jika pengguna meminta mencari lirik, jelaskan bahwa aplikasi sudah mencarinya otomatis untuk lagu yang sedang diputar, lalu tawarkan yang memang bisa Anda lakukan: menerjemahkan, transliterasi, membetulkan baris, mengubah tampilan, atau menjelaskan lagunya.\n");
             sb.append("\n[ATURAN PENTING PENGGUNAAN ALAT]\n");
             sb.append("- HANYA panggil alat jika pengguna secara EKSPLISIT meminta tindakan tersebut (misal: mencari lirik baru, menerjemahkan, transliterasi, mengedit lirik, atau mengubah tampilan/player).\n");
             sb.append("- JANGAN PERNAH memanggil alat jika pengguna tidak memintanya secara jelas!\n");
@@ -351,15 +342,14 @@ public class SongChatManager {
         } else {
             sb.append("\n[LYRICS TOOLS GUIDELINE]\n");
             sb.append("You have tool functions to control and modify the overlay lyrics in real-time:\n");
-            sb.append("- 'fetch_external_syllable_lyrics': Search and apply syllable/synced lyrics from external databases or AI web retrieval.\n");
-            sb.append("- 'parse_and_apply_lyrics': Parse raw lyrics (YRC/KRC/TTML/ELRC/LRC) and directly apply them to the overlay.\n");
             sb.append("- 'translate_lyrics': Translate lyrics to target language.\n");
             sb.append("- 'transliterate_lyrics': Add Romaji/Pinyin/Romaja.\n");
             sb.append("- 'batch_edit_lyrics': Batch update lines.\n");
             sb.append("- 'control_playback': Control seek/play/pause.\n");
             sb.append("- 'adjust_overlay_appearance': Modify font scale or animation.\n");
-            sb.append("\n[IMPORTANT: SEARCHING & APPLYING LYRICS]\n");
-            sb.append("When the user asks you to find or apply lyrics: DO NOT JUST PRINT LYRICS IN CHAT! You MUST call 'fetch_external_syllable_lyrics' or 'parse_and_apply_lyrics' so the lyrics are ACTUALLY applied to their player overlay screen!\n");
+            sb.append("\n[LYRIC SEARCHING]\n");
+            sb.append("Finding and loading lyrics is handled automatically by the app through its provider chain (SpicyLyrics, Kugou, Netease, LRCLIB) whenever the track changes. You have no tool for searching lyrics and should not offer to find them.\n");
+            sb.append("If the user asks you to find lyrics, explain that the app already looks them up for the current track, then offer what you can do: translate, transliterate, correct lines, change the display, or explain the song.\n");
         }
         return sb.toString();
     }

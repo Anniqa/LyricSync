@@ -8,6 +8,7 @@ import android.net.Uri;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.lyricsync.app.ai.util.ApiErrors;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -316,7 +317,7 @@ public class AntigravityAuthManager {
                         }
                         String body = responseBody.string();
                         if (!response.isSuccessful()) {
-                            String error = parseErrorMessage(body, "HTTP " + response.code());
+                            String error = ApiErrors.message(body, "HTTP " + response.code());
                             notifyTokenError("Token refresh failed: " + error);
                             return;
                         }
@@ -388,18 +389,25 @@ public class AntigravityAuthManager {
             if (callback != null) callback.onError("Authorization code cannot be empty");
             return;
         }
-
-        RequestBody formBody = new FormBody.Builder()
+        loginWithForm(new FormBody.Builder()
                 .add("code", code.trim())
                 .add("client_id", CLIENT_ID)
                 .add("client_secret", CLIENT_SECRET)
                 .add("redirect_uri", REDIRECT_URI)
                 .add("grant_type", "authorization_code")
-                .build();
+                .build(), "Token exchange", null, callback);
+    }
 
+    /**
+     * POSTs an OAuth grant to the token endpoint, then stores the tokens it returns and
+     * resolves the account email. The two grant flows differ only in the form they send and
+     * in which refresh token to keep when the response does not carry a new one.
+     */
+    private void loginWithForm(final FormBody form, final String failurePrefix,
+                               final String fallbackRefreshToken, final AuthCallback callback) {
         Request request = new Request.Builder()
                 .url(TOKEN_URL)
-                .post(formBody)
+                .post(form)
                 .build();
 
         try {
@@ -407,7 +415,7 @@ public class AntigravityAuthManager {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     if (callback != null) {
-                        callback.onError("Network error during token exchange: " + e.getMessage());
+                        callback.onError(failurePrefix + " gagal (jaringan): " + e.getMessage());
                     }
                 }
 
@@ -415,42 +423,41 @@ public class AntigravityAuthManager {
                 public void onResponse(Call call, Response response) throws IOException {
                     try (ResponseBody responseBody = response.body()) {
                         if (responseBody == null) {
-                            if (callback != null) callback.onError("Empty token exchange response");
+                            if (callback != null) callback.onError(failurePrefix + " gagal: respons kosong");
                             return;
                         }
                         String body = responseBody.string();
                         if (!response.isSuccessful()) {
-                            String error = parseErrorMessage(body, "HTTP " + response.code());
-                            if (callback != null) callback.onError("Token exchange failed: " + error);
+                            if (callback != null) {
+                                callback.onError(failurePrefix + " gagal: "
+                                        + ApiErrors.message(body, "HTTP " + response.code()));
+                            }
                             return;
                         }
 
                         JsonObject json = JsonParser.parseString(body).getAsJsonObject();
                         String accessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
-                        String refreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : null;
-                        long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
-                        long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
-
                         if (accessToken == null) {
-                            if (callback != null) callback.onError("No access token in response");
+                            if (callback != null) callback.onError(failurePrefix + " gagal: respons tanpa access token");
                             return;
                         }
-
-                        saveTokens(accessToken, refreshToken, expiryMs);
+                        long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
+                        String refreshToken = json.has("refresh_token")
+                                ? json.get("refresh_token").getAsString() : fallbackRefreshToken;
+                        saveTokens(accessToken, refreshToken, System.currentTimeMillis() + (expiresIn * 1000L));
                         fetchUserEmail(accessToken, callback);
                     } catch (Exception e) {
                         if (callback != null) {
-                            callback.onError("Failed to parse token exchange response: " + e.getMessage());
+                            callback.onError(failurePrefix + " gagal memproses respons: " + e.getMessage());
                         }
                     }
                 }
             });
         } catch (Exception e) {
-            if (callback != null) {
-                callback.onError("Failed to initiate token exchange: " + e.getMessage());
-            }
+            if (callback != null) callback.onError(failurePrefix + " gagal dimulai: " + e.getMessage());
         }
     }
+
 
     /**
      * Fetches authenticated user's email address from Google OAuth userinfo endpoint.
@@ -606,77 +613,11 @@ public class AntigravityAuthManager {
     }
 
     private void loginWithRefreshToken(final String refreshToken, final AuthCallback callback) {
-        RequestBody formBody = new FormBody.Builder()
+        loginWithForm(new FormBody.Builder()
                 .add("refresh_token", refreshToken)
                 .add("client_id", CLIENT_ID)
                 .add("client_secret", CLIENT_SECRET)
                 .add("grant_type", "refresh_token")
-                .build();
-
-        Request request = new Request.Builder()
-                .url(TOKEN_URL)
-                .post(formBody)
-                .build();
-
-        try {
-            httpClient.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    if (callback != null) {
-                        callback.onError("Gagal login dengan refresh token: " + e.getMessage());
-                    }
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) throws IOException {
-                    try (ResponseBody responseBody = response.body()) {
-                        if (responseBody == null) {
-                            if (callback != null) callback.onError("Respon kosong dari server");
-                            return;
-                        }
-                        String body = responseBody.string();
-                        if (!response.isSuccessful()) {
-                            String error = parseErrorMessage(body, "HTTP " + response.code());
-                            if (callback != null) callback.onError("Login gagal: " + error);
-                            return;
-                        }
-
-                        JsonObject json = JsonParser.parseString(body).getAsJsonObject();
-                        String accessToken = json.has("access_token") ? json.get("access_token").getAsString() : null;
-                        long expiresIn = json.has("expires_in") ? json.get("expires_in").getAsLong() : 3600L;
-                        long expiryMs = System.currentTimeMillis() + (expiresIn * 1000L);
-                        String newRefreshToken = json.has("refresh_token") ? json.get("refresh_token").getAsString() : refreshToken;
-
-                        if (accessToken == null) {
-                            if (callback != null) callback.onError("Tidak ada access token yang diterima");
-                            return;
-                        }
-
-                        saveTokens(accessToken, newRefreshToken, expiryMs);
-                        fetchUserEmail(accessToken, callback);
-                    } catch (Exception e) {
-                        if (callback != null) {
-                            callback.onError("Gagal memproses respon token: " + e.getMessage());
-                        }
-                    }
-                }
-            });
-        } catch (Exception e) {
-            if (callback != null) {
-                callback.onError("Gagal memulai request login: " + e.getMessage());
-            }
-        }
-    }
-
-    private String parseErrorMessage(String jsonBody, String fallback) {
-        try {
-            JsonObject json = JsonParser.parseString(jsonBody).getAsJsonObject();
-            if (json.has("error_description")) {
-                return json.get("error_description").getAsString();
-            } else if (json.has("error")) {
-                return json.get("error").getAsString();
-            }
-        } catch (Exception ignored) {}
-        return fallback;
+                .build(), "Login", refreshToken, callback);
     }
 }

@@ -122,6 +122,16 @@ public class AntigravityToolExecutor {
             this.content = content != null ? content : "";
             this.sources = sources != null ? sources : new ArrayList<SourceItem>();
         }
+
+        /** A successful result that carries no sources — the common case for lyric actions. */
+        public static ToolResult message(String content) {
+            return new ToolResult(false, content, Collections.<SourceItem>emptyList());
+        }
+
+        /** A failed result, reported to the model as the tool's output. */
+        public static ToolResult error(String message) {
+            return new ToolResult(true, message, Collections.<SourceItem>emptyList());
+        }
     }
 
     public static class SourceItem {
@@ -545,7 +555,7 @@ public class AntigravityToolExecutor {
             err.addProperty("status", "error");
             err.addProperty("message", "SSRF protection blocked URL: " + urlString);
             if (callback != null) {
-                callback.onResult(new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList()));
+                callback.onResult(ToolResult.error(err.toString()));
             }
             return handle;
         }
@@ -567,7 +577,7 @@ public class AntigravityToolExecutor {
             err.addProperty("status", "error");
             err.addProperty("message", "Invalid URL request: " + e.getMessage());
             if (callback != null) {
-                callback.onResult(new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList()));
+                callback.onResult(ToolResult.error(err.toString()));
             }
             return handle;
         }
@@ -585,7 +595,7 @@ public class AntigravityToolExecutor {
                 err.addProperty("status", "error");
                 err.addProperty("message", e.getMessage() != null ? e.getMessage() : "Network error");
                 if (callback != null) {
-                    callback.onResult(new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList()));
+                    callback.onResult(ToolResult.error(err.toString()));
                 }
             }
 
@@ -602,7 +612,7 @@ public class AntigravityToolExecutor {
                         err.addProperty("message", "HTTP " + response.code() + " " + response.message());
                         err.addProperty("url", urlString);
                         if (callback != null) {
-                            callback.onResult(new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList()));
+                            callback.onResult(ToolResult.error(err.toString()));
                         }
                         return;
                     }
@@ -626,7 +636,7 @@ public class AntigravityToolExecutor {
                                 err.addProperty("message", "Unsupported content type: " + mediaType);
                                 err.addProperty("url", urlString);
                                 if (callback != null) {
-                                    callback.onResult(new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList()));
+                                    callback.onResult(ToolResult.error(err.toString()));
                                 }
                                 return;
                             }
@@ -673,7 +683,7 @@ public class AntigravityToolExecutor {
                         JsonObject err = new JsonObject();
                         err.addProperty("status", "error");
                         err.addProperty("message", "Failed parsing web page: " + e.getMessage());
-                        callback.onResult(new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList()));
+                        callback.onResult(ToolResult.error(err.toString()));
                     }
                 } finally {
                     response.close();
@@ -728,7 +738,7 @@ public class AntigravityToolExecutor {
         err.addProperty("status", "error");
         err.addProperty("message", msg);
         err.addProperty("content", msg);
-        return new ToolResult(true, err.toString(), Collections.<SourceItem>emptyList());
+        return ToolResult.error(err.toString());
     }
 
     /**

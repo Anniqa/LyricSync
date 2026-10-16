@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
+import com.lyricsync.app.ai.util.ApiErrors;
 import com.lyricsync.app.ai.model.AntigravityModel;
 import com.lyricsync.app.ai.model.QuotaSummary;
 
@@ -181,33 +182,36 @@ public class AntigravityQuotaClient {
     /**
      * Asynchronously discovers available tier models from Google Antigravity.
      */
-    public void fetchModels(final ModelDiscoveryCallback callback) {
+    /**
+     * Runs {@code onToken} once a valid access token is in hand, routing any failure on the
+     * way there (no auth manager, token refresh error, thrown exception) to {@code onError}.
+     */
+    private void withAccessToken(final java.util.function.Consumer<String> onError,
+                                 final java.util.function.Consumer<String> onToken) {
         if (authManager == null) {
-            if (callback != null) {
-                callback.onError("AuthManager is null");
-            }
+            onError.accept("AuthManager is null");
             return;
         }
-
         try {
             authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
                 @Override
                 public void onTokenReady(String accessToken) {
-                    executeFetchModels(accessToken, callback);
+                    onToken.accept(accessToken);
                 }
 
                 @Override
                 public void onError(String message) {
-                    if (callback != null) {
-                        callback.onError(message);
-                    }
+                    onError.accept(message);
                 }
             });
         } catch (Exception e) {
-            if (callback != null) {
-                callback.onError("Failed to acquire access token: " + e.getMessage());
-            }
+            onError.accept("Failed to acquire access token: " + e.getMessage());
         }
+    }
+
+    public void fetchModels(final ModelDiscoveryCallback callback) {
+        withAccessToken(msg -> { if (callback != null) callback.onError(msg); },
+                token -> executeFetchModels(token, callback));
     }
 
     private void executeFetchModels(String accessToken, final ModelDiscoveryCallback callback) {
@@ -241,7 +245,7 @@ public class AntigravityQuotaClient {
                         }
                         String responseString = responseBody.string();
                         if (!response.isSuccessful()) {
-                            String error = parseErrorMessage(responseString, "HTTP " + response.code());
+                            String error = ApiErrors.message(responseString, "HTTP " + response.code());
                             if (callback != null) {
                                 callback.onError("Failed to fetch models: " + error);
                             }
@@ -273,32 +277,8 @@ public class AntigravityQuotaClient {
      * Asynchronously retrieves current user quota usage and reset windows.
      */
     public void fetchQuota(final QuotaCallback callback) {
-        if (authManager == null) {
-            if (callback != null) {
-                callback.onError("AuthManager is null");
-            }
-            return;
-        }
-
-        try {
-            authManager.getValidAccessToken(new AntigravityAuthManager.TokenCallback() {
-                @Override
-                public void onTokenReady(String accessToken) {
-                    executeFetchQuota(accessToken, callback);
-                }
-
-                @Override
-                public void onError(String message) {
-                    if (callback != null) {
-                        callback.onError(message);
-                    }
-                }
-            });
-        } catch (Exception e) {
-            if (callback != null) {
-                callback.onError("Failed to acquire access token: " + e.getMessage());
-            }
-        }
+        withAccessToken(msg -> { if (callback != null) callback.onError(msg); },
+                token -> executeFetchQuota(token, callback));
     }
 
     private void executeFetchQuota(String accessToken, final QuotaCallback callback) {
@@ -333,7 +313,7 @@ public class AntigravityQuotaClient {
                         }
                         String responseString = responseBody.string();
                         if (!response.isSuccessful()) {
-                            String error = parseErrorMessage(responseString, "HTTP " + response.code());
+                            String error = ApiErrors.message(responseString, "HTTP " + response.code());
                             if (callback != null) {
                                 callback.onError("Failed to fetch quota: " + error);
                             }
@@ -359,26 +339,5 @@ public class AntigravityQuotaClient {
                 callback.onError("Failed to initiate quota request: " + e.getMessage());
             }
         }
-    }
-
-    private static String parseErrorMessage(String jsonBody, String fallback) {
-        try {
-            JsonObject json = JsonParser.parseString(jsonBody).getAsJsonObject();
-            if (json.has("error")) {
-                JsonElement errorElem = json.get("error");
-                if (errorElem.isJsonObject()) {
-                    JsonObject errorObj = errorElem.getAsJsonObject();
-                    if (errorObj.has("message") && !errorObj.get("message").isJsonNull()) {
-                        return errorObj.get("message").getAsString();
-                    }
-                } else if (errorElem.isJsonPrimitive()) {
-                    return errorElem.getAsString();
-                }
-            }
-            if (json.has("message") && !json.get("message").isJsonNull()) {
-                return json.get("message").getAsString();
-            }
-        } catch (Exception ignored) {}
-        return fallback;
     }
 }

@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.SyllableLyricsParser;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
@@ -66,10 +65,10 @@ public class AntigravityApiClientToolLoopTest {
     public void testBuildToolDeclarationsStructure() {
         JsonArray declarations = AntigravityApiClient.buildToolDeclarations();
         assertNotNull("Tool declarations array should not be null", declarations);
-        assertEquals("Must declare exactly 14 tools with web search", 14, declarations.size());
+        assertEquals("Must declare exactly 12 tools with web search", 12, declarations.size());
 
         JsonArray declarationsNoWeb = AntigravityApiClient.buildToolDeclarations(false);
-        assertEquals("Must declare 12 lyric tools without web search", 12, declarationsNoWeb.size());
+        assertEquals("Must declare 10 lyric tools without web search", 10, declarationsNoWeb.size());
 
         // 1. web_search
         JsonObject searchTool = declarations.get(0).getAsJsonObject();
@@ -103,20 +102,14 @@ public class AntigravityApiClientToolLoopTest {
         JsonArray fetchRequired = fetchParams.getAsJsonArray("required");
         assertEquals(1, fetchRequired.size());
         assertEquals("url", fetchRequired.get(0).getAsString());
-        // Check fetch_external_syllable_lyrics, parse_and_apply_lyrics, and 3 full control tools
-        boolean foundFetchExternal = false;
-        boolean foundParseAndApply = false;
+        // Check the 3 full control tools
         boolean foundControlPlayback = false;
         boolean foundAdjustAppearance = false;
         boolean foundManageLines = false;
         for (JsonElement el : declarations) {
             JsonObject obj = el.getAsJsonObject();
             String name = obj.get("name").getAsString();
-            if ("fetch_external_syllable_lyrics".equals(name)) {
-                foundFetchExternal = true;
-            } else if ("parse_and_apply_lyrics".equals(name)) {
-                foundParseAndApply = true;
-            } else if ("control_playback".equals(name)) {
+            if ("control_playback".equals(name)) {
                 foundControlPlayback = true;
                 JsonObject p = obj.getAsJsonObject("parameters");
                 assertTrue(p.getAsJsonObject("properties").has("action"));
@@ -130,11 +123,9 @@ public class AntigravityApiClientToolLoopTest {
                 assertTrue(p.getAsJsonObject("properties").has("action"));
             }
         }
-        assertTrue("fetch_external_syllable_lyrics must be declared", foundFetchExternal);
-        assertTrue("parse_and_apply_lyrics must be declared", foundParseAndApply);
         assertTrue("control_playback must be declared", foundControlPlayback);
-        // 14. get_current_playing_track
-        JsonObject currentTrackTool = declarations.get(13).getAsJsonObject();
+        // 12. get_current_playing_track
+        JsonObject currentTrackTool = declarations.get(11).getAsJsonObject();
         assertEquals("get_current_playing_track", currentTrackTool.get("name").getAsString());
     }
 
@@ -154,7 +145,7 @@ public class AntigravityApiClientToolLoopTest {
         assertFalse("tool object must NOT have built-in googleSearch", tool0.has("googleSearch"));
 
         JsonArray decls = tool0.getAsJsonArray("functionDeclarations");
-        assertEquals(14, decls.size());
+        assertEquals(12, decls.size());
         assertEquals("web_search", decls.get(0).getAsJsonObject().get("name").getAsString());
         assertEquals("web_fetch", decls.get(1).getAsJsonObject().get("name").getAsString());
     }
@@ -620,15 +611,6 @@ public class AntigravityApiClientToolLoopTest {
             public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {
                 callback.onSuccess("Toggled " + feature);
             }
-            @Override
-            public void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) {
-                callback.onSuccess("Fetched: " + title);
-            }
-
-            @Override
-            public void applyLyrics(LyricsData lyrics, ActionCallback callback) {
-                callback.onSuccess("Applied: " + lyrics.lines.size() + " lines");
-            }
         });
 
         // Turn 1: Model calls transliterate_lyrics with thought_signature and show_original_script=false
@@ -688,161 +670,6 @@ public class AntigravityApiClientToolLoopTest {
         assertTrue(completedText.get().contains("Romaji"));
     }
     @Test
-    public void testSimulationFetchExternalSyllableLyrics() throws InterruptedException {
-        final AtomicReference<String> executedTitle = new AtomicReference<>();
-        final AtomicReference<String> executedArtist = new AtomicReference<>();
-        final AtomicReference<String> executedProvider = new AtomicReference<>();
-        final AtomicBoolean delegateInvoked = new AtomicBoolean(false);
-
-        apiClient.setLyricActionDelegate(new AntigravityApiClient.LyricActionDelegate() {
-            @Override
-            public void translateLyrics(String targetLang, ActionCallback callback) {}
-            @Override
-            public void transliterateLyrics(String mode, ActionCallback callback) {}
-            @Override
-            public void setSyncOffset(int offsetMs, ActionCallback callback) {}
-            @Override
-            public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) {}
-            @Override
-            public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {}
-
-            @Override
-            public void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) {
-                executedTitle.set(title);
-                executedArtist.set(artist);
-                executedProvider.set(provider);
-                delegateInvoked.set(true);
-                callback.onSuccess("Lirik suku kata berhasil diambil dari " + provider);
-            }
-
-            @Override
-            public void applyLyrics(LyricsData lyrics, ActionCallback callback) {
-                callback.onSuccess("Lirik diterapkan");
-            }
-        });
-
-        // Turn 1: Model calls fetch_external_syllable_lyrics
-        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_fetch_1\",\"functionCall\": {\"name\": \"fetch_external_syllable_lyrics\",\"id\": \"call_fetch_1\",\"args\": {\"title\": \"アイドル\",\"artist\": \"YOASOBI\",\"provider\": \"kugou\"}}}]}}]}}\n\n";
-        // Turn 2: Model returns result explanation
-        String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Lirik suku kata untuk lagu アイドル dari Kugou berhasil diterapkan.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 40,\"candidatesTokenCount\": 20}}}\n\n";
-
-        mockInterceptor.enqueueSseResponse(turn1Response);
-        mockInterceptor.enqueueSseResponse(turn2Response);
-
-        final CountDownLatch latch = new CountDownLatch(1);
-        final List<String> toolEvents = new ArrayList<>();
-        final AtomicReference<String> completedText = new AtomicReference<>();
-
-        apiClient.generateContentStream("gemini-3.8-flash-high", new ArrayList<>(),
-                "cari lirik syllable lagu idol yoasobi", false, new AntigravityApiClient.StreamListener() {
-                    @Override
-                    public void onToolExecuting(String toolName, String queryOrUrl) {
-                        toolEvents.add("executing:" + toolName + ":" + queryOrUrl);
-                    }
-
-                    @Override
-                    public void onToolCompleted(String toolName, int resultsCount) {
-                        toolEvents.add("completed:" + toolName);
-                    }
-
-                    @Override
-                    public void onComplete(String fullResponse, List<String> webSources) {
-                        completedText.set(fullResponse);
-                        latch.countDown();
-                    }
-
-                    @Override
-                    public void onError(Exception error) {
-                        latch.countDown();
-                    }
-                });
-
-        assertTrue(latch.await(5, TimeUnit.SECONDS));
-        assertTrue("LyricActionDelegate must be invoked", delegateInvoked.get());
-        assertEquals("アイドル", executedTitle.get());
-        assertEquals("YOASOBI", executedArtist.get());
-        assertEquals("kugou", executedProvider.get());
-        assertEquals(2, toolEvents.size());
-        assertEquals("executing:fetch_external_syllable_lyrics:アイドル - YOASOBI", toolEvents.get(0));
-        assertEquals("completed:fetch_external_syllable_lyrics", toolEvents.get(1));
-        assertNotNull(completedText.get());
-    }
-
-    @Test
-    public void testSimulationParseAndApplyLyrics() throws InterruptedException {
-        final AtomicReference<LyricsData> appliedLyrics = new AtomicReference<>();
-        final AtomicBoolean delegateInvoked = new AtomicBoolean(false);
-
-        apiClient.setLyricActionDelegate(new AntigravityApiClient.LyricActionDelegate() {
-            @Override
-            public void translateLyrics(String targetLang, ActionCallback callback) {}
-            @Override
-            public void transliterateLyrics(String mode, ActionCallback callback) {}
-            @Override
-            public void setSyncOffset(int offsetMs, ActionCallback callback) {}
-            @Override
-            public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) {}
-            @Override
-            public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {}
-            @Override
-            public void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) {}
-
-            @Override
-            public void applyLyrics(LyricsData lyrics, ActionCallback callback) {
-                appliedLyrics.set(lyrics);
-                delegateInvoked.set(true);
-                callback.onSuccess("Lirik berhasil diterapkan.");
-            }
-        });
-
-        String rawKrc = "[1000,2000]<0,1000,0>Hello <1000,1000,0>world";
-        // Turn 1: Model calls parse_and_apply_lyrics
-        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_parse_1\",\"functionCall\": {\"name\": \"parse_and_apply_lyrics\",\"id\": \"call_parse_1\",\"args\": {\"raw_lyrics\": \"" + rawKrc + "\",\"format\": \"krc\"}}}]}}]}}\n\n";
-        String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Lirik KRC berhasil di-parse dan diterapkan.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 40,\"candidatesTokenCount\": 20}}}\n\n";
-
-        mockInterceptor.enqueueSseResponse(turn1Response);
-        mockInterceptor.enqueueSseResponse(turn2Response);
-
-        final CountDownLatch latch = new CountDownLatch(1);
-        final List<String> toolEvents = new ArrayList<>();
-        final AtomicReference<String> completedText = new AtomicReference<>();
-
-        apiClient.generateContentStream("gemini-3.8-flash-high", new ArrayList<>(),
-                "ini lirik krc tolong terapkan", false, new AntigravityApiClient.StreamListener() {
-                    @Override
-                    public void onToolExecuting(String toolName, String queryOrUrl) {
-                        toolEvents.add("executing:" + toolName + ":" + queryOrUrl);
-                    }
-
-                    @Override
-                    public void onToolCompleted(String toolName, int resultsCount) {
-                        toolEvents.add("completed:" + toolName);
-                    }
-
-                    @Override
-                    public void onComplete(String fullResponse, List<String> webSources) {
-                        completedText.set(fullResponse);
-                        latch.countDown();
-                    }
-
-                    @Override
-                    public void onError(Exception error) {
-                        latch.countDown();
-                    }
-                });
-
-        assertTrue(latch.await(5, TimeUnit.SECONDS));
-        assertTrue("LyricActionDelegate must be invoked", delegateInvoked.get());
-        assertNotNull(appliedLyrics.get());
-        assertEquals(LyricsData.Type.SYLLABLE, appliedLyrics.get().type);
-        assertFalse(appliedLyrics.get().lines.isEmpty());
-        assertEquals(2, toolEvents.size());
-        assertEquals("executing:parse_and_apply_lyrics:format:krc", toolEvents.get(0));
-        assertEquals("completed:parse_and_apply_lyrics", toolEvents.get(1));
-        assertNotNull(completedText.get());
-    }
-
-    @Test
     public void testSimulationControlPlaybackAppearanceAndManageLines() throws InterruptedException {
         final AtomicReference<String> lastPlaybackAction = new AtomicReference<>();
         final AtomicInteger lastPlaybackLine = new AtomicInteger(-1);
@@ -857,8 +684,6 @@ public class AntigravityApiClientToolLoopTest {
             @Override public void setSyncOffset(int offsetMs, ActionCallback callback) { callback.onSuccess("OK"); }
             @Override public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) { callback.onSuccess("OK"); }
             @Override public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) { callback.onSuccess("OK"); }
-            @Override public void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) { callback.onSuccess("OK"); }
-            @Override public void applyLyrics(LyricsData lyrics, ActionCallback callback) { callback.onSuccess("OK"); }
 
             @Override
             public void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback) {

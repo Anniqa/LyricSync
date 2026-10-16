@@ -56,23 +56,9 @@
     <string name="lyrics_translation_desc">Display translated subtitles under synced lyrics</string>
     <string name="lyrics_translation_target">Target Language</string>
 
-    <!-- Spotify Account & Syllable Sync -->
-    <string name="spotify_account_title">Spotify &amp; Syllable Sync</string>
-    <string name="spotify_account_desc">Connect your Spotify session for stable word-by-word lyrics.</string>
-    <string name="spotify_section_session">Spotify session</string>
-    <string name="spotify_connect_button">Connect Spotify</string>
-    <string name="spotify_connected_status">Connected · full syllable rate</string>
-    <string name="spotify_disconnected_status">Not connected</string>
-    <string name="spotify_disconnect">Disconnect</string>
-    <string name="spotify_cookie_dialog_title">Connect Spotify (sp_dc Cookie)</string>
-    <string name="spotify_cookie_dialog_msg" formatted="false">1. Open open.spotify.com in your browser\n2. DevTools -> Application -> Cookies -> copy sp_dc value\n3. Paste it below to enable 100% stable syllable lyrics:</string>
-    <string name="spotify_cookie_hint">Paste sp_dc cookie or raw access token…</string>
-    <string name="spotify_cookie_save">Verify &amp; Save</string>
-    <string name="spotify_connected_toast" formatted="false">Spotify connected! 100% syllable lyrics rate active.</string>
-
-    <!-- Spicy Lyrics official API key -->
-    <string name="spicy_key_title">Spicy Lyrics key</string>
-    <string name="spicy_key_desc">Paste your client key from developers.spicylyrics.org (sl_pk_…).</string>
+    <!-- Syllable lyrics official API -->
+    <string name="lyrics_api_title">Syllable Lyrics API</string>
+    <string name="lyrics_api_desc">Word-by-word lyrics come from the Spicy Lyrics official API. The built-in key works out of the box; paste your own from developers.spicylyrics.org for higher rate limits.</string>
     <string name="spicy_key_button">Set key</string>
     <string name="spicy_key_status_set">Your key · official API active</string>
     <string name="spicy_key_status_none">Built-in key · official API active</string>
@@ -188,36 +174,25 @@
     <string name="ai_chip_transliterate_with_translation_desc">Syllable transliteration with line translations</string>
     <string name="ai_chip_transliterate_only">Transliteration Only</string>
     <string name="ai_chip_transliterate_only_desc">Syllable transliteration only, without translations</string>
-    <string name="ai_chip_transliterate_pure_romaji">Romaji Only (Hide Original)</string>
-    <string name="ai_chip_transliterate_pure_romaji_desc">Clean transliteration only, hiding original characters</string>
-    <string name="ai_transliterating">Generating Romaji and translation...</string>
+    <string name="ai_chip_transliterate_pure_romaji">Latin Only (Hide Original)</string>
+    <string name="ai_chip_transliterate_pure_romaji_desc">Show clean Latin transliteration only, hiding original characters</string>
+    <string name="ai_transliterating">Generating Latin transliteration and translation...</string>
     <string name="ai_transliteration_complete">Syllable transliteration ready</string>
     <string name="edit_syllables_title">Edit Syllables &amp; Translation</string>
     <string name="edit_syllables_original">Original Script</string>
-    <string name="edit_syllables_romaji">Romaji / Transliteration</string>
+    <string name="edit_syllables_romaji">Latin Transliteration</string>
     <string name="edit_syllables_translation">Line Meaning</string>
     <string name="btn_ai_regenerate">AI Regenerate</string>
-    <string name="toggle_romaji">Romaji</string>
-    <string name="toggle_pinyin">Pinyin</string>
-    <string name="toggle_romaja">Romaja</string>
-    <string name="toggle_cyrillic_translit">Latin Transliteration</string>
-    <string name="toggle_transliteration">Transliteration</string>
+    <!-- One label for every non-Latin script: the action is the same whichever script is on screen. -->
+    <string name="toggle_latin_transliteration">Transliterate to Latin</string>
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
 
     <!-- Lyric Retry & AI Retrieval -->
     <string name="btn_retry_standard">Retry</string>
-    <string name="btn_retry_ai">Find with AI</string>
-    <string name="ai_step_searching_syllable">Searching syllable lyrics (KRC / YRC / TTML)…</string>
-    <string name="ai_step_fallback_lrc">Syllable not found, searching line format (LRC)…</string>
-    <string name="ai_step_web_search">Searching and synchronizing lyrics on the web with AI…</string>
-    <string name="ai_error_not_found">No synced lyrics found for this version.</string>
-    <string name="action_cancel">Cancel</string>
-    <string name="action_view_details">Details</string>
 
     <!-- Account & settings feedback (localized) -->
     <string name="settings_open_failed">Couldn\'t open that settings screen</string>
-    <string name="spotify_validating_session">Validating Spotify session…</string>
     <string name="google_signin_opening">Opening browser for Google sign-in…</string>
     <string name="google_signin_success">Signed in: %1$s</string>
     <string name="google_signin_failed">Sign-in failed: %1$s</string>

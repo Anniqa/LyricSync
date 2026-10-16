@@ -10,7 +10,6 @@ import com.lyricsync.app.lyrics.provider.LRCLIBProvider;
 import com.lyricsync.app.lyrics.provider.LyricsProvider;
 import com.lyricsync.app.lyrics.provider.NeteaseLyricsProvider;
 import com.lyricsync.app.lyrics.provider.SpicyLyricsProvider;
-import com.lyricsync.app.lyrics.provider.SpotifyColorLyricsProvider;
 import com.lyricsync.app.lyrics.util.TrackMetadataSanitizer;
 import com.lyricsync.app.util.AppLog;
 
@@ -52,7 +51,6 @@ public class LyricsProviderManager {
         providers.add(new SpicyLyricsProvider(context));
         providers.add(new KugouLyricsProvider());
         providers.add(new NeteaseLyricsProvider());
-        providers.add(new SpotifyColorLyricsProvider(context));
         providers.add(new LRCLIBProvider());
     }
 

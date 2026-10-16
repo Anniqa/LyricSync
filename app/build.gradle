@@ -5,6 +5,8 @@ plugins {
 android {
     namespace 'com.lyricsync.app'
     compileSdk 35
+    // Pinned so the AGP default (34.0.0) is not silently downloaded for an SDK 35 build.
+    buildToolsVersion '35.0.0'
 
     defaultConfig {
         applicationId "com.lyricsync.app"

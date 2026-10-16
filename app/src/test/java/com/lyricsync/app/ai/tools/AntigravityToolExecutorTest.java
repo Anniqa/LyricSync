@@ -29,6 +29,21 @@ public class AntigravityToolExecutorTest {
     private OkHttpClient mockHttpClient;
     private AntigravityToolExecutor executor;
 
+    @Test
+    public void toolResultFactoriesBuildUsableResults() {
+        AntigravityToolExecutor.ToolResult ok = AntigravityToolExecutor.ToolResult.message("selesai");
+        assertFalse(ok.isError);
+        assertEquals("selesai", ok.content);
+        assertNotNull(ok.sources);
+        assertTrue(ok.sources.isEmpty());
+
+        AntigravityToolExecutor.ToolResult bad = AntigravityToolExecutor.ToolResult.error("boom");
+        assertTrue(bad.isError);
+        assertEquals("boom", bad.content);
+        assertNotNull(bad.sources);
+        assertTrue(bad.sources.isEmpty());
+    }
+
     @Before
     public void setUp() {
         mockInterceptor = new MockHttpInterceptor();

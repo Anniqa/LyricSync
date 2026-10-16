@@ -46,11 +46,11 @@ import android.widget.Toast;
 
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
+import com.lyricsync.app.ai.client.MainThreadLyricActionRouter;
 import com.lyricsync.app.ai.client.AntigravityQuotaClient;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.QuotaSummary;
-import com.lyricsync.app.ai.service.AiLyricsAgentService;
 import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.service.SongMeaningService.SongMeaning;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
@@ -72,6 +72,9 @@ import com.lyricsync.app.ai.transliteration.AiSyllableTransliterationService;
 import com.lyricsync.app.ai.transliteration.ScriptDetector;
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
+import com.lyricsync.app.lyrics.translation.AiTranslationService;
+import com.lyricsync.app.lyrics.translation.GoogleTranslateParser;
+import com.lyricsync.app.lyrics.translation.GoogleTranslateService;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.renderer.AnimConfig;
@@ -94,7 +97,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FloatingOverlayService extends Service {
+public class FloatingOverlayService extends Service implements AntigravityApiClient.LyricActionDelegate {
     private static final String TAG = "FloatingOverlay";
     private static final int NOTIFICATION_ID = 1001;
 
@@ -154,28 +157,18 @@ public class FloatingOverlayService extends Service {
     private View overlayEmpty;
     private TextView overlayEmptyTitle;
     private TextView overlayEmptyDesc;
-    // Retry & AI retrieval state machine
+    // Retry state machine
     public static final int RETRY_STATE_IDLE = 0;
     public static final int RETRY_STATE_STANDARD = 1;
-    public static final int RETRY_STATE_AI = 2;
 
     public static final int STATE_IDLE = RETRY_STATE_IDLE;
     public static final int STATE_STANDARD_RETRYING = RETRY_STATE_STANDARD;
-    public static final int STATE_AI_SEARCHING = RETRY_STATE_AI;
     public static final int STATE_LOADED = 3;
     public static final int STATE_FAILED = 4;
 
     private int currentRetryState = RETRY_STATE_IDLE;
     private View overlayRetryActionsContainer;
     private TextView btnRetryStandard;
-    private TextView btnRetryAi;
-    private View overlayAiProgressContainer;
-    private ProgressBar pbAiProgress;
-    private TextView tvAiProgressStep;
-    private TextView btnAiCancel;
-    private TextView btnAiExpandChat;
-    private AiLyricsAgentService aiLyricsAgentService;
-    private AntigravityApiClient.Cancellable activeAiLyricsCall;
     private WindowManager.LayoutParams overlayParams;
     private SharedPreferences sharedPrefs;
 
@@ -196,8 +189,8 @@ public class FloatingOverlayService extends Service {
     private ImageView overlayResizeHandle;
     private androidx.appcompat.widget.SwitchCompat overlayResizeSwitch;
     private boolean showResizeHandle = false;
-    private com.lyricsync.app.lyrics.translation.GoogleTranslateService translateService;
-    private com.lyricsync.app.lyrics.translation.AiTranslationService aiTranslationService;
+    private GoogleTranslateService translateService;
+    private AiTranslationService aiTranslationService;
     private androidx.appcompat.widget.SwitchCompat overlayTranslateSwitch;
     private boolean translationEnabled = false;
     private SyllableHighlighter highlighter;
@@ -298,7 +291,7 @@ public class FloatingOverlayService extends Service {
             long offset = prefs.getLong("sync_offset_ms", 0);
             sessionTracker.setSyncOffsetMs(offset);
             syncOffsetSliderFromPrefs(offset);
-        } else if (com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED.equals(key)) {
+        } else if (GoogleTranslateService.PREF_TRANSLATION_ENABLED.equals(key)) {
             boolean enabled = prefs.getBoolean(key, false);
             if (this.translationEnabled != enabled) {
                 this.translationEnabled = enabled;
@@ -312,7 +305,7 @@ public class FloatingOverlayService extends Service {
                     fetchTranslationForCurrentLyrics();
                 }
             }
-        } else if (com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG.equals(key)) {
+        } else if (GoogleTranslateService.PREF_TARGET_LANG.equals(key)) {
             if (translationEnabled && currentLyrics != null) {
                 fetchTranslationForCurrentLyrics();
             }
@@ -363,91 +356,18 @@ public class FloatingOverlayService extends Service {
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
-        translateService = new com.lyricsync.app.lyrics.translation.GoogleTranslateService();
-        com.lyricsync.app.ai.auth.AntigravityAuthManager authManager =
-                com.lyricsync.app.ai.auth.AntigravityAuthManager.getInstance(this);
-        apiClient = new com.lyricsync.app.ai.client.AntigravityApiClient(authManager);
-        apiClient.setLyricActionDelegate(new com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate() {
-            @Override
-            public void translateLyrics(String targetLang, ActionCallback callback) {
-                handler.post(() -> translateLyricsLive(targetLang, callback));
-            }
-
-            @Override
-            public void transliterateLyrics(String mode, ActionCallback callback) {
-                handler.post(() -> transliterateLyricsLive(mode, true, callback));
-            }
-
-            @Override
-            public void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
-                handler.post(() -> transliterateLyricsLive(mode, showOriginalScript, callback));
-            }
-
-            @Override
-            public void setSyncOffset(int offsetMs, ActionCallback callback) {
-                handler.post(() -> setSyncOffsetLive(offsetMs, callback));
-            }
-
-            @Override
-            public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) {
-                handler.post(() -> modifyLineLive(lineIndex, text, translation, romanji, callback));
-            }
-
-            @Override
-            public void batchEditLyrics(List<com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.LineEdit> edits, ActionCallback callback) {
-                handler.post(() -> batchEditLyricsLive(edits, callback));
-            }
-            @Override
-            public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {
-                handler.post(() -> toggleDisplayLive(feature, enabled, callback));
-            }
-            @Override
-            public void fetchSyllableLyrics(String title, String artist, String provider, ActionCallback callback) {
-                handler.post(() -> fetchSyllableLyricsLive(title, artist, provider, callback));
-            }
-
-            @Override
-            public void applyLyrics(LyricsData lyrics, ActionCallback callback) {
-                handler.post(() -> applyLyricsLive(lyrics, callback));
-            }
-
-            @Override
-            public void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback) {
-                handler.post(() -> controlPlaybackLive(action, lineIndex, positionMs, callback));
-            }
-
-            @Override
-            public void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent, ActionCallback callback) {
-                handler.post(() -> adjustAppearanceLive(fontScale, animStyle, widthPercent, heightPercent, callback));
-            }
-
-            @Override
-            public void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
-                handler.post(() -> manageLinesLive(action, lineIndex, startMs, endMs, text, translation, romanji, shiftMs, callback));
-            }
-
-            @Override
-            public void getCurrentPlayingTrack(com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.TrackInfoCallback callback) {
-                handler.post(() -> {
-                    String t = currentTrack != null ? currentTrack.title : "";
-                    String a = currentTrack != null ? currentTrack.artist : "";
-                    String l = songChatManager != null ? songChatManager.getFullLyrics() : "";
-                    boolean playing = sessionTracker != null && sessionTracker.isPlaying();
-                    long position = sessionTracker != null ? sessionTracker.getCurrentPosition() : 0L;
-                    if (callback != null) {
-                        callback.onSuccess(t, a, l, playing, position);
-                    }
-                });
-            }
-        });
-        aiTranslationService = new com.lyricsync.app.lyrics.translation.AiTranslationService(
+        translateService = new GoogleTranslateService();
+        AntigravityAuthManager authManager =
+                AntigravityAuthManager.getInstance(this);
+        apiClient = new AntigravityApiClient(authManager);
+        apiClient.setLyricActionDelegate(new MainThreadLyricActionRouter(handler, this));
+        aiTranslationService = new AiTranslationService(
                 this, authManager, apiClient, translateService);
         songChatManager = new SongChatManager(apiClient);
         aiChatHistoryManager = new AiChatHistoryManager(this);
         songChatManager.setHistoryManager(aiChatHistoryManager);
         aiTransliterationService = new AiSyllableTransliterationService(this, apiClient);
         lyricsCacheManager = new LyricsCacheManager(this);
-        aiLyricsAgentService = new AiLyricsAgentService(this, apiClient);
         quotaClient = new AntigravityQuotaClient(authManager);
         // Capture the SharedPreferences instance, not the service, so this static supplier
         // does not keep the Service (a Context) alive after onDestroy.
@@ -455,7 +375,7 @@ public class FloatingOverlayService extends Service {
         AntigravityToolExecutor.setChatModelSupplier(() ->
                 chatModelPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
         translationEnabled = sharedPrefs.getBoolean(
-                com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
+                GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
         loadTypefaces();
         lyricAnimConfig = AnimSelection.current(new AndroidPrefs(sharedPrefs));
 
@@ -553,7 +473,7 @@ public class FloatingOverlayService extends Service {
             overlayTranslateSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
                 translationEnabled = isChecked;
                 sharedPrefs.edit().putBoolean(
-                        com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, isChecked).apply();
+                        GoogleTranslateService.PREF_TRANSLATION_ENABLED, isChecked).apply();
                 if (highlighter != null) {
                     highlighter.setTranslationEnabled(isChecked);
                 }
@@ -584,7 +504,7 @@ public class FloatingOverlayService extends Service {
                 }
                 String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
                         ? overlayTransliterationLabel.getText().toString()
-                        : getString(R.string.toggle_romaji);
+                        : getString(R.string.toggle_latin_transliteration);
                 Toast.makeText(this, labelName + (isChecked ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
             });
         }
@@ -595,7 +515,7 @@ public class FloatingOverlayService extends Service {
                     boolean newOrig = !highlighter.isOriginalScriptEnabled();
                     highlighter.setOriginalScriptEnabled(newOrig);
                     sharedPrefs.edit().putBoolean("pref_original_script_enabled", newOrig).apply();
-                    Toast.makeText(this, newOrig ? "Aksara asli ditampilkan" : "Aksara asli disembunyikan (Romaji Saja)", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, newOrig ? "Aksara asli ditampilkan" : "Aksara asli disembunyikan (Latin Saja)", Toast.LENGTH_SHORT).show();
                 }
                 return true;
             };
@@ -632,12 +552,6 @@ public class FloatingOverlayService extends Service {
         overlayEmptyDesc = overlayView.findViewById(R.id.overlay_empty_desc);
         overlayRetryActionsContainer = overlayView.findViewById(R.id.overlay_retry_actions_container);
         btnRetryStandard = overlayView.findViewById(R.id.btn_retry_standard);
-        btnRetryAi = overlayView.findViewById(R.id.btn_retry_ai);
-        overlayAiProgressContainer = overlayView.findViewById(R.id.overlay_ai_progress_container);
-        pbAiProgress = overlayView.findViewById(R.id.pb_ai_progress);
-        tvAiProgressStep = overlayView.findViewById(R.id.tv_ai_progress_step);
-        btnAiCancel = overlayView.findViewById(R.id.btn_ai_cancel);
-        btnAiExpandChat = overlayView.findViewById(R.id.btn_ai_expand_chat);
         setupRetryViews();
 
         lyricsVisible = sharedPrefs.getBoolean("lyrics_visible", true);
@@ -1599,7 +1513,7 @@ public class FloatingOverlayService extends Service {
             });
             aiPromptTemplatesContainer.addView(itemOnly);
 
-            // Option 3: Romaji Saja (Tanpa Huruf Asli)
+            // Option 3: Latin Saja (Tanpa Huruf Asli)
             View itemPure = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
             ImageView icon3 = itemPure.findViewById(R.id.prompt_icon);
             TextView title3 = itemPure.findViewById(R.id.prompt_title);
@@ -1664,7 +1578,7 @@ public class FloatingOverlayService extends Service {
         performTransliteration(includeTranslation, showOriginalScript, null);
     }
 
-    private void performTransliteration(final boolean includeTranslation, final boolean showOriginalScript, final com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback actionCallback) {
+    private void performTransliteration(final boolean includeTranslation, final boolean showOriginalScript, final AntigravityApiClient.LyricActionDelegate.ActionCallback actionCallback) {
         if (currentLyrics == null || aiTransliterationService == null || currentTrack == null) {
             if (actionCallback != null) actionCallback.onError("Lirik belum dimuat");
             return;
@@ -1681,7 +1595,7 @@ public class FloatingOverlayService extends Service {
                 if (includeTranslation) {
                     translationEnabled = true;
                     sharedPrefs.edit()
-                            .putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
+                            .putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
                             .apply();
                     highlighter.setTranslationEnabled(true);
                     if (overlayTranslateSwitch != null) {
@@ -1732,7 +1646,7 @@ public class FloatingOverlayService extends Service {
                         if (includeTranslation) {
                             translationEnabled = true;
                             sharedPrefs.edit()
-                                    .putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
+                                    .putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
                                     .apply();
                             if (overlayTranslateSwitch != null) {
                                 overlayTranslateSwitch.setChecked(true);
@@ -1768,22 +1682,6 @@ public class FloatingOverlayService extends Service {
                 });
     }
 
-    private String getTransliterationLabelForScript(ScriptDetector.ScriptType script) {
-        if (script == null) return getString(R.string.toggle_transliteration);
-        switch (script) {
-            case JAPANESE:
-                return getString(R.string.toggle_romaji);
-            case CHINESE:
-                return getString(R.string.toggle_pinyin);
-            case KOREAN:
-                return getString(R.string.toggle_romaja);
-            case CYRILLIC:
-                return getString(R.string.toggle_cyrillic_translit);
-            default:
-                return getString(R.string.toggle_transliteration);
-        }
-    }
-
     private void updateTransliterationToggleUi() {
         if (overlayRomajiSwitch == null) return;
         boolean isNonLatin = isLyricsNonLatin(currentLyrics);
@@ -1799,23 +1697,7 @@ public class FloatingOverlayService extends Service {
         isProgrammaticRomajiUpdate = false;
 
         if (overlayTransliterationLabel != null) {
-            ScriptDetector.ScriptType script = ScriptDetector.ScriptType.LATIN;
-            if (currentLyrics != null && currentLyrics.sourceScript != null) {
-                try {
-                    script = ScriptDetector.ScriptType.valueOf(currentLyrics.sourceScript);
-                } catch (Exception ignored) {}
-            }
-            if (script == ScriptDetector.ScriptType.LATIN && currentLyrics != null && currentLyrics.lines != null) {
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < Math.min(25, currentLyrics.lines.size()); i++) {
-                    LyricsData.LyricsLine l = currentLyrics.lines.get(i);
-                    if (l != null && l.text != null && !l.isInterlude) {
-                        sb.append(l.text).append(" ");
-                    }
-                }
-                script = ScriptDetector.detectScript(sb.toString());
-            }
-            overlayTransliterationLabel.setText(getTransliterationLabelForScript(script));
+            overlayTransliterationLabel.setText(R.string.toggle_latin_transliteration);
         }
     }
 
@@ -1864,19 +1746,37 @@ public class FloatingOverlayService extends Service {
             sharedPrefs.edit().putBoolean("pref_romaji_enabled", newState).apply();
             String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
                     ? overlayTransliterationLabel.getText().toString()
-                    : getString(R.string.toggle_romaji);
+                    : getString(R.string.toggle_latin_transliteration);
             Toast.makeText(this, labelName + (newState ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
         }
     }
-    public void translateLyricsLive(String targetLang, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+
+    /**
+     * Reports the track the overlay is following right now, for the AI tools. The router
+     * posts every {@link AntigravityApiClient.LyricActionDelegate} call onto the main thread, so
+     * this runs there.
+     */
+    @Override
+    public void getCurrentPlayingTrack(AntigravityApiClient.LyricActionDelegate.TrackInfoCallback callback) {
+        String title = currentTrack != null ? currentTrack.title : "";
+        String artist = currentTrack != null ? currentTrack.artist : "";
+        String lyrics = songChatManager != null ? songChatManager.getFullLyrics() : "";
+        boolean playing = sessionTracker != null && sessionTracker.isPlaying();
+        long position = sessionTracker != null ? sessionTracker.getCurrentPosition() : 0L;
+        if (callback != null) {
+            callback.onSuccess(title, artist, lyrics, playing, position);
+        }
+    }
+
+    public void translateLyrics(String targetLang, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (currentLyrics == null || currentLyrics.isEmpty()) {
             if (callback != null) callback.onError("Tidak ada lirik aktif untuk diterjemahkan");
             return;
         }
         final String lang = (targetLang != null && !targetLang.trim().isEmpty()) ? targetLang.trim() : "id";
         sharedPrefs.edit()
-                .putString(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG, lang)
-                .putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
+                .putString(GoogleTranslateService.PREF_TARGET_LANG, lang)
+                .putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
                 .apply();
         translationEnabled = true;
         if (overlayTranslateSwitch != null) {
@@ -1888,7 +1788,7 @@ public class FloatingOverlayService extends Service {
         fetchTranslationForCurrentLyrics(callback);
     }
 
-    public void transliterateLyricsLive(String mode, boolean showOriginalScript, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void transliterateLyrics(String mode, boolean showOriginalScript, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (currentLyrics == null || currentLyrics.isEmpty()) {
             if (callback != null) callback.onError("Tidak ada lirik aktif");
             return;
@@ -1897,11 +1797,11 @@ public class FloatingOverlayService extends Service {
         performTransliteration(includeTranslation, showOriginalScript, callback);
     }
 
-    public void transliterateLyricsLive(String mode, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        transliterateLyricsLive(mode, true, callback);
+    public void transliterateLyrics(String mode, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+        transliterateLyrics(mode, true, callback);
     }
 
-    public void setSyncOffsetLive(int offsetMs, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void setSyncOffset(int offsetMs, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         int clamped = clamp(offsetMs, -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
         sharedPrefs.edit().putLong("sync_offset_ms", clamped).apply();
         if (sessionTracker != null) {
@@ -1914,7 +1814,7 @@ public class FloatingOverlayService extends Service {
         }
     }
 
-    public void modifyLineLive(int lineIndex, String text, String translation, String romanji, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void modifyLine(int lineIndex, String text, String translation, String romanji, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (currentLyrics == null || currentLyrics.lines == null) {
             if (callback != null) callback.onError("Tidak ada lirik aktif");
             return;
@@ -1930,7 +1830,7 @@ public class FloatingOverlayService extends Service {
         if (translation != null && !translation.trim().isEmpty()) {
             line.translation = translation.trim();
             translationEnabled = true;
-            sharedPrefs.edit().putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true).apply();
+            sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true).apply();
             if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(true);
             if (highlighter != null) highlighter.setTranslationEnabled(true);
         }
@@ -1950,7 +1850,7 @@ public class FloatingOverlayService extends Service {
         }
     }
 
-    public void batchEditLyricsLive(List<com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.LineEdit> edits, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void batchEditLyrics(List<AntigravityApiClient.LyricActionDelegate.LineEdit> edits, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (currentLyrics == null || currentLyrics.lines == null || currentLyrics.lines.isEmpty()) {
             if (callback != null) callback.onError("Tidak ada lirik aktif");
             return;
@@ -1962,7 +1862,7 @@ public class FloatingOverlayService extends Service {
         boolean hasAnyTrans = false;
         boolean hasAnyRomaji = false;
         int count = 0;
-        for (com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.LineEdit e : edits) {
+        for (AntigravityApiClient.LyricActionDelegate.LineEdit e : edits) {
             if (e != null && e.lineIndex >= 0 && e.lineIndex < currentLyrics.lines.size()) {
                 LyricsData.LyricsLine l = currentLyrics.lines.get(e.lineIndex);
                 if (e.text != null && !e.text.trim().isEmpty()) l.text = e.text.trim();
@@ -1979,7 +1879,7 @@ public class FloatingOverlayService extends Service {
         }
         if (hasAnyTrans) {
             translationEnabled = true;
-            sharedPrefs.edit().putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, true).apply();
+            sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true).apply();
             if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(true);
             if (highlighter != null) highlighter.setTranslationEnabled(true);
         }
@@ -1998,10 +1898,10 @@ public class FloatingOverlayService extends Service {
         }
     }
 
-    public void toggleDisplayLive(String feature, boolean enabled, com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void toggleDisplay(String feature, boolean enabled, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if ("translation".equalsIgnoreCase(feature)) {
             translationEnabled = enabled;
-            sharedPrefs.edit().putBoolean(com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TRANSLATION_ENABLED, enabled).apply();
+            sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, enabled).apply();
             if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(enabled);
             if (highlighter != null) highlighter.setTranslationEnabled(enabled);
             if (callback != null) callback.onSuccess("Terjemahan " + (enabled ? "ditampilkan" : "disembunyikan"));
@@ -2009,7 +1909,7 @@ public class FloatingOverlayService extends Service {
             sharedPrefs.edit().putBoolean("pref_romaji_enabled", enabled).apply();
             if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(enabled);
             if (highlighter != null) highlighter.setTransliterationEnabled(enabled);
-            if (callback != null) callback.onSuccess("Romaji " + (enabled ? "ditampilkan" : "disembunyikan"));
+            if (callback != null) callback.onSuccess("Transliterasi Latin " + (enabled ? "ditampilkan" : "disembunyikan"));
         } else if ("original_script".equalsIgnoreCase(feature)) {
             sharedPrefs.edit().putBoolean("pref_original_script_enabled", enabled).apply();
             if (highlighter != null) highlighter.setOriginalScriptEnabled(enabled);
@@ -2018,75 +1918,9 @@ public class FloatingOverlayService extends Service {
             if (callback != null) callback.onError("Fitur tidak dikenal: " + feature);
         }
     }
-    public void fetchSyllableLyricsLive(String title, String artist, String provider,
-                                        com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (title == null || title.trim().isEmpty()) {
-            if (callback != null) callback.onError("Judul lagu tidak boleh kosong");
-            return;
-        }
 
-        TrackInfo track = new TrackInfo();
-        track.title = title.trim();
-        track.artist = artist != null ? artist.trim() : "";
-        if (currentTrack != null) {
-            track.duration = currentTrack.duration;
-            track.album = currentTrack.album;
-            track.packageName = currentTrack.packageName;
-        }
-
-        if (lyricsManager == null) {
-            lyricsManager = new LyricsProviderManager(this);
-        }
-
-        lyricsManager.fetchLyrics(track, provider, new LyricsProviderManager.LyricsCallback() {
-            @Override
-            public void onLyricsLoaded(LyricsData lyrics) {
-                handler.post(() -> {
-                    applyLyricsLive(lyrics, null);
-                    if (callback != null) {
-                        callback.onSuccess("Berhasil mengambil dan menerapkan lirik suku kata dari "
-                                + (lyrics.provider != null ? lyrics.provider : "provider eksternal")
-                                + " (" + lyrics.lines.size() + " baris).");
-                    }
-                });
-            }
-
-            @Override
-            public void onLyricsError(String error) {
-                if (aiLyricsAgentService == null) {
-                    aiLyricsAgentService = new AiLyricsAgentService(FloatingOverlayService.this, apiClient);
-                }
-                aiLyricsAgentService.retrieveLyrics(track, new AiLyricsAgentService.AiLyricsCallback() {
-                    @Override
-                    public void onStepChanged(int stepCode, String message) {}
-
-                    @Override
-                    public void onSuccess(LyricsData lyrics) {
-                        handler.post(() -> {
-                            applyLyricsLive(lyrics, null);
-                            if (callback != null) {
-                                callback.onSuccess("Berhasil mencari via AI dan menerapkan lirik dari "
-                                        + (lyrics.provider != null ? lyrics.provider : "AI Web Search")
-                                        + " (" + lyrics.lines.size() + " baris).");
-                            }
-                        });
-                    }
-
-                    @Override
-                    public void onError(String aiError) {
-                        handler.post(() -> {
-                            if (callback != null) {
-                                callback.onError(error + " | AI: " + aiError);
-                            }
-                        });
-                    }
-                });
-            }
-        });
-    }
-
-    public void applyLyricsLive(LyricsData lyrics,
-                                com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void applyLyrics(LyricsData lyrics,
+                                AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (lyrics == null || lyrics.isEmpty()) {
             if (callback != null) callback.onError("Lirik kosong atau tidak valid");
             return;
@@ -2109,8 +1943,8 @@ public class FloatingOverlayService extends Service {
         }
     }
 
-    public void controlPlaybackLive(String action, int lineIndex, long positionMs,
-                                    com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void controlPlayback(String action, int lineIndex, long positionMs,
+                                    AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (sessionTracker == null) {
             if (callback != null) callback.onError("Pemutar musik tidak aktif");
             return;
@@ -2152,8 +1986,8 @@ public class FloatingOverlayService extends Service {
         }
     }
 
-    public void adjustAppearanceLive(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent,
-                                     com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    public void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent,
+                                     AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         android.content.SharedPreferences.Editor ed = sharedPrefs.edit();
         boolean changed = false;
         if (fontScale != null && fontScale > 0) {
@@ -2182,9 +2016,9 @@ public class FloatingOverlayService extends Service {
         }
     }
 
-    public void manageLinesLive(String action, int lineIndex, long startMs, long endMs, String text,
+    public void manageLines(String action, int lineIndex, long startMs, long endMs, String text,
                                 String translation, String romanji, long shiftMs,
-                                com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+                                AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (currentLyrics == null || currentLyrics.lines == null) {
             if (callback != null) callback.onError("Tidak ada lirik aktif");
             return;
@@ -2322,8 +2156,8 @@ public class FloatingOverlayService extends Service {
                             showInlineToolStatus(toolName, queryOrUrl);
                             if (aiToolStatusContainer != null) {
                                 cancelPendingToolStatusHide();
-                                com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
-                                        com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, FloatingOverlayService.this);
+                                CleanMarkdownFormatter.ToolDisplayInfo info =
+                                        CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, FloatingOverlayService.this);
                                 if (aiToolStatusIcon != null) aiToolStatusIcon.setImageResource(info.iconRes);
                                 if (aiToolStatusText != null) aiToolStatusText.setText(info.runningText);
                                 aiToolStatusContainer.setAlpha(0f);
@@ -2342,8 +2176,8 @@ public class FloatingOverlayService extends Service {
                                 if (aiToolStatusIcon != null) {
                                     aiToolStatusIcon.setImageResource(R.drawable.ic_check);
                                 }
-                                com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
-                                        com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, FloatingOverlayService.this);
+                                CleanMarkdownFormatter.ToolDisplayInfo info =
+                                        CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, FloatingOverlayService.this);
                                 if (aiToolStatusText != null) aiToolStatusText.setText(info.doneText);
                                 scheduleToolStatusHide();
                             }
@@ -2471,8 +2305,8 @@ public class FloatingOverlayService extends Service {
 
     private void showInlineToolStatus(String toolName, String queryOrUrl) {
         if (aiChatMessages == null) return;
-        com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
-                com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
+        CleanMarkdownFormatter.ToolDisplayInfo info =
+                CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
 
         TextView card = new TextView(this);
         card.setText(info.runningText);
@@ -2506,8 +2340,8 @@ public class FloatingOverlayService extends Service {
 
     private void completeInlineToolStatus(String toolName, int resultsCount) {
         if (activeOverlayToolCard != null) {
-            com.lyricsync.app.ai.util.CleanMarkdownFormatter.ToolDisplayInfo info =
-                    com.lyricsync.app.ai.util.CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
+            CleanMarkdownFormatter.ToolDisplayInfo info =
+                    CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
             android.graphics.drawable.Drawable checkIcon = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_check);
             if (checkIcon != null) {
                 checkIcon = checkIcon.mutate();
@@ -3425,7 +3259,7 @@ public class FloatingOverlayService extends Service {
         lineViews.clear();
     }
 
-    // ── Retry & AI Retrieval ────────────────────────────────────────────────
+    // ── Retry ────────────────────────────────────────────────
 
     private void setupRetryViews() {
         if (btnRetryStandard != null) {
@@ -3437,59 +3271,25 @@ public class FloatingOverlayService extends Service {
                 fetchLyrics(currentTrack);
             });
         }
-        if (btnRetryAi != null) {
-            btnRetryAi.setOnClickListener(v -> {
-                Haptics.tick(v);
-                triggerAiLyricsRetrieval();
-            });
-        }
-        if (btnAiCancel != null) {
-            btnAiCancel.setOnClickListener(v -> {
-                Haptics.tick(v);
-                cancelAiLyricsRetrieval();
-                if (overlayEmptyDesc != null) {
-                    overlayEmptyDesc.setText(R.string.lyrics_none_desc);
-                }
-            });
-        }
-        if (btnAiExpandChat != null) {
-            btnAiExpandChat.setOnClickListener(v -> {
-                Haptics.tick(v);
-                showAiChatOverlay();
-            });
-        }
         setRetryState(RETRY_STATE_IDLE);
     }
 
     public void setRetryState(int state) {
         this.currentRetryState = state;
-        if (overlayRetryActionsContainer == null || overlayAiProgressContainer == null) return;
+        if (overlayRetryActionsContainer == null) return;
         switch (state) {
-            case RETRY_STATE_AI:
-                overlayRetryActionsContainer.setVisibility(View.GONE);
-                overlayAiProgressContainer.setVisibility(View.VISIBLE);
-                if (pbAiProgress != null) pbAiProgress.setVisibility(View.VISIBLE);
-                if (tvAiProgressStep != null) {
-                    tvAiProgressStep.setText(R.string.ai_step_searching_syllable);
-                }
-                break;
             case RETRY_STATE_STANDARD:
                 overlayRetryActionsContainer.setVisibility(View.VISIBLE);
-                overlayAiProgressContainer.setVisibility(View.GONE);
                 if (btnRetryStandard != null) btnRetryStandard.setEnabled(false);
-                if (btnRetryAi != null) btnRetryAi.setEnabled(false);
                 break;
             case STATE_LOADED:
                 overlayRetryActionsContainer.setVisibility(View.GONE);
-                overlayAiProgressContainer.setVisibility(View.GONE);
                 break;
             case STATE_FAILED:
             case RETRY_STATE_IDLE:
             default:
                 overlayRetryActionsContainer.setVisibility(View.VISIBLE);
-                overlayAiProgressContainer.setVisibility(View.GONE);
                 if (btnRetryStandard != null) btnRetryStandard.setEnabled(true);
-                if (btnRetryAi != null) btnRetryAi.setEnabled(true);
                 break;
         }
     }
@@ -3498,114 +3298,10 @@ public class FloatingOverlayService extends Service {
         return currentRetryState;
     }
 
-    private void cancelAiLyricsRetrieval() {
-        if (activeAiLyricsCall != null) {
-            activeAiLyricsCall.cancel();
-            activeAiLyricsCall = null;
-        }
-        pendingFetchKey = null;
-        if (currentRetryState == RETRY_STATE_AI) {
-            setRetryState(RETRY_STATE_IDLE);
-        }
-    }
-
-    private void triggerAiLyricsRetrieval() {
-        if (currentTrack == null || !currentTrack.isValid()) return;
-        if (aiLyricsAgentService == null) {
-            aiLyricsAgentService = new AiLyricsAgentService(this, apiClient);
-        }
-        cancelAiLyricsRetrieval();
-        final TrackInfo track = currentTrack;
-        final String fetchKey = track.title + "|||" + track.artist;
-        pendingFetchKey = fetchKey;
-
-        setRetryState(RETRY_STATE_AI);
-        if (overlayEmptyDesc != null) {
-            overlayEmptyDesc.setText(R.string.ai_step_searching_syllable);
-        }
-
-        activeAiLyricsCall = aiLyricsAgentService.retrieveLyrics(track, new AiLyricsAgentService.AiLyricsCallback() {
-            @Override
-            public void onStepChanged(int stepCode, String message) {
-                handler.post(() -> {
-                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
-                    if (tvAiProgressStep != null) {
-                        if (message != null && !message.isEmpty()) {
-                            tvAiProgressStep.setText(message);
-                        } else if (stepCode == AiLyricsAgentService.STEP_FETCHING_SYLLABLE) {
-                            tvAiProgressStep.setText(R.string.ai_step_searching_syllable);
-                        } else if (stepCode == AiLyricsAgentService.STEP_FALLBACK_LRC) {
-                            tvAiProgressStep.setText(R.string.ai_step_fallback_lrc);
-                        } else if (stepCode == AiLyricsAgentService.STEP_AI_WEB_SEARCH) {
-                            tvAiProgressStep.setText(R.string.ai_step_web_search);
-                        }
-                    }
-                });
-            }
-
-            @Override
-            public void onSuccess(LyricsData lyrics) {
-                handler.post(() -> {
-                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
-                    activeAiLyricsCall = null;
-                    if (lyrics == null || lyrics.isEmpty()) {
-                        setRetryState(STATE_FAILED);
-                        if (overlayEmptyDesc != null) {
-                            overlayEmptyDesc.setText(R.string.ai_error_not_found);
-                        }
-                        return;
-                    }
-                    AppLog.i(TAG, "AI Lyrics retrieved: " + lyrics.lines.size()
-                            + " lines from " + lyrics.provider
-                            + " type=" + lyrics.type);
-                    currentLyrics = lyrics;
-                    lyricsStatusText = describeLyrics(lyrics);
-                    if (currentTrack != null) updateTrackInfo(currentTrack);
-                    renderOverlayLyrics(lyrics);
-                    setupAiPromptTemplates();
-                    publishNowPlaying();
-                    if (songChatManager != null && track != null) {
-                        StringBuilder sb = new StringBuilder();
-                        if (lyrics.lines != null) {
-                            for (int i = 0; i < lyrics.lines.size(); i++) {
-                                LyricsData.LyricsLine l = lyrics.lines.get(i);
-                                if (l != null && l.text != null && !l.isInterlude) {
-                                    sb.append("[").append(i).append("] ").append(l.text);
-                                    if (l.romanji != null && !l.romanji.trim().isEmpty()) {
-                                        sb.append(" (romaji: ").append(l.romanji.trim()).append(")");
-                                    }
-                                    if (l.translation != null && !l.translation.trim().isEmpty()) {
-                                        sb.append(" (arti: ").append(l.translation.trim()).append(")");
-                                    }
-                                    sb.append("\n");
-                                }
-                            }
-                        }
-                        songChatManager.setCurrentSong(track.title, track.artist, sb.toString().trim(), null);
-                    }
-                });
-            }
-
-            @Override
-            public void onError(String message) {
-                handler.post(() -> {
-                    if (isDestroyed || !fetchKey.equals(pendingFetchKey)) return;
-                    activeAiLyricsCall = null;
-                    setRetryState(STATE_FAILED);
-                    if (overlayEmptyDesc != null) {
-                        overlayEmptyDesc.setText(message != null && !message.isEmpty()
-                                ? message : getString(R.string.ai_error_not_found));
-                    }
-                });
-            }
-        });
-    }
-
     // ── Lyrics ─────────────────────────────────────────────────────────────
 
     private void fetchLyrics(TrackInfo track) {
         AppLog.i(TAG, "Fetching lyrics for: " + track.title);
-        cancelAiLyricsRetrieval();
         final String fetchKey = track.title + "|||" + track.artist;
         pendingFetchKey = fetchKey;
         if (translateService != null) {
@@ -3781,9 +3477,9 @@ public class FloatingOverlayService extends Service {
         }
         if (translationEnabled) {
             String targetLang = sharedPrefs.getString(
-                    com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG,
-                    com.lyricsync.app.lyrics.translation.GoogleTranslateService.DEFAULT_TARGET_LANG);
-            String resolvedTarget = com.lyricsync.app.lyrics.translation.GoogleTranslateService.resolveTargetLang(
+                    GoogleTranslateService.PREF_TARGET_LANG,
+                    GoogleTranslateService.DEFAULT_TARGET_LANG);
+            String resolvedTarget = GoogleTranslateService.resolveTargetLang(
                     targetLang, java.util.Locale.getDefault());
             if (lyrics.translationLang == null || !resolvedTarget.equalsIgnoreCase(lyrics.translationLang)) {
                 fetchTranslationForCurrentLyrics();
@@ -3795,22 +3491,22 @@ public class FloatingOverlayService extends Service {
         fetchTranslationForCurrentLyrics(null);
     }
 
-    private void fetchTranslationForCurrentLyrics(final com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback actionCallback) {
+    private void fetchTranslationForCurrentLyrics(final AntigravityApiClient.LyricActionDelegate.ActionCallback actionCallback) {
         if (currentLyrics == null || currentLyrics.isEmpty()) {
             if (actionCallback != null) actionCallback.onError("Lirik belum dimuat");
             return;
         }
         final String targetLang = sharedPrefs.getString(
-                com.lyricsync.app.lyrics.translation.GoogleTranslateService.PREF_TARGET_LANG,
-                com.lyricsync.app.lyrics.translation.GoogleTranslateService.DEFAULT_TARGET_LANG);
+                GoogleTranslateService.PREF_TARGET_LANG,
+                GoogleTranslateService.DEFAULT_TARGET_LANG);
         final String fetchKey = pendingFetchKey;
         final LyricsData targetLyrics = currentLyrics;
         final TrackInfo targetTrack = currentTrack;
 
-        com.lyricsync.app.lyrics.translation.GoogleTranslateService.TranslationCallback callback =
-                new com.lyricsync.app.lyrics.translation.GoogleTranslateService.TranslationCallback() {
+        GoogleTranslateService.TranslationCallback callback =
+                new GoogleTranslateService.TranslationCallback() {
             @Override
-            public void onSuccess(com.lyricsync.app.lyrics.translation.GoogleTranslateParser.ParseResult result, String resolvedLang) {
+            public void onSuccess(GoogleTranslateParser.ParseResult result, String resolvedLang) {
                 if (isDestroyed || !java.util.Objects.equals(fetchKey, pendingFetchKey)) {
                     if (actionCallback != null) actionCallback.onError("Konteks lagu telah kedaluwarsa");
                     return;
@@ -3846,9 +3542,9 @@ public class FloatingOverlayService extends Service {
         };
 
         boolean aiEnabled = sharedPrefs.getBoolean(
-                com.lyricsync.app.lyrics.translation.AiTranslationService.PREF_AI_TRANSLATION_ENABLED, true);
-        com.lyricsync.app.ai.auth.AntigravityAuthManager auth =
-                com.lyricsync.app.ai.auth.AntigravityAuthManager.getInstance(this);
+                AiTranslationService.PREF_AI_TRANSLATION_ENABLED, true);
+        AntigravityAuthManager auth =
+                AntigravityAuthManager.getInstance(this);
         boolean isAuthenticated = auth != null && auth.isAuthenticated();
 
         if (aiEnabled && isAuthenticated && aiTranslationService != null) {
@@ -3952,7 +3648,6 @@ public class FloatingOverlayService extends Service {
 
     private void clearOverlay() {
         if (isDestroyed) return;
-        cancelAiLyricsRetrieval();
         if (activeTransliterationCall != null) {
             activeTransliterationCall.cancel();
             activeTransliterationCall = null;
@@ -4037,10 +3732,6 @@ public class FloatingOverlayService extends Service {
         WeakReference<FloatingOverlayService> ref = activeInstanceRef;
         if (ref != null && ref.get() == this) activeInstanceRef = null;
         super.onDestroy();
-        cancelAiLyricsRetrieval();
-        if (aiLyricsAgentService != null) {
-            aiLyricsAgentService.shutdown();
-        }
         if (aiTranslationService != null) {
             aiTranslationService.cancel();
         }

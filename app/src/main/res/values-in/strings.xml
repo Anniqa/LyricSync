@@ -56,23 +56,9 @@
     <string name="lyrics_translation_desc">Tampilkan teks terjemahan di bawah lirik sinkron</string>
     <string name="lyrics_translation_target">Bahasa Tujuan</string>
 
-    <!-- Spotify Account & Syllable Sync -->
-    <string name="spotify_account_title">Spotify &amp; Sinkron Suku Kata</string>
-    <string name="spotify_account_desc">Hubungkan sesi Spotify untuk lirik per suku kata yang stabil.</string>
-    <string name="spotify_section_session">Sesi Spotify</string>
-    <string name="spotify_connect_button">Hubungkan Spotify</string>
-    <string name="spotify_connected_status">Terhubung · rate suku kata penuh</string>
-    <string name="spotify_disconnected_status">Belum terhubung</string>
-    <string name="spotify_disconnect">Putuskan</string>
-    <string name="spotify_cookie_dialog_title">Hubungkan Spotify (sp_dc Cookie)</string>
-    <string name="spotify_cookie_dialog_msg" formatted="false">1. Buka open.spotify.com di browser (Chrome/Kiwi/Brave)\n2. DevTools -> Application -> Cookies -> salin nilai sp_dc\n3. Tempelkan nilainya di bawah ini untuk mengaktifkan 100% lirik suku kata:</string>
-    <string name="spotify_cookie_hint">Tempel nilai cookie sp_dc atau access token…</string>
-    <string name="spotify_cookie_save">Verifikasi &amp; Simpan</string>
-    <string name="spotify_connected_toast" formatted="false">Spotify terhubung! Tingkat keberhasilan 100% lirik suku kata aktif.</string>
-
-    <!-- Spicy Lyrics official API key -->
-    <string name="spicy_key_title">Kunci Spicy Lyrics</string>
-    <string name="spicy_key_desc">Tempel client key dari developers.spicylyrics.org (sl_pk_…).</string>
+    <!-- Syllable lyrics official API -->
+    <string name="lyrics_api_title">API Lirik Suku Kata</string>
+    <string name="lyrics_api_desc">Lirik per suku kata berasal dari API resmi Spicy Lyrics. Kunci bawaan langsung berfungsi; tempel kunci milikmu dari developers.spicylyrics.org untuk batas akses lebih tinggi.</string>
     <string name="spicy_key_button">Atur kunci</string>
     <string name="spicy_key_status_set">Kunci kamu · API resmi aktif</string>
     <string name="spicy_key_status_none">Kunci bawaan · API resmi aktif</string>
@@ -189,35 +175,24 @@
     <string name="ai_chip_transliterate_with_translation_desc">Transliterasi suku kata lengkap dengan terjemahan baris</string>
     <string name="ai_chip_transliterate_only">Transliterasi Saja</string>
     <string name="ai_chip_transliterate_only_desc">Transliterasi suku kata saja tanpa terjemahan</string>
-    <string name="ai_chip_transliterate_pure_romaji">Romaji Saja (Tanpa Huruf Asli)</string>
-    <string name="ai_chip_transliterate_pure_romaji_desc">Hanya tampilkan romaji bersih tanpa huruf Jepang aslinya</string>
-    <string name="ai_transliterating">Membuat Romaji dan terjemahan...</string>
+    <string name="ai_chip_transliterate_pure_romaji">Latin Saja (Tanpa Huruf Asli)</string>
+    <string name="ai_chip_transliterate_pure_romaji_desc">Hanya tampilkan transliterasi Latin tanpa huruf aslinya</string>
+    <string name="ai_transliterating">Membuat transliterasi Latin dan terjemahan...</string>
     <string name="ai_transliteration_complete">Transliterasi suku kata siap</string>
     <string name="edit_syllables_title">Edit Suku Kata &amp; Terjemahan</string>
     <string name="edit_syllables_original">Aksara Asli</string>
-    <string name="edit_syllables_romaji">Romaji / Transliterasi</string>
+    <string name="edit_syllables_romaji">Transliterasi Latin</string>
     <string name="edit_syllables_translation">Arti Baris</string>
     <string name="btn_ai_regenerate">Buat Ulang dengan AI</string>
-    <string name="toggle_romaji">Romaji</string>
-    <string name="toggle_pinyin">Pinyin</string>
-    <string name="toggle_romaja">Romaja</string>
-    <string name="toggle_cyrillic_translit">Transliterasi Latin</string>
-    <string name="toggle_transliteration">Transliterasi</string>
+    <!-- One label for every non-Latin script: the action is the same whichever script is on screen. -->
+    <string name="toggle_latin_transliteration">Transliterasi ke Latin</string>
     <string name="save">Simpan</string>
     <string name="cancel">Batal</string>
 
     <!-- Lyric Retry & AI Retrieval -->
     <string name="btn_retry_standard">Coba Lagi</string>
-    <string name="btn_retry_ai">Bantu Cari via AI</string>
-    <string name="ai_step_searching_syllable">Menelusuri format suku kata (KRC / YRC / TTML)…</string>
-    <string name="ai_step_fallback_lrc">Suku kata tidak ditemukan, mencari format baris (LRC)…</string>
-    <string name="ai_step_web_search">Mencari dan menyelaraskan lirik di internet dengan AI…</string>
-    <string name="ai_error_not_found">Lirik tersinkron tidak ditemukan untuk versi ini.</string>
-    <string name="action_cancel">Batal</string>
-    <string name="action_view_details">Lihat Detail</string>
 
     <string name="settings_open_failed">Tidak dapat membuka layar pengaturan</string>
-    <string name="spotify_validating_session">Memvalidasi sesi Spotify…</string>
     <string name="google_signin_opening">Membuka browser untuk login Google…</string>
     <string name="google_signin_success">Berhasil login: %1$s</string>
     <string name="google_signin_failed">Gagal login: %1$s</string>

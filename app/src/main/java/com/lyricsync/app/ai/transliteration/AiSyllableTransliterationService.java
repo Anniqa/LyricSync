@@ -5,11 +5,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.lyricsync.app.ai.util.JsonResponse;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
@@ -29,7 +29,6 @@ public class AiSyllableTransliterationService {
     private final AntigravityApiClient apiClient;
     private final LyricsCacheManager cacheManager;
     private final Handler mainHandler;
-    private static final Gson GSON = new Gson();
 
     public interface Callback {
         void onSuccess(LyricsData enrichedData);
@@ -638,25 +637,7 @@ public class AiSyllableTransliterationService {
         if (jsonText == null || jsonText.trim().isEmpty()) return list;
 
         try {
-            String clean = jsonText.trim();
-            java.util.regex.Pattern fencePattern = java.util.regex.Pattern.compile(
-                    "```(?:json)?\\s*([\\s\\S]*?)\\s*```", java.util.regex.Pattern.CASE_INSENSITIVE);
-            java.util.regex.Matcher fenceMatcher = fencePattern.matcher(clean);
-            if (fenceMatcher.find()) {
-                clean = fenceMatcher.group(1).trim();
-            }
-
-            int firstObj = clean.indexOf('{');
-            int firstArr = clean.indexOf('[');
-            if (firstArr >= 0 && (firstObj < 0 || firstArr < firstObj)) {
-                int lastArr = clean.lastIndexOf(']');
-                if (lastArr > firstArr) clean = clean.substring(firstArr, lastArr + 1);
-            } else if (firstObj >= 0) {
-                int lastObj = clean.lastIndexOf('}');
-                if (lastObj > firstObj) clean = clean.substring(firstObj, lastObj + 1);
-            }
-
-            clean = clean.replaceAll(",\\s*([}\\]])", "$1");
+            String clean = JsonResponse.extract(jsonText);
 
             JsonElement parsed = JsonParser.parseString(clean);
             JsonArray arr = null;

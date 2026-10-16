@@ -7,6 +7,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.lyricsync.app.ai.util.JsonResponse;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.model.AiChatMessage;
 
@@ -126,41 +127,7 @@ public class SongMeaningService {
      * and extracts the outermost JSON object substring if surrounded by commentary.
      */
     public static String cleanJsonFence(String rawResponse) {
-        if (rawResponse == null) {
-            return "";
-        }
-        String text = rawResponse.trim();
-        if (text.isEmpty()) {
-            return "";
-        }
-
-        // 1. Strip case-insensitive ```json or ``` code fences
-        String lower = text.toLowerCase(Locale.ROOT);
-        int startFence = lower.indexOf("```json");
-        int fenceTagLen = 7;
-        if (startFence == -1) {
-            startFence = lower.indexOf("```");
-            fenceTagLen = 3;
-        }
-
-        if (startFence != -1) {
-            int contentStart = startFence + fenceTagLen;
-            int endFence = text.indexOf("```", contentStart);
-            if (endFence != -1) {
-                text = text.substring(contentStart, endFence).trim();
-            } else {
-                text = text.substring(contentStart).trim();
-            }
-        }
-
-        // 2. Extract outermost JSON object {...} if preamble/postamble commentary exists
-        int firstBrace = text.indexOf('{');
-        int lastBrace = text.lastIndexOf('}');
-        if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
-            text = text.substring(firstBrace, lastBrace + 1).trim();
-        }
-
-        return text;
+        return JsonResponse.extract(rawResponse);
     }
 
     /**

@@ -10,7 +10,6 @@ import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.util.AppLog;
 import com.lyricsync.app.ai.transliteration.ScriptDetector;
-import com.lyricsync.app.lyrics.auth.SpotifyAuthManager;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -27,6 +26,8 @@ public class SpicyLyricsProvider implements LyricsProvider {
     private static final String OFFICIAL_API_URL = "https://api.spicylyrics.org/v1/lyrics/";
     /** User-supplied Spicy Lyrics client key (sl_pk_...), stored in the shared prefs. */
     public static final String PREF_SPICY_CLIENT_KEY = "pref_spicy_client_key";
+    /** The app-wide SharedPreferences file the settings screen writes to. */
+    private static final String PREF_FILE = "lyricsync";
     /**
      * Publishable key shipped with the app so the official API works out of the box.
      * A key pasted in Settings overrides this. Publishable keys are meant to live in
@@ -69,7 +70,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
     /** The user's Spicy Lyrics client key, or null when not configured/invalid. */
     private String getClientKey() {
         try {
-            String stored = context.getSharedPreferences(SpotifyAuthManager.PREF_NAME, Context.MODE_PRIVATE)
+            String stored = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
                     .getString(PREF_SPICY_CLIENT_KEY, null);
             if (stored != null) {
                 String key = stored.trim();
