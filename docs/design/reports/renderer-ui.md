@@ -49,3 +49,18 @@ Verified with: `javac` against `android.jar` (android-35) + appcompat/gradle-cac
 - `renderer/SyllableHighlighter.java` (~42 KB, ~970 lines): view construction, script/transliteration layers, per-word/per-line highlight state machines.
 - `renderer/AnimStyleDef.java` (~18 KB): the 30-entry registry could move to a data file/table.
 - `ui/AnimStyleChips.java` (~13 KB): chip styling + preview loop could split.
+
+## 2026-10-17 — motion × effect overlay geometry (fixed)
+
+Verified with `./gradlew assembleDebug testDebugUnitTest lintDebug` (BUILD SUCCESSFUL, 292 tests, lint 0 errors / 74 warnings). Nothing here was watched on a device.
+
+Finding: the effect overlays were clipped to the raw sweep `p = -0.20 + 1.20 * progress`, but `p` is the visible fill edge for *sweep motions only*.
+
+1. `GradientWordView.drawEffects` — **Shimmer never rendered across the word.** The band was swept in its own progress space (`(progress - 0.05) / 0.93`) while the clip cut at `p`, so the band led the edge and was clipped away entirely for progress 12%–57%, and never showed more than ~2/3 of its width. Broke every `motion × Shimmer` combo (`e8fad62` introduced it that way).
+2. Same clip on **Sparkle** (`ae39610`) — under `Classic` the whole word is bright from `progress > 0` while the clip was still narrow, so stars only appeared over the left sliver; under `Typewriter` the clip tracked the sweep instead of the struck run. `f60b3a2` fixed exactly this for Welding/Burning (`edgeP`) and left Sparkle/Shimmer behind.
+3. `SyllableHighlighter.makeBackgroundWord` — background-vocal words were the one layer never given `setWordIndex`/`setLineActive`, so `Wave × background vocals` had amplitude 0 (no ripple at all) and every seeded effect (Sparkle/Fireworks/Welding/Flicker) reused `wordIndex = 0`, cloning the particle layout across bg words.
+4. `GradientWordView` trail history (`trailY1/trailY2`) started at `0`, so the first frame of a line read as a huge move and popped a stray ghost for `Blur Trail × lifting motions`.
+
+Fixes: new pure-JVM `renderer/EffectLayout.java` holds the one mapping from render path to visible fill edge (`fillEdge`: sweep / struck run / whole-word flip) and the Shimmer band centre (`shimmerCenter`, band trailing that edge); `drawEffects` computes the edge once for Shimmer, Sparkle, Welding and Burning and the band rides it. Background-vocal words get their index and line-state arming. Trail history seeds `Float.NaN` (no history) instead of 0. Regression test: `renderer/EffectLayoutTest` (5 tests; a mutated `shimmerCenter` that leads the edge fails 2 of them).
+
+Residual risk: the overlay window still needs a look on the phone — the clip change alters Classic/Typewriter combos and the Shimmer band visibly, and the background-vocal arming changes Wave's appearance there.

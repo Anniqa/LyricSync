@@ -596,6 +596,10 @@ public class SyllableHighlighter {
         bwv.setAnimConfig(animConfig);
         bwv.setText(text);
         bwv.setTiming(start, end);
+        // The word index is the phase/seed for the motion+effect combination (Wave's
+        // travelling ripple, Sparkle/Fireworks/Welding particle seeds). Without it every
+        // background-vocal word rendered with index 0: no ripple, cloned particles.
+        bwv.setWordIndex(index);
         bwv.setBackgroundMode(true);
         bwv.setWordStyle(bgSizeSp, 0x55FFFFFF, fontMedium);
         bwv.initLetterEmphasis(text, start, end);
@@ -905,6 +909,10 @@ public class SyllableHighlighter {
                 for (int w = 0; w < bgWords.size(); w++) {
                     GradientWordView bwv = bgWords.get(w);
                     bwv.updateState(position, 1.0 / 60.0);
+                    // Line-state-driven motions (Wave's ripple amplitude) only animate a
+                    // word that knows its line is active; background vocals were the one
+                    // layer never told, so Wave x background vocals rendered flat.
+                    bwv.setLineActive(bgActive);
 
                     boolean wasActive = w < lastActive.length && lastActive[w];
                     if (bgActive && !wasActive) {

@@ -98,8 +98,11 @@ public class GradientWordView extends AppCompatTextView {
     // values (ghost positions). frameYOffset mirrors the frameFlicker pattern
     // (computed once per onDraw, readable from drawEffects).
     private float frameYOffset;
-    private float trailY1;
-    private float trailY2;
+    // NaN = this word has no rendered frame yet. Seeding them with 0 instead makes the
+    // first frame of a line look like a huge move (ghost at the resting baseline) and
+    // pops a stray trail copy for Blur Trail x any lifting motion.
+    private float trailY1 = Float.NaN;
+    private float trailY2 = Float.NaN;
     // Neon-flicker intensity for the current frame, computed once in onDraw so the
     // word path and the letter path flicker in sync within the same 70ms bucket.
     private float frameFlicker = 1f;
@@ -504,6 +507,19 @@ public class GradientWordView extends AppCompatTextView {
      *  work identically whichever motion path renders the fill. */
     private void drawEffects(Canvas canvas, String text, float drawX, float baseline,
                              float shaderW, float p, boolean letterFill) {
+        // True visible fill edge for THIS combination's render path: sweep motions fill
+        // up to the sweep, TYPEWRITER to the struck run, CLASSIC flips the whole word at
+        // once (see EffectLayout). Every overlay that must stay on the sung side of the
+        // fill — Shimmer, Sparkle, Welding, Burning — clips to THIS edge, never to the
+        // raw sweep, so an effect is clipped the same whichever motion it is combined
+        // with. The fire effects used to be the only ones doing this.
+        boolean binaryStruck = binaryLetters && letters != null && letterProgress != null;
+        float edgeP = -1f;
+        if (!backgroundMode && (shimmerStyle || sparkleStyle || weldingStyle || burningStyle)) {
+            edgeP = EffectLayout.fillEdge(progress, p, classicStyle, binaryStruck,
+                    binaryStruck ? struckFraction(shaderW) : 0f);
+        }
+
         // ECHO: two fading ghost copies trailing above the active word, like reverb.
         // Drawn after the main text so they read as afterimages of the sung edge.
         if (echoStyle && progress > 0f && progress < 1f && !backgroundMode) {
@@ -517,18 +533,20 @@ public class GradientWordView extends AppCompatTextView {
             echoPaint.setShader(null);
         }
 
-        // SHIMMER: a narrow light band that sweeps across the already-sung part of
-        // the word once per word, trailing the fill edge.
-        if (shimmerStyle && progress > 0.05f && progress < 0.98f && !backgroundMode) {
-            float band = (progress - 0.05f) / 0.93f;          // 0..1 across the word
-            float cx = drawX + band * shaderW;
-            float halfW = 0.06f * shaderW;
+        // SHIMMER: a narrow light band that rides the fill edge across the already-sung
+        // part of the word. Its position comes from the SAME edge the clip uses, so the
+        // whole band stays inside the sung region; mapping it in its own 0.05..0.98
+        // progress space instead ran it ahead of the clip and the effect rendered as
+        // nothing but a sliver for most of the word.
+        if (shimmerStyle && progress > 0.05f && progress < 0.98f && !backgroundMode && edgeP > 0f) {
+            float cx = drawX + EffectLayout.shimmerCenter(edgeP) * shaderW;
+            float halfW = EffectLayout.SHIMMER_HALF_WIDTH * shaderW;
             shimmerPaint.setShader(new LinearGradient(cx - halfW, 0, cx + halfW, 0,
                     new int[]{0x00FFFFFF, 0x66FFFFFF, 0x00FFFFFF},
                     new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
             // Clip the band to the sung region only (left of the fill edge).
             canvas.save();
-            canvas.clipRect(drawX, 0, drawX + Math.max(0f, p) * shaderW + 2f, getHeight());
+            canvas.clipRect(drawX, 0, drawX + edgeP * shaderW + 2f, getHeight());
             canvas.drawText(text, drawX, baseline, shimmerPaint);
             canvas.restore();
             shimmerPaint.setShader(null);
@@ -554,7 +572,7 @@ public class GradientWordView extends AppCompatTextView {
 
         // BLUR TRAIL: two ghost copies at the word's previous vertical positions,
         // drawn only while the word is moving fast — reads as motion blur.
-        if (trailStyle && progress > 0f && progress < 1f && !backgroundMode) {
+        if (trailStyle && progress > 0f && progress < 1f && !backgroundMode && !Float.isNaN(trailY1)) {
             float d1 = trailY1 - frameYOffset;
             float d2 = trailY2 - frameYOffset;
             float gate = 0.0035f * getHeight();
@@ -574,14 +592,14 @@ public class GradientWordView extends AppCompatTextView {
         // reused, so this costs at most 6 small line-draws with zero allocation.
         // Clipped to the already-sung region (same as Shimmer) so the bright
         // stars never twinkle over the dimmed upcoming lyric.
-        if (sparkleStyle && progress > 0f && progress < 0.85f && !backgroundMode) {
+        if (sparkleStyle && progress > 0f && progress < 0.85f && !backgroundMode && edgeP > 0f) {
             float ts = sparklePaint.getTextSize();
             sparklePaint.setStyle(Paint.Style.STROKE);
             sparklePaint.setStrokeWidth(Math.max(1f, ts * 0.02f));
             sparklePaint.setStrokeCap(Paint.Cap.ROUND);
             int seed = wordIndex * 31 + text.length() * 7;
             canvas.save();
-            canvas.clipRect(drawX, 0, drawX + Math.max(0f, p) * shaderW + 2f, getHeight());
+            canvas.clipRect(drawX, 0, drawX + edgeP * shaderW + 2f, getHeight());
             for (int i = 0; i < 6; i++) {
                 float lp = (progress - i * 0.09f) / 0.30f;
                 if (lp <= 0f || lp >= 1f) continue;
@@ -632,25 +650,6 @@ public class GradientWordView extends AppCompatTextView {
                     canvas.drawLines(particleLines, i * 4, 4, fireworksPaint);
                 }
                 fireworksPaint.setStyle(Paint.Style.FILL);
-            }
-        }
-
-        // True visible fill edge per render path: continuous sweep for word-level
-        // motions, struck-letter width for Typewriter's binary strikes, whole-word
-        // flip for Classic. Fire effects must ride THIS edge, not the raw sweep p.
-        float edgeP = -1f;
-        if ((weldingStyle || burningStyle) && !backgroundMode) {
-            if (binaryLetters && letters != null && letterProgress != null) {
-                float struckW = 0f;
-                for (int i = 0; i < letters.length; i++) {
-                    if (letterProgress[i] > 0) struckW += getPaint().measureText(letters[i]);
-                    else break;
-                }
-                edgeP = Math.min(1f, struckW / Math.max(1f, shaderW));
-            } else if (classicStyle) {
-                edgeP = progress > 0f ? 1f : 0f;
-            } else {
-                edgeP = Math.max(0f, Math.min(1f, p));
             }
         }
 
@@ -1024,6 +1023,19 @@ public class GradientWordView extends AppCompatTextView {
         return Math.abs(s.position - s.finalPosition) > 0.002 || Math.abs(s.velocity) > 0.01;
     }
 
+    /**
+     * Width of the struck-letter run as a fraction of the word — TYPEWRITER's visible
+     * fill edge, which trails the raw sweep because letters strike one at a time.
+     */
+    private float struckFraction(float shaderW) {
+        float struckW = 0f;
+        for (int i = 0; i < letters.length; i++) {
+            if (letterProgress[i] > 0) struckW += getPaint().measureText(letters[i]);
+            else break;
+        }
+        return Math.min(1f, struckW / Math.max(1f, shaderW));
+    }
+
     /** Deterministic 0..1 hash, same formula as the flicker/scatter seeds. */
     private static float hash01(int n) {
         double h = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
@@ -1035,8 +1047,8 @@ public class GradientWordView extends AppCompatTextView {
         yOffsetSpring.set(0);
         glowSpring.set(0);
         waveAmpSpring.set(0);
-        trailY1 = 0;
-        trailY2 = 0;
+        trailY1 = Float.NaN;
+        trailY2 = Float.NaN;
         progress = 0;
         isActive = false;
         letterCapable = false;
