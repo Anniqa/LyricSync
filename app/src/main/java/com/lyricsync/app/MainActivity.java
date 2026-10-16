@@ -1454,14 +1454,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    /** Open a web source in the browser, logging a Toast when no activity can handle it. */
-    private void openUrl(String url) {
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-        } catch (Exception e) {
-            Toast.makeText(this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
-        }
-    }
 
     private static int clamp(int value, int lo, int hi) {
         return value < lo ? lo : (value > hi ? hi : value);
