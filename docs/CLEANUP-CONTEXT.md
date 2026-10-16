@@ -99,6 +99,12 @@ Net across the branch: **+1,102 / −9,029 lines.** `MainActivity` 2,957 → 1,4
   places: `FloatingOverlayService` `setChatModelSupplier` (for the tool executor) and
   `songChatManager.setModelId` before sending. Removing or moving the picker without
   keeping that pref written would silently change which model runs.
+- **The overlay chat has no model picker, and that is deliberate.** It never had one — the
+  pill was in the Activity's chat dialog (`dialog_ai_chat_fullscreen.xml`, 3 model
+  elements) and moved to the account card when that dialog was removed; `overlay_ai_chat.xml`
+  had 0 model elements at `464a65c`. Confirmed by the user on the device on 2026-10-17:
+  change the model in the account card and the overlay honours it. Do not add a picker to
+  the overlay as if one were missing.
 - **`LyricsProvider`** declares only `getName()` and `fetchLyrics(TrackInfo)`. Any other
   `fetch*` method on a provider is not part of the interface.
 - When deleting a view from a layout, locate the element with the tag match on the whole
