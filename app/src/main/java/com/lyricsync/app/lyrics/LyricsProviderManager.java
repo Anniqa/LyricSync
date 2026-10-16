@@ -122,7 +122,7 @@ public class LyricsProviderManager {
     private static boolean isSyllableProvider(LyricsProvider provider) {
         if (provider == null) return false;
         String name = provider.getName().toLowerCase(Locale.ROOT);
-        return name.contains("kugou") || name.contains("netease") || name.contains("spicy") || name.contains("spotify");
+        return name.contains("kugou") || name.contains("netease") || name.contains("spicy");
     }
 
     private static boolean providerMatches(LyricsProvider provider, String normTarget) {
@@ -131,9 +131,7 @@ public class LyricsProviderManager {
             return isSyllableProvider(provider);
         }
         String pn = provider.getName().toLowerCase(Locale.ROOT);
-        if (pn.contains(normTarget) || normTarget.contains(pn)) return true;
-        if ("spotify".equals(normTarget) && pn.contains("spicy")) return true;
-        return false;
+        return pn.contains(normTarget) || normTarget.contains(pn);
     }
 
     private void performFetch(TrackInfo track, String targetProvider, String fetchKey) {
@@ -174,23 +172,6 @@ public class LyricsProviderManager {
             if (providerMatches(p, normTarget)) {
                 activeProviders.add(p);
             }
-        }
-
-        // If track is from Spotify and target is all/default, prioritize Spotify/Spicy first
-        if (normTarget == null && queryTrack.trackId != null
-                && (queryTrack.trackId.startsWith("spotify:") || queryTrack.trackId.matches("[A-Za-z0-9]{22}"))) {
-            List<LyricsProvider> reordered = new ArrayList<>();
-            for (LyricsProvider p : activeProviders) {
-                if (p.getName().toLowerCase(Locale.ROOT).contains("spotify") || p.getName().toLowerCase(Locale.ROOT).contains("spicy")) {
-                    reordered.add(p);
-                }
-            }
-            for (LyricsProvider p : activeProviders) {
-                if (!reordered.contains(p)) {
-                    reordered.add(p);
-                }
-            }
-            activeProviders = reordered;
         }
 
         for (LyricsProvider provider : activeProviders) {

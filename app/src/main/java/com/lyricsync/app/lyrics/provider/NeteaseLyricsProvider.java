@@ -78,13 +78,18 @@ public class NeteaseLyricsProvider implements LyricsProvider {
             }
         }
 
+        return fetchBestByIds(songIds);
+    }
+
+    /** Fetches each candidate id, returning the first syllable result or the first synced line. */
+    private LyricsData fetchBestByIds(List<Long> songIds) {
         LyricsData bestLineLyrics = null;
         for (long id : songIds) {
             try {
                 LyricsData lyrics = fetchLyricById(id);
                 if (lyrics != null && !lyrics.isEmpty()) {
                     if (lyrics.type == LyricsData.Type.SYLLABLE) {
-                        return lyrics; // Found preferred syllable lyrics!
+                        return lyrics; // Preferred syllable lyrics win immediately
                     }
                     if (bestLineLyrics == null && lyrics.isSynced()) {
                         bestLineLyrics = lyrics; // Keep first line-synced as fallback
@@ -92,32 +97,13 @@ public class NeteaseLyricsProvider implements LyricsProvider {
                 }
             } catch (Exception ignored) {}
         }
-
-        if (bestLineLyrics != null) {
-            return bestLineLyrics;
-        }
-
-        return null;
+        return bestLineLyrics;
     }
 
     public LyricsData fetchLyricsByQuery(String queryString, long durationMs) throws Exception {
         if (queryString == null || queryString.trim().isEmpty()) return null;
         List<Long> songIds = searchSongIds(queryString.trim(), queryString.trim(), "", durationMs);
-        LyricsData bestLineLyrics = null;
-        for (long id : songIds) {
-            try {
-                LyricsData lyrics = fetchLyricById(id);
-                if (lyrics != null && !lyrics.isEmpty()) {
-                    if (lyrics.type == LyricsData.Type.SYLLABLE) {
-                        return lyrics; // Return syllable lyrics immediately!
-                    }
-                    if (bestLineLyrics == null && lyrics.isSynced()) {
-                        bestLineLyrics = lyrics;
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-        return bestLineLyrics;
+        return fetchBestByIds(songIds);
     }
 
     private static String urlEncode(String val) {

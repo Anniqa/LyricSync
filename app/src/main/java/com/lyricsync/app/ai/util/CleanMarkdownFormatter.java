@@ -103,11 +103,8 @@ public final class CleanMarkdownFormatter {
     public static String markdownToHtml(String text) {
         if (text == null || text.trim().isEmpty()) return "";
 
-        // Pre-clean any broken/dangling streaming tail if needed
-        String processed = text;
-
         // Escape HTML special chars first
-        String html = processed.replace("&", "&amp;")
+        String html = text.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
 

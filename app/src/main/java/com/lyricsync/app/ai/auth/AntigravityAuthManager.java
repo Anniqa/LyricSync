@@ -353,14 +353,18 @@ public class AntigravityAuthManager {
         }
     }
 
-    private void notifyTokenSuccess(String newAccessToken) {
-        List<TokenCallback> callbacks;
+    /** Ends the in-flight refresh and hands back the callbacks that were waiting on it. */
+    private List<TokenCallback> drainPendingCallbacks() {
         synchronized (refreshLock) {
             isRefreshing = false;
-            callbacks = new ArrayList<>(pendingTokenCallbacks);
+            List<TokenCallback> callbacks = new ArrayList<>(pendingTokenCallbacks);
             pendingTokenCallbacks.clear();
+            return callbacks;
         }
-        for (TokenCallback cb : callbacks) {
+    }
+
+    private void notifyTokenSuccess(String newAccessToken) {
+        for (TokenCallback cb : drainPendingCallbacks()) {
             try {
                 cb.onTokenReady(newAccessToken);
             } catch (Exception ignored) {}
@@ -368,13 +372,7 @@ public class AntigravityAuthManager {
     }
 
     private void notifyTokenError(String errorMessage) {
-        List<TokenCallback> callbacks;
-        synchronized (refreshLock) {
-            isRefreshing = false;
-            callbacks = new ArrayList<>(pendingTokenCallbacks);
-            pendingTokenCallbacks.clear();
-        }
-        for (TokenCallback cb : callbacks) {
+        for (TokenCallback cb : drainPendingCallbacks()) {
             try {
                 cb.onError(errorMessage);
             } catch (Exception ignored) {}

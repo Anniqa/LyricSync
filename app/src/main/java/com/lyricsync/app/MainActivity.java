@@ -20,14 +20,11 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.app.AlertDialog;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.view.Gravity;
@@ -1547,111 +1544,56 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         if (aiStudioQuickChipsContainer == null) return;
         aiStudioQuickChipsContainer.removeAllViews();
         if (lyricsData != null && isLyricsNonLatin(lyricsData)) {
-            LinearLayout chip = new LinearLayout(this);
-            chip.setOrientation(LinearLayout.HORIZONTAL);
-            chip.setGravity(Gravity.CENTER_VERTICAL);
-            chip.setBackgroundResource(R.drawable.bg_prompt_card);
-            int padH = dpToPx(10);
-            int padV = dpToPx(6);
-            chip.setPadding(padH, padV, padH, padV);
-
-            ImageView iconView = new ImageView(this);
-            iconView.setImageResource(R.drawable.ic_sparkles);
-            iconView.setColorFilter(ContextCompat.getColor(this, R.color.accent));
-            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
-            iconLp.setMarginEnd(dpToPx(6));
-            chip.addView(iconView, iconLp);
-
-            TextView titleView = new TextView(this);
-            titleView.setText(R.string.ai_chip_transliterate);
-            titleView.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-            titleView.setTextSize(11f);
-            titleView.setTypeface(null, android.graphics.Typeface.BOLD);
-            chip.addView(titleView);
-
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMarginEnd(dpToPx(8));
-            chip.setLayoutParams(lp);
-
-            chip.setOnClickListener(v -> {
-                Haptics.tick(v);
-                performTransliteration(true, true);
-            });
-            aiStudioQuickChipsContainer.addView(chip);
-
-            LinearLayout chipPure = new LinearLayout(this);
-            chipPure.setOrientation(LinearLayout.HORIZONTAL);
-            chipPure.setGravity(Gravity.CENTER_VERTICAL);
-            chipPure.setBackgroundResource(R.drawable.bg_prompt_card);
-            chipPure.setPadding(padH, padV, padH, padV);
-
-            ImageView iconPure = new ImageView(this);
-            iconPure.setImageResource(R.drawable.ic_sparkles);
-            iconPure.setColorFilter(ContextCompat.getColor(this, R.color.accent));
-            LinearLayout.LayoutParams iconPureLp = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
-            iconPureLp.setMarginEnd(dpToPx(6));
-            chipPure.addView(iconPure, iconPureLp);
-
-            TextView titlePure = new TextView(this);
-            titlePure.setText(R.string.ai_chip_transliterate_pure_romaji);
-            titlePure.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-            titlePure.setTextSize(11f);
-            titlePure.setTypeface(null, android.graphics.Typeface.BOLD);
-            chipPure.addView(titlePure);
-
-            LinearLayout.LayoutParams lpPure = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lpPure.setMarginEnd(dpToPx(8));
-            chipPure.setLayoutParams(lpPure);
-
-            chipPure.setOnClickListener(v -> {
-                Haptics.tick(v);
-                performTransliteration(false, false);
-            });
-            aiStudioQuickChipsContainer.addView(chipPure);
+            aiStudioQuickChipsContainer.addView(buildQuickChip(R.drawable.ic_sparkles,
+                    getString(R.string.ai_chip_transliterate),
+                    () -> performTransliteration(true, true)));
+            aiStudioQuickChipsContainer.addView(buildQuickChip(R.drawable.ic_sparkles,
+                    getString(R.string.ai_chip_transliterate_pure_romaji),
+                    () -> performTransliteration(false, false)));
         }
         String lang = LocaleHelper.getLanguage(this);
         List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
         for (final SongChatManager.PromptTemplate template : templates) {
-            LinearLayout chip = new LinearLayout(this);
-            chip.setOrientation(LinearLayout.HORIZONTAL);
-            chip.setGravity(Gravity.CENTER_VERTICAL);
-            chip.setBackgroundResource(R.drawable.bg_prompt_card);
-            int padH = dpToPx(10);
-            int padV = dpToPx(6);
-            chip.setPadding(padH, padV, padH, padV);
-
-            ImageView iconView = new ImageView(this);
             int iconRes = getResources().getIdentifier(template.iconName, "drawable", getPackageName());
-            if (iconRes != 0) {
-                iconView.setImageResource(iconRes);
-            } else {
-                iconView.setImageResource(R.drawable.ic_sparkles);
-            }
-            iconView.setColorFilter(ContextCompat.getColor(this, R.color.accent));
-            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
-            iconLp.setMarginEnd(dpToPx(6));
-            chip.addView(iconView, iconLp);
-
-            TextView titleView = new TextView(this);
-            titleView.setText(template.title);
-            titleView.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-            titleView.setTextSize(11f);
-            titleView.setTypeface(null, android.graphics.Typeface.BOLD);
-            chip.addView(titleView);
-
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMarginEnd(dpToPx(8));
-            chip.setLayoutParams(lp);
-
-            chip.setOnClickListener(v -> {
-                Haptics.tick(v);
-                sendAiChatMessage(template.promptText);
-            });
-            aiStudioQuickChipsContainer.addView(chip);
+            aiStudioQuickChipsContainer.addView(buildQuickChip(iconRes, template.title,
+                    () -> sendAiChatMessage(template.promptText)));
         }
+    }
+
+    /** Builds one horizontally-scrolling quick-prompt chip (icon + bold label). */
+    private LinearLayout buildQuickChip(int iconRes, CharSequence title, Runnable onClick) {
+        LinearLayout chip = new LinearLayout(this);
+        chip.setOrientation(LinearLayout.HORIZONTAL);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setBackgroundResource(R.drawable.bg_prompt_card);
+        int padH = dpToPx(10);
+        int padV = dpToPx(6);
+        chip.setPadding(padH, padV, padH, padV);
+
+        ImageView iconView = new ImageView(this);
+        iconView.setImageResource(iconRes != 0 ? iconRes : R.drawable.ic_sparkles);
+        iconView.setColorFilter(ContextCompat.getColor(this, R.color.accent));
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
+        iconLp.setMarginEnd(dpToPx(6));
+        chip.addView(iconView, iconLp);
+
+        TextView titleView = new TextView(this);
+        titleView.setText(title);
+        titleView.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        titleView.setTextSize(11f);
+        titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        chip.addView(titleView);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMarginEnd(dpToPx(8));
+        chip.setLayoutParams(lp);
+
+        chip.setOnClickListener(v -> {
+            Haptics.tick(v);
+            onClick.run();
+        });
+        return chip;
     }
 
     public static class ModelMeta {
@@ -2171,12 +2113,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             chip.setLayoutParams(lp);
             chip.setOnClickListener(v -> {
                 Haptics.tick(v);
-                try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                    startActivity(intent);
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
-                }
+                openUrl(url);
             });
             aiStudioWebSourcesContainer.addView(chip);
             added++;
@@ -2639,12 +2576,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
             chip.setLayoutParams(lp);
             chip.setOnClickListener(v -> {
                 Haptics.tick(v);
-                try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                    startActivity(intent);
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
-                }
+                openUrl(url);
             });
             aiStudioChatContainer.addView(chip);
             added++;
@@ -3004,6 +2936,15 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
+
+    /** Open a web source in the browser, logging a Toast when no activity can handle it. */
+    private void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception e) {
+            Toast.makeText(this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
+        }
+    }
 
     private static int clamp(int value, int lo, int hi) {
         return value < lo ? lo : (value > hi ? hi : value);

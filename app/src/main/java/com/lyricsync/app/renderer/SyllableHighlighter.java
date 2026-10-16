@@ -289,6 +289,41 @@ public class SyllableHighlighter {
         return tv;
     }
 
+    private void addBackgroundVocals(LyricsData.LyricsLine line, LineView lv, LinearLayout container) {
+        if (line.backgroundVocals == null || line.backgroundVocals.isEmpty()) return;
+        lv.backgroundWordViews = new ArrayList<>();
+        lv.bgFlowLayouts = new ArrayList<>();
+        lv.bgWordLastActive = new ArrayList<>();
+        float bgSizeSp = fontSizeSp * 0.75f;
+        for (LyricsData.LyricsLine bgLine : line.backgroundVocals) {
+            WordFlowLayout bgFlow = new WordFlowLayout(context);
+            LinearLayout.LayoutParams bgFlowParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            bgFlow.setLayoutParams(bgFlowParams);
+            bgFlow.setPadding(dpToPx(4), dpToPx(2), 0, dpToPx(2));
+
+            List<GradientWordView> bgWords = createBackgroundWords(bgFlow, bgLine, bgSizeSp);
+
+            boolean[] bgActive = new boolean[Math.max(1, bgWords.size())];
+            container.addView(bgFlow);
+            lv.bgFlowLayouts.add(bgFlow);
+            lv.backgroundWordViews.add(bgWords);
+            lv.bgWordLastActive.add(bgActive);
+        }
+    }
+
+    private void addTranslationView(LyricsData.LyricsLine line, LineView lv, LinearLayout container) {
+        TextView tv = createTranslationTextView(line);
+        if (tv == null) return;
+        LinearLayout.LayoutParams tvLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        tv.setLayoutParams(tvLp);
+        container.addView(tv);
+        lv.translationView = tv;
+    }
+
     public LineView createLineView(LyricsData.LyricsLine line, LinearLayout.LayoutParams params) {
         LineView lv = new LineView();
         lv.line = line;
@@ -428,38 +463,8 @@ public class SyllableHighlighter {
             setupRomajiLayer(line, lv, container);
         }
 
-        if (line.backgroundVocals != null && !line.backgroundVocals.isEmpty()) {
-            lv.backgroundWordViews = new ArrayList<>();
-            lv.bgFlowLayouts = new ArrayList<>();
-            lv.bgWordLastActive = new ArrayList<>();
-            float bgSizeSp = fontSizeSp * 0.75f;
-            for (LyricsData.LyricsLine bgLine : line.backgroundVocals) {
-                WordFlowLayout bgFlow = new WordFlowLayout(context);
-                LinearLayout.LayoutParams bgFlowParams = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-                bgFlow.setLayoutParams(bgFlowParams);
-                bgFlow.setPadding(dpToPx(4), dpToPx(2), 0, dpToPx(2));
-
-                List<GradientWordView> bgWords = createBackgroundWords(bgFlow, bgLine, bgSizeSp);
-
-                boolean[] bgActive = new boolean[Math.max(1, bgWords.size())];
-                container.addView(bgFlow);
-                lv.bgFlowLayouts.add(bgFlow);
-                lv.backgroundWordViews.add(bgWords);
-                lv.bgWordLastActive.add(bgActive);
-            }
-        }
-
-        TextView tv = createTranslationTextView(line);
-        if (tv != null) {
-            LinearLayout.LayoutParams tvLp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            tv.setLayoutParams(tvLp);
-            container.addView(tv);
-            lv.translationView = tv;
-        }
+        addBackgroundVocals(line, lv, container);
+        addTranslationView(line, lv, container);
 
         return container;
     }
@@ -558,38 +563,8 @@ public class SyllableHighlighter {
         container.addView(gv);
         lv.gradientView = gv;
 
-        if (line.backgroundVocals != null && !line.backgroundVocals.isEmpty()) {
-            lv.backgroundWordViews = new ArrayList<>();
-            lv.bgFlowLayouts = new ArrayList<>();
-            lv.bgWordLastActive = new ArrayList<>();
-            float bgSizeSp = fontSizeSp * 0.75f;
-            for (LyricsData.LyricsLine bgLine : line.backgroundVocals) {
-                WordFlowLayout bgFlow = new WordFlowLayout(context);
-                LinearLayout.LayoutParams bgFlowParams = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT);
-                bgFlow.setLayoutParams(bgFlowParams);
-                bgFlow.setPadding(dpToPx(4), dpToPx(2), 0, dpToPx(2));
-
-                List<GradientWordView> bgWords = createBackgroundWords(bgFlow, bgLine, bgSizeSp);
-
-                boolean[] bgActive = new boolean[Math.max(1, bgWords.size())];
-                container.addView(bgFlow);
-                lv.bgFlowLayouts.add(bgFlow);
-                lv.backgroundWordViews.add(bgWords);
-                lv.bgWordLastActive.add(bgActive);
-            }
-        }
-
-        TextView tv = createTranslationTextView(line);
-        if (tv != null) {
-            LinearLayout.LayoutParams tvLp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            tv.setLayoutParams(tvLp);
-            container.addView(tv);
-            lv.translationView = tv;
-        }
+        addBackgroundVocals(line, lv, container);
+        addTranslationView(line, lv, container);
 
         return container;
     }
@@ -817,17 +792,7 @@ public class SyllableHighlighter {
                     lv.rootView.setLayerType(View.LAYER_TYPE_NONE, null);
                 }
                 animateLineAlpha(lv, 1.0f);
-                for (GradientWordView wv : lv.wordViews) {
-                    wv.setWordStyle(fontSizeSp, ACTIVE_COLOR, fontBold);
-                }
-                if (lv.romajiWordViews != null) {
-                    for (GradientWordView rwv : lv.romajiWordViews) {
-                        rwv.setWordStyle(romajiFontSize, ACTIVE_COLOR, romajiTf);
-                    }
-                }
-                if (lv.translationView != null) {
-                    lv.translationView.setTextColor(ACTIVE_COLOR);
-                }
+                applyWordStyle(lv, ACTIVE_COLOR, romajiFontSize, romajiTf);
                 playWordCascade(lv, position);
             } else if (isPast) {
                 // Hardware layers buffer at view bounds and would slice the
@@ -839,34 +804,29 @@ public class SyllableHighlighter {
                             needsOverflow ? View.LAYER_TYPE_NONE : View.LAYER_TYPE_HARDWARE, null);
                 }
                 animateLineAlpha(lv, 0.82f);
-                for (GradientWordView wv : lv.wordViews) {
-                    wv.setWordStyle(fontSizeSp, PAST_COLOR, fontBold);
-                }
-                if (lv.romajiWordViews != null) {
-                    for (GradientWordView rwv : lv.romajiWordViews) {
-                        rwv.setWordStyle(romajiFontSize, PAST_COLOR, romajiTf);
-                    }
-                }
-                if (lv.translationView != null) {
-                    lv.translationView.setTextColor(PAST_COLOR);
-                }
+                applyWordStyle(lv, PAST_COLOR, romajiFontSize, romajiTf);
             } else {
                 animateLineAlpha(lv, 0.42f);
-                for (GradientWordView wv : lv.wordViews) {
-                    wv.setWordStyle(fontSizeSp, INACTIVE_COLOR, fontBold);
-                }
-                if (lv.romajiWordViews != null) {
-                    for (GradientWordView rwv : lv.romajiWordViews) {
-                        rwv.setWordStyle(romajiFontSize, INACTIVE_COLOR, romajiTf);
-                    }
-                }
-                if (lv.translationView != null) {
-                    lv.translationView.setTextColor(INACTIVE_COLOR);
-                }
+                applyWordStyle(lv, INACTIVE_COLOR, romajiFontSize, romajiTf);
             }
         }
 
         updateBackgroundVocals(lv, position);
+    }
+
+    /** Applies a line's resting colour to its word, romaji and translation views. */
+    private void applyWordStyle(LineView lv, int color, float romajiFontSize, Typeface romajiTf) {
+        for (GradientWordView wv : lv.wordViews) {
+            wv.setWordStyle(fontSizeSp, color, fontBold);
+        }
+        if (lv.romajiWordViews != null) {
+            for (GradientWordView rwv : lv.romajiWordViews) {
+                rwv.setWordStyle(romajiFontSize, color, romajiTf);
+            }
+        }
+        if (lv.translationView != null) {
+            lv.translationView.setTextColor(color);
+        }
     }
 
     private void updatePerLineHighlight(LineView lv, long position, double deltaTime,

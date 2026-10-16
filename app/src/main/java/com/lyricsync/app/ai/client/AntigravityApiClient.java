@@ -43,7 +43,6 @@ import okio.BufferedSource;
 public class AntigravityApiClient {
 
     public static final String ENDPOINT_STREAM = "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
-    public static final String ENDPOINT_STREAM_PROD = "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
     public static final String USER_AGENT = "antigravity/ide/2.11.0 darwin/arm64";
     public static final String DEFAULT_PROJECT = "aicode-consumers";
     public static final String DEFAULT_REQUEST_TYPE = "agent";
@@ -457,14 +456,13 @@ public class AntigravityApiClient {
 
     public static String extractThoughtSignature(JsonObject obj) {
         if (obj == null) return null;
-        if (obj.has("thought_signature") && !obj.get("thought_signature").isJsonNull() && obj.get("thought_signature").isJsonPrimitive()) {
-            return obj.get("thought_signature").getAsString();
-        }
-        if (obj.has("thoughtSignature") && !obj.get("thoughtSignature").isJsonNull() && obj.get("thoughtSignature").isJsonPrimitive()) {
-            return obj.get("thoughtSignature").getAsString();
-        }
-        if (obj.has("signature") && !obj.get("signature").isJsonNull() && obj.get("signature").isJsonPrimitive()) {
-            return obj.get("signature").getAsString();
+        for (String key : new String[]{"thought_signature", "thoughtSignature", "signature"}) {
+            if (obj.has(key)) {
+                JsonElement el = obj.get(key);
+                if (el != null && !el.isJsonNull() && el.isJsonPrimitive()) {
+                    return el.getAsString();
+                }
+            }
         }
         return null;
     }

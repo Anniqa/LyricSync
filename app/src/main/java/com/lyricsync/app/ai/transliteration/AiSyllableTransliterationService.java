@@ -25,7 +25,6 @@ public class AiSyllableTransliterationService {
     private static final int BATCH_SIZE = 12;
     private static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
 
-    private final Context context;
     private final AntigravityApiClient apiClient;
     private final LyricsCacheManager cacheManager;
     private final Handler mainHandler;
@@ -52,7 +51,6 @@ public class AiSyllableTransliterationService {
     }
 
     public AiSyllableTransliterationService(Context context, AntigravityApiClient apiClient, LyricsCacheManager cacheManager, Handler mainHandler) {
-        this.context = context != null ? context.getApplicationContext() : null;
         this.apiClient = apiClient;
         this.cacheManager = cacheManager;
         this.mainHandler = mainHandler;
@@ -247,6 +245,14 @@ public class AiSyllableTransliterationService {
         return alignTokens(rawTokens, expectedCount, null);
     }
 
+    /** Aligns {@code tokens} into {@code count} slots and writes them into {@code out} at {@code start}. */
+    private static void fillSlots(String[] out, int start, int count, List<String> tokens) {
+        List<String> sub = alignTokens(tokens, count, null);
+        for (int k = 0; k < count; k++) {
+            out[start + k] = (k < sub.size()) ? sub.get(k) : "";
+        }
+    }
+
     public static List<String> alignTokens(List<String> rawTokens, int expectedCount, List<LyricsData.Word> syllables) {
         if (expectedCount <= 0) return Collections.emptyList();
         if (rawTokens == null || rawTokens.isEmpty()) {
@@ -318,19 +324,14 @@ public class AiSyllableTransliterationService {
                 int lastTokIdx = -1;
                 for (Anchor a : anchors) {
                     // Fill gap before anchor
-                    int gapTokStart = lastTokIdx + 1;
-                    int gapTokEnd = a.tokenIdx;
                     int gapSylStart = lastSylEnd + 1;
-                    int gapSylEnd = a.sylStart - 1;
-                    int numSyl = gapSylEnd - gapSylStart + 1;
+                    int numSyl = a.sylStart - gapSylStart;
                     if (numSyl > 0) {
-                        List<String> gapToks = (gapTokStart < gapTokEnd)
-                                ? rawTokens.subList(gapTokStart, gapTokEnd)
+                        int gapTokStart = lastTokIdx + 1;
+                        List<String> gapToks = (gapTokStart < a.tokenIdx)
+                                ? rawTokens.subList(gapTokStart, a.tokenIdx)
                                 : Collections.emptyList();
-                        List<String> sub = alignTokens(gapToks, numSyl, null);
-                        for (int k = 0; k < numSyl; k++) {
-                            out[gapSylStart + k] = (k < sub.size()) ? sub.get(k) : "";
-                        }
+                        fillSlots(out, gapSylStart, numSyl, gapToks);
                     }
                     // Fill anchor itself
                     int span = a.sylEnd - a.sylStart + 1;
@@ -338,28 +339,21 @@ public class AiSyllableTransliterationService {
                     if (span == 1) {
                         out[a.sylStart] = tok;
                     } else {
-                        List<String> sub = alignTokens(tok.isEmpty() ? Collections.emptyList() : Collections.singletonList(tok), span, null);
-                        for (int k = 0; k < span; k++) {
-                            out[a.sylStart + k] = (k < sub.size()) ? sub.get(k) : "";
-                        }
+                        fillSlots(out, a.sylStart, span,
+                                tok.isEmpty() ? Collections.emptyList() : Collections.singletonList(tok));
                     }
                     lastSylEnd = a.sylEnd;
                     lastTokIdx = a.tokenIdx;
                 }
                 // Fill trailing gap after last anchor
-                int trailTokStart = lastTokIdx + 1;
-                int trailTokEnd = n;
                 int trailSylStart = lastSylEnd + 1;
-                int trailSylEnd = expectedCount - 1;
-                int numTrailSyl = trailSylEnd - trailSylStart + 1;
+                int numTrailSyl = expectedCount - trailSylStart;
                 if (numTrailSyl > 0) {
-                    List<String> gapToks = (trailTokStart < trailTokEnd)
-                            ? rawTokens.subList(trailTokStart, trailTokEnd)
+                    int trailTokStart = lastTokIdx + 1;
+                    List<String> gapToks = (trailTokStart < n)
+                            ? rawTokens.subList(trailTokStart, n)
                             : Collections.emptyList();
-                    List<String> sub = alignTokens(gapToks, numTrailSyl, null);
-                    for (int k = 0; k < numTrailSyl; k++) {
-                        out[trailSylStart + k] = (k < sub.size()) ? sub.get(k) : "";
-                    }
+                    fillSlots(out, trailSylStart, numTrailSyl, gapToks);
                 }
                 List<String> finalRes = new ArrayList<>(expectedCount);
                 for (int i = 0; i < expectedCount; i++) {
@@ -911,31 +905,27 @@ public class AiSyllableTransliterationService {
         return null;
     }
 
+    private void postToMain(Runnable action) {
+        if (mainHandler != null) {
+            mainHandler.post(action);
+        } else {
+            action.run();
+        }
+    }
+
     private void dispatchSuccess(final LyricsData data, final Callback callback) {
         if (callback == null) return;
-        if (mainHandler != null) {
-            mainHandler.post(() -> callback.onSuccess(data));
-        } else {
-            callback.onSuccess(data);
-        }
+        postToMain(() -> callback.onSuccess(data));
     }
 
     private void dispatchError(final String message, final Callback callback) {
         if (callback == null) return;
-        if (mainHandler != null) {
-            mainHandler.post(() -> callback.onError(message));
-        } else {
-            callback.onError(message);
-        }
+        postToMain(() -> callback.onError(message));
     }
 
     private void dispatchProgress(final int processed, final int total, final Callback callback) {
         if (callback == null) return;
-        if (mainHandler != null) {
-            mainHandler.post(() -> callback.onProgress(processed, total));
-        } else {
-            callback.onProgress(processed, total);
-        }
+        postToMain(() -> callback.onProgress(processed, total));
     }
 
     private static class BatchCancellable implements AntigravityApiClient.Cancellable {

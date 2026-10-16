@@ -551,12 +551,7 @@ public class AntigravityToolExecutor {
         final ToolCancellable handle = new ToolCancellable();
 
         if (!isSafePublicUrl(urlString)) {
-            JsonObject err = new JsonObject();
-            err.addProperty("status", "error");
-            err.addProperty("message", "SSRF protection blocked URL: " + urlString);
-            if (callback != null) {
-                callback.onResult(ToolResult.error(err.toString()));
-            }
+            fail(callback, "SSRF protection blocked URL: " + urlString, null);
             return handle;
         }
 
@@ -573,12 +568,7 @@ public class AntigravityToolExecutor {
                     .get()
                     .build();
         } catch (Exception e) {
-            JsonObject err = new JsonObject();
-            err.addProperty("status", "error");
-            err.addProperty("message", "Invalid URL request: " + e.getMessage());
-            if (callback != null) {
-                callback.onResult(ToolResult.error(err.toString()));
-            }
+            fail(callback, "Invalid URL request: " + e.getMessage(), null);
             return handle;
         }
 
@@ -591,12 +581,7 @@ public class AntigravityToolExecutor {
                 if (handle.isCancelled()) {
                     return;
                 }
-                JsonObject err = new JsonObject();
-                err.addProperty("status", "error");
-                err.addProperty("message", e.getMessage() != null ? e.getMessage() : "Network error");
-                if (callback != null) {
-                    callback.onResult(ToolResult.error(err.toString()));
-                }
+                fail(callback, e.getMessage() != null ? e.getMessage() : "Network error", null);
             }
 
             @Override
@@ -607,13 +592,7 @@ public class AntigravityToolExecutor {
                 }
                 try {
                     if (!response.isSuccessful()) {
-                        JsonObject err = new JsonObject();
-                        err.addProperty("status", "error");
-                        err.addProperty("message", "HTTP " + response.code() + " " + response.message());
-                        err.addProperty("url", urlString);
-                        if (callback != null) {
-                            callback.onResult(ToolResult.error(err.toString()));
-                        }
+                        fail(callback, "HTTP " + response.code() + " " + response.message(), urlString);
                         return;
                     }
 
@@ -631,13 +610,7 @@ public class AntigravityToolExecutor {
                                     || subtype.toLowerCase(Locale.ROOT).contains("xml")
                                     || subtype.toLowerCase(Locale.ROOT).contains("json");
                             if (!isTextual) {
-                                JsonObject err = new JsonObject();
-                                err.addProperty("status", "error");
-                                err.addProperty("message", "Unsupported content type: " + mediaType);
-                                err.addProperty("url", urlString);
-                                if (callback != null) {
-                                    callback.onResult(ToolResult.error(err.toString()));
-                                }
+                                fail(callback, "Unsupported content type: " + mediaType, urlString);
                                 return;
                             }
                         }
@@ -679,11 +652,8 @@ public class AntigravityToolExecutor {
                         callback.onResult(new ToolResult(false, json.toString(), sources));
                     }
                 } catch (Exception e) {
-                    if (!handle.isCancelled() && callback != null) {
-                        JsonObject err = new JsonObject();
-                        err.addProperty("status", "error");
-                        err.addProperty("message", "Failed parsing web page: " + e.getMessage());
-                        callback.onResult(ToolResult.error(err.toString()));
+                    if (!handle.isCancelled()) {
+                        fail(callback, "Failed parsing web page: " + e.getMessage(), null);
                     }
                 } finally {
                     response.close();
@@ -727,6 +697,21 @@ public class AntigravityToolExecutor {
             } catch (Exception ignored) {}
         }
         return trimmed;
+    }
+
+    /**
+     * Reports a web-fetch failure to the model as {@code {"status":"error","message":…}} (plus the
+     * offending {@code url} when known). No-op when there is no callback.
+     */
+    private static void fail(ToolCallback callback, String message, String url) {
+        if (callback == null) return;
+        JsonObject err = new JsonObject();
+        err.addProperty("status", "error");
+        err.addProperty("message", message);
+        if (url != null) {
+            err.addProperty("url", url);
+        }
+        callback.onResult(ToolResult.error(err.toString()));
     }
 
     /**

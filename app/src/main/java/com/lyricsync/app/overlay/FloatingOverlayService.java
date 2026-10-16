@@ -1486,71 +1486,45 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         aiPromptTemplatesContainer.removeAllViews();
         if (currentLyrics != null && isLyricsNonLatin(currentLyrics)) {
             // Option 1: Transliterasi & Arti
-            View itemWithTrans = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
-            ImageView icon1 = itemWithTrans.findViewById(R.id.prompt_icon);
-            TextView title1 = itemWithTrans.findViewById(R.id.prompt_title);
-            TextView desc1 = itemWithTrans.findViewById(R.id.prompt_desc);
-            title1.setText(R.string.ai_chip_transliterate_with_translation);
-            desc1.setText(R.string.ai_chip_transliterate_with_translation_desc);
-            icon1.setImageResource(R.drawable.ic_sparkles);
-            itemWithTrans.setOnClickListener(v -> {
-                Haptics.tick(v);
-                performTransliteration(true);
-            });
-            aiPromptTemplatesContainer.addView(itemWithTrans);
+            aiPromptTemplatesContainer.addView(createPromptTemplateView(
+                    getText(R.string.ai_chip_transliterate_with_translation),
+                    getText(R.string.ai_chip_transliterate_with_translation_desc),
+                    R.drawable.ic_sparkles,
+                    v -> { Haptics.tick(v); performTransliteration(true); }));
 
             // Option 2: Transliterasi Saja
-            View itemOnly = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
-            ImageView icon2 = itemOnly.findViewById(R.id.prompt_icon);
-            TextView title2 = itemOnly.findViewById(R.id.prompt_title);
-            TextView desc2 = itemOnly.findViewById(R.id.prompt_desc);
-            title2.setText(R.string.ai_chip_transliterate_only);
-            desc2.setText(R.string.ai_chip_transliterate_only_desc);
-            icon2.setImageResource(R.drawable.ic_sparkles);
-            itemOnly.setOnClickListener(v -> {
-                Haptics.tick(v);
-                performTransliteration(false, true);
-            });
-            aiPromptTemplatesContainer.addView(itemOnly);
+            aiPromptTemplatesContainer.addView(createPromptTemplateView(
+                    getText(R.string.ai_chip_transliterate_only),
+                    getText(R.string.ai_chip_transliterate_only_desc),
+                    R.drawable.ic_sparkles,
+                    v -> { Haptics.tick(v); performTransliteration(false, true); }));
 
             // Option 3: Latin Saja (Tanpa Huruf Asli)
-            View itemPure = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
-            ImageView icon3 = itemPure.findViewById(R.id.prompt_icon);
-            TextView title3 = itemPure.findViewById(R.id.prompt_title);
-            TextView desc3 = itemPure.findViewById(R.id.prompt_desc);
-            title3.setText(R.string.ai_chip_transliterate_pure_romaji);
-            desc3.setText(R.string.ai_chip_transliterate_pure_romaji_desc);
-            icon3.setImageResource(R.drawable.ic_sparkles);
-            itemPure.setOnClickListener(v -> {
-                Haptics.tick(v);
-                performTransliteration(false, false);
-            });
-            aiPromptTemplatesContainer.addView(itemPure);
+            aiPromptTemplatesContainer.addView(createPromptTemplateView(
+                    getText(R.string.ai_chip_transliterate_pure_romaji),
+                    getText(R.string.ai_chip_transliterate_pure_romaji_desc),
+                    R.drawable.ic_sparkles,
+                    v -> { Haptics.tick(v); performTransliteration(false, false); }));
         }
         String lang = LocaleHelper.getLanguage(this);
         List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
         for (final SongChatManager.PromptTemplate template : templates) {
-            View itemView = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
-            ImageView iconView = itemView.findViewById(R.id.prompt_icon);
-            TextView titleView = itemView.findViewById(R.id.prompt_title);
-            TextView descView = itemView.findViewById(R.id.prompt_desc);
-
-            titleView.setText(template.title);
-            descView.setText(template.description);
-
             int iconRes = getResources().getIdentifier(template.iconName, "drawable", getPackageName());
-            if (iconRes != 0) {
-                iconView.setImageResource(iconRes);
-            } else {
-                iconView.setImageResource(R.drawable.ic_sparkles);
-            }
-
-            itemView.setOnClickListener(v -> {
-                Haptics.tick(v);
-                sendAiChatMessage(template.promptText);
-            });
-            aiPromptTemplatesContainer.addView(itemView);
+            if (iconRes == 0) iconRes = R.drawable.ic_sparkles;
+            aiPromptTemplatesContainer.addView(createPromptTemplateView(
+                    template.title, template.description, iconRes,
+                    v -> { Haptics.tick(v); sendAiChatMessage(template.promptText); }));
         }
+    }
+
+    /** Builds one prompt-template row: title, description, icon and click handler. */
+    private View createPromptTemplateView(CharSequence title, CharSequence desc, int iconRes, View.OnClickListener onClick) {
+        View item = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
+        ((TextView) item.findViewById(R.id.prompt_title)).setText(title);
+        ((TextView) item.findViewById(R.id.prompt_desc)).setText(desc);
+        ((ImageView) item.findViewById(R.id.prompt_icon)).setImageResource(iconRes);
+        item.setOnClickListener(onClick);
+        return item;
     }
 
     private boolean isLyricsNonLatin(LyricsData lyrics) {
@@ -1840,11 +1814,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(true);
             if (highlighter != null) highlighter.setTransliterationEnabled(true);
         }
-        renderOverlayLyrics(currentLyrics);
-        if (lyricsCacheManager != null && currentTrack != null) {
-            lyricsCacheManager.cache(currentTrack, currentLyrics);
-        }
-        updateSongChatLyrics(currentLyrics);
+        renderLyricsEdit();
         if (callback != null) {
             callback.onSuccess("Baris " + (lineIndex + 1) + " berhasil diperbarui di overlay.");
         }
@@ -1888,11 +1858,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(true);
             if (highlighter != null) highlighter.setTransliterationEnabled(true);
         }
-        renderOverlayLyrics(currentLyrics);
-        if (lyricsCacheManager != null && currentTrack != null) {
-            lyricsCacheManager.cache(currentTrack, currentLyrics);
-        }
-        updateSongChatLyrics(currentLyrics);
+        renderLyricsEdit();
         if (callback != null) {
             callback.onSuccess(count + " baris lirik berhasil diperbarui dan dirender langsung di overlay.");
         }
@@ -2030,11 +1996,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 return;
             }
             currentLyrics.lines.remove(lineIndex);
-            renderOverlayLyrics(currentLyrics);
-            if (lyricsCacheManager != null && currentTrack != null) {
-                lyricsCacheManager.cache(currentTrack, currentLyrics);
-            }
-            updateSongChatLyrics(currentLyrics);
+            renderLyricsEdit();
             if (callback != null) callback.onSuccess("Baris " + (lineIndex + 1) + " berhasil dihapus.");
         } else if ("insert".equals(act)) {
             if (text == null || text.trim().isEmpty()) {
@@ -2048,11 +2010,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             if (translation != null && !translation.trim().isEmpty()) newLine.translation = translation.trim();
             if (romanji != null && !romanji.trim().isEmpty()) newLine.romanji = romanji.trim();
             currentLyrics.lines.add(insertPos, newLine);
-            renderOverlayLyrics(currentLyrics);
-            if (lyricsCacheManager != null && currentTrack != null) {
-                lyricsCacheManager.cache(currentTrack, currentLyrics);
-            }
-            updateSongChatLyrics(currentLyrics);
+            renderLyricsEdit();
             if (callback != null) callback.onSuccess("Baris lirik baru berhasil disisipkan di baris " + (insertPos + 1) + ".");
         } else if ("shift_timing".equals(act)) {
             if (lineIndex < 0 || lineIndex >= currentLyrics.lines.size()) {
@@ -2068,11 +2026,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                     w.endTime = Math.max(w.startTime + 100, w.endTime + shiftMs);
                 }
             }
-            renderOverlayLyrics(currentLyrics);
-            if (lyricsCacheManager != null && currentTrack != null) {
-                lyricsCacheManager.cache(currentTrack, currentLyrics);
-            }
-            updateSongChatLyrics(currentLyrics);
+            renderLyricsEdit();
             if (callback != null) callback.onSuccess("Timing baris " + (lineIndex + 1) + " digeser sebesar " + shiftMs + " ms.");
         } else {
             if (callback != null) callback.onError("Aksi manage_lyric_lines tidak dikenal: " + action);
@@ -2191,9 +2145,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                             if (activeAiBubbleAnimator != null) {
                                 activeAiBubbleAnimator.updateStream(responseAcc.toString());
                             }
-                            if (aiChatScroll != null) {
-                                aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
-                            }
+                            scrollAiChatToBottom();
                         });
                     }
 
@@ -2215,9 +2167,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                                 displayWebSources(webSources);
                             }
                             addSourceChipsBelowBubble(webSources);
-                            if (aiChatScroll != null) {
-                                aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
-                            }
+                            scrollAiChatToBottom();
                         });
                     }
 
@@ -2333,9 +2283,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         aiChatMessages.addView(card, insertPos);
         activeOverlayToolCard = card;
 
-        if (aiChatScroll != null) {
-            aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
-        }
+        scrollAiChatToBottom();
     }
 
     private void completeInlineToolStatus(String toolName, int resultsCount) {
@@ -2372,9 +2320,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         bubble.setLayoutParams(lp);
 
         aiChatMessages.addView(bubble);
-        if (aiChatScroll != null) {
-            aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
-        }
+        scrollAiChatToBottom();
     }
 
     private TextView addAiChatBubble(String initialText) {
@@ -2393,10 +2339,14 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         bubble.setLayoutParams(lp);
 
         aiChatMessages.addView(bubble);
+        scrollAiChatToBottom();
+        return bubble;
+    }
+
+    private void scrollAiChatToBottom() {
         if (aiChatScroll != null) {
             aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
         }
-        return bubble;
     }
 
     private void handleAiNewChatOverlay() {
@@ -2478,9 +2428,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 addSourceChipsBelowBubble(session.webSources);
             }
 
-            if (aiChatScroll != null) {
-                aiChatScroll.post(() -> aiChatScroll.fullScroll(View.FOCUS_DOWN));
-            }
+            scrollAiChatToBottom();
         }
         Toast.makeText(this, R.string.ai_history_restore, Toast.LENGTH_SHORT).show();
     }
@@ -3552,6 +3500,15 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         } else if (translateService != null) {
             translateService.translateLines(targetLyrics.lines, targetLang, callback);
         }
+    }
+
+    /** Re-render, re-cache and re-publish the current lyrics after an in-place edit. */
+    private void renderLyricsEdit() {
+        renderOverlayLyrics(currentLyrics);
+        if (lyricsCacheManager != null && currentTrack != null) {
+            lyricsCacheManager.cache(currentTrack, currentLyrics);
+        }
+        updateSongChatLyrics(currentLyrics);
     }
 
     private void updateSongChatLyrics(LyricsData lyrics) {
