@@ -127,25 +127,16 @@
 
     <!-- AI Chat & Insights -->
     <string name="ai_insights_title">AI Insights</string>
-    <string name="ai_studio_title">AI Song Studio</string>
     <string name="ai_empty_hint">Choose a topic to explore or ask anything about this song:</string>
     <string name="ai_chat_input_hint">Ask anything about this song…</string>
     <string name="ai_send">Send</string>
     <string name="ai_toggle_web_search">Toggle Web Search</string>
-    <string name="ai_chat_open_fullscreen">Open AI Chat</string>
-    <string name="cd_expand_chat">Expand chat</string>
     <string name="cd_ai_chat_bubble">AI chat</string>
-    <string name="cd_voice_input">Voice input</string>
-    <string name="ai_voice_no_result">No speech recognized</string>
-    <string name="ai_voice_error">Voice input unavailable</string>
-    <string name="ai_voice_permission">Microphone permission needed for voice input</string>
-    <string name="ai_voice_listening">Listening…</string>
     <string name="ai_tool_searching">Searching Google…</string>
     <string name="ai_tool_fetching">Reading article…</string>
     <string name="ai_tool_search_done">Found %1$d sources</string>
     <string name="ai_tool_fetch_done">Article read</string>
     <string name="ai_web_sources_label">Web Sources</string>
-    <string name="ai_no_track">Play a song to chat with AI.</string>
     <string name="ai_thinking">Thinking…</string>
     <string name="ai_login_required">Please connect Google account in AI settings.</string>
     <string name="ai_web_search_active">AI Web Search enabled</string>
@@ -154,7 +145,6 @@
     <string name="ai_total_tokens">Total Tokens Used: %1$d</string>
     <string name="ai_select_model">Select AI Model</string>
     <string name="ai_model_selector_desc">Choose the AI intelligence powering song analysis and chat</string>
-    <string name="ai_model_gemini_flash_desc">Fast, versatile &amp; Google Search grounding</string>
     <string name="ai_source_web">Web Source</string>
     <string name="action_change">Change</string>
     <string name="ai_btn_new_chat">New Chat</string>
@@ -170,7 +160,6 @@
     <string name="ai_history_restore">Restore Chat</string>
     <string name="ai_history_session_messages">%1$d messages</string>
     <string name="ai_history_deleted_one">Conversation deleted</string>
-    <string name="ai_chip_transliterate">Transliterate &amp; Translate Syllables</string>
     <string name="ai_chip_transliterate_with_translation">Transliteration &amp; Meaning</string>
     <string name="ai_chip_transliterate_with_translation_desc">Syllable transliteration with line translations</string>
     <string name="ai_chip_transliterate_only">Transliteration Only</string>
@@ -201,5 +190,4 @@
     <string name="google_connected">Connected: %1$s</string>
     <string name="google_connect_failed">Failed: %1$s</string>
     <string name="ai_model_set">AI model set to: %1$s</string>
-    <string name="transliteration_failed">Transliteration failed</string>
 </resources>

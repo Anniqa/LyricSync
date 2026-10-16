@@ -300,7 +300,6 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         Anim.enterStagger(60, 70,
                 findViewById(R.id.header),
                 findViewById(R.id.card_now_playing),
-                findViewById(R.id.card_ai_studio),
                 findViewById(R.id.card_permissions),
                 startButton,
                 findViewById(R.id.card_appearance),

@@ -128,25 +128,16 @@
 
     <!-- AI Chat & Insights -->
     <string name="ai_insights_title">AI Insights</string>
-    <string name="ai_studio_title">AI Song Studio</string>
     <string name="ai_empty_hint">Pilih topik untuk dieksplorasi atau ajukan pertanyaan tentang lagu ini:</string>
     <string name="ai_chat_input_hint">Tanyakan apa saja tentang lagu ini…</string>
     <string name="ai_send">Kirim</string>
     <string name="ai_toggle_web_search">Alihkan Pencarian Web</string>
-    <string name="ai_chat_open_fullscreen">Buka Obrolan AI</string>
-    <string name="cd_expand_chat">Perluas obrolan</string>
-    <string name="cd_voice_input">Input suara</string>
-    <string name="ai_voice_no_result">Tidak ada suara yang dikenali</string>
-    <string name="ai_voice_error">Input suara tidak tersedia</string>
-    <string name="ai_voice_permission">Izin mikrofon diperlukan untuk input suara</string>
-    <string name="ai_voice_listening">Mendengarkan…</string>
     <string name="cd_ai_chat_bubble">Obrolan AI</string>
     <string name="ai_tool_searching">Mencari di Google…</string>
     <string name="ai_tool_fetching">Membaca artikel…</string>
     <string name="ai_tool_search_done">Ditemukan %1$d sumber</string>
     <string name="ai_tool_fetch_done">Artikel terbaca</string>
     <string name="ai_web_sources_label">Sumber Web</string>
-    <string name="ai_no_track">Putar lagu untuk berdiskusi dengan AI.</string>
     <string name="ai_thinking">Berpikir…</string>
     <string name="ai_login_required">Silakan hubungkan akun Google di pengaturan AI.</string>
     <string name="ai_web_search_active">AI Web Search aktif</string>
@@ -155,7 +146,6 @@
     <string name="ai_total_tokens">Total Token Terpakai: %1$d</string>
     <string name="ai_select_model">Pilih Model AI</string>
     <string name="ai_model_selector_desc">Pilih kecerdasan AI untuk analisis lagu dan percakapan</string>
-    <string name="ai_model_gemini_flash_desc">Cepat, serbaguna &amp; pencarian Google</string>
     <string name="ai_source_web">Sumber Web</string>
     <string name="action_change">Ubah</string>
     <string name="ai_btn_new_chat">Obrolan Baru</string>
@@ -171,7 +161,6 @@
     <string name="ai_history_restore">Buka Obrolan</string>
     <string name="ai_history_session_messages">%1$d pesan</string>
     <string name="ai_history_deleted_one">Percakapan dihapus</string>
-    <string name="ai_chip_transliterate">Transliterasi &amp; Terjemahkan Suku Kata</string>
     <string name="ai_chip_transliterate_with_translation">Transliterasi &amp; Arti</string>
     <string name="ai_chip_transliterate_with_translation_desc">Transliterasi suku kata lengkap dengan terjemahan baris</string>
     <string name="ai_chip_transliterate_only">Transliterasi Saja</string>
@@ -201,5 +190,4 @@
     <string name="google_connected">Berhasil terhubung: %1$s</string>
     <string name="google_connect_failed">Gagal: %1$s</string>
     <string name="ai_model_set">Model AI diatur ke: %1$s</string>
-    <string name="transliteration_failed">Transliterasi gagal</string>
 </resources>
