@@ -109,6 +109,7 @@
     <string name="ai_manual_token_title">Enter Refresh Token</string>
     <string name="ai_manual_token_hint">Paste your Antigravity refresh token here</string>
     <string name="ai_disconnect">Logout</string>
+    <string name="ai_model_change">Change</string>
     <string name="ai_quota_weekly">Weekly Quota</string>
     <string name="ai_quota_5h">5-Hour Quota</string>
     <string name="ai_search_model_label">Search Grounding Model</string>

@@ -1245,6 +1245,58 @@
                                 android:textSize="12sp" />
                         </LinearLayout>
 
+                        <!-- Model AI. Moved here from the chat panel's header when the
+                             in-app chat was removed; the overlay reads pref_ai_model. -->
+                        <LinearLayout
+                            android:id="@+id/ai_model_row"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="?attr/selectableItemBackground"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="14dp">
+
+                            <ImageView
+                                android:id="@+id/ai_model_pill_icon"
+                                android:layout_width="26dp"
+                                android:layout_height="26dp"
+                                android:contentDescription="@null"
+                                app:tint="@color/accent" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:layout_marginStart="10dp">
+
+                                <TextView
+                                    android:id="@+id/ai_model_pill_name"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/text_primary"
+                                    android:textSize="14sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/ai_model_desc_badge"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/text_dim"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/ai_model_change"
+                                android:textColor="@color/accent"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
                         <!-- Quota Weekly Progress -->
                         <LinearLayout
                             android:layout_width="match_parent"

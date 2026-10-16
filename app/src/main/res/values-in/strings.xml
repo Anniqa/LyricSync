@@ -109,6 +109,7 @@
     <string name="ai_manual_token_title">Masukkan Refresh Token</string>
     <string name="ai_manual_token_hint">Tempel refresh token Antigravity Anda di sini</string>
     <string name="ai_disconnect">Keluar</string>
+    <string name="ai_model_change">Ubah</string>
     <string name="ai_quota_weekly">Kuota Mingguan</string>
     <string name="ai_quota_5h">Kuota 5-Jam</string>
     <string name="ai_search_model_label">Model Grounding Pencarian</string>
