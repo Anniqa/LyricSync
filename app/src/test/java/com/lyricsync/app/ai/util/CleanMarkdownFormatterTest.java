@@ -167,8 +167,7 @@ public class CleanMarkdownFormatterTest {
     }
 
     @Test
-    public void testMarkwonInstanceGetterSetter() {
-        CleanMarkdownFormatter.setMarkwonInstance(null);
+    public void testMarkwonNullContextReturnsNull() {
         assertNull("getMarkwon with null context should return null", CleanMarkdownFormatter.getMarkwon(null));
     }
 }

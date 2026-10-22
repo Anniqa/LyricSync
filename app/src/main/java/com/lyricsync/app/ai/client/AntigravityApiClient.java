@@ -262,24 +262,6 @@ public class AntigravityApiClient {
     }
 
     /**
-     * Cancels all active in-flight calls managed by this client.
-     */
-    public void cancelAll() {
-        for (Call call : activeCalls) {
-            try {
-                call.cancel();
-            } catch (Exception ignored) {}
-        }
-        activeCalls.clear();
-        for (ApiCallHandle handle : activeHandles) {
-            try {
-                handle.cancel();
-            } catch (Exception ignored) {}
-        }
-        activeHandles.clear();
-    }
-
-    /**
      * Constructs tool schema declarations for autonomous web search and web fetch.
      */
     private static JsonObject makeTool(String name, String desc, String[] req, Object... props) {
@@ -378,7 +360,7 @@ public class AntigravityApiClient {
     /**
      * Converts a list of AiChatMessage turns into a Gemini-compliant contents JsonArray.
      */
-    public static JsonArray convertMessagesToContents(List<AiChatMessage> messages) {
+    static JsonArray convertMessagesToContents(List<AiChatMessage> messages) {
         JsonArray contents = new JsonArray();
         if (messages != null) {
             for (AiChatMessage msg : messages) {
@@ -407,21 +389,6 @@ public class AntigravityApiClient {
             }
         }
         return contents;
-    }
-
-    /**
-     * Constructs the JSON request body matching the Antigravity Cloudcode PA protocol.
-     * Leaves token limits to native model capacity without artificial maxOutputTokens clamping.
-     *
-     * @param modelId Model identifier (e.g. "gemini-3-flash", "claude-sonnet-4-6")
-     * @param messages Conversation turns
-     * @param enableWebSearch When true, injects agent functionDeclarations (web_search, web_fetch)
-     * @param effortLevel Optional reasoning effort level ("low", "medium", "high")
-     * @return Formatted JSON payload string
-     */
-    public static String buildRequestBody(String modelId, List<AiChatMessage> messages,
-                                         boolean enableWebSearch, String effortLevel) {
-        return buildRequestBodyWithContents(modelId, convertMessagesToContents(messages), enableWebSearch, effortLevel);
     }
 
     /**

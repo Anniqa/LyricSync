@@ -132,7 +132,7 @@ public class AntigravityApiClientToolLoopTest {
     @Test
     public void testBuildRequestBodyContainsFunctionDeclarations() {
         List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user("Tell me about Fix You"));
-        String json = AntigravityApiClient.buildRequestBody("gemini-2.5-flash", messages, true, null);
+        String json = AntigravityApiClient.buildRequestBodyWithContents("gemini-2.5-flash", AntigravityApiClient.convertMessagesToContents(messages), true, null);
 
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
         JsonObject req = root.getAsJsonObject("request");

@@ -26,10 +26,6 @@ public class AiChatMessage {
         return new AiChatMessage("model", content);
     }
 
-    public static AiChatMessage assistant(String content) {
-        return new AiChatMessage("model", content);
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

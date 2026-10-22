@@ -52,10 +52,6 @@ public final class CleanMarkdownFormatter {
         return markwonInstance;
     }
 
-    public static void setMarkwonInstance(Markwon markwon) {
-        markwonInstance = markwon;
-    }
-
     /**
      * Applies markdown formatting directly to a TextView using Markwon,
      * configuring TableAwareMovementMethod for clickable links and tables.

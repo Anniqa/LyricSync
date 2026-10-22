@@ -55,7 +55,7 @@ public class AntigravityApiClientTest {
                 AiChatMessage.user("Hello world")
         );
 
-        String json = AntigravityApiClient.buildRequestBody("gemini-3-flash", messages, false, null);
+        String json = AntigravityApiClient.buildRequestBodyWithContents("gemini-3-flash", AntigravityApiClient.convertMessagesToContents(messages), false, null);
         assertNotNull(json);
 
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
@@ -102,7 +102,7 @@ public class AntigravityApiClientTest {
                 AiChatMessage.user("Explain lyrics of Bohemian Rhapsody")
         );
 
-        String json = AntigravityApiClient.buildRequestBody("gemini-2.5-flash", messages, true, null);
+        String json = AntigravityApiClient.buildRequestBodyWithContents("gemini-2.5-flash", AntigravityApiClient.convertMessagesToContents(messages), true, null);
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
         JsonObject req = root.getAsJsonObject("request");
 
@@ -121,7 +121,7 @@ public class AntigravityApiClientTest {
                 AiChatMessage.user("Analyze deep symbolism")
         );
 
-        String json = AntigravityApiClient.buildRequestBody("gemini-3-flash", messages, false, "high");
+        String json = AntigravityApiClient.buildRequestBodyWithContents("gemini-3-flash", AntigravityApiClient.convertMessagesToContents(messages), false, "high");
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
         JsonObject req = root.getAsJsonObject("request");
 
@@ -143,7 +143,7 @@ public class AntigravityApiClientTest {
                 AiChatMessage.user("Think deeply")
         );
 
-        String json = AntigravityApiClient.buildRequestBody("gemini-3-flash", messages, false, "MEDIUM");
+        String json = AntigravityApiClient.buildRequestBodyWithContents("gemini-3-flash", AntigravityApiClient.convertMessagesToContents(messages), false, "MEDIUM");
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
         JsonObject thinking = root.getAsJsonObject("request")
                 .getAsJsonObject("generationConfig")
@@ -160,7 +160,7 @@ public class AntigravityApiClientTest {
                 new AiChatMessage(null, "Another question")
         );
 
-        String json = AntigravityApiClient.buildRequestBody("gemini-3-flash", messages, false, null);
+        String json = AntigravityApiClient.buildRequestBodyWithContents("gemini-3-flash", AntigravityApiClient.convertMessagesToContents(messages), false, null);
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
         JsonArray contents = root.getAsJsonObject("request").getAsJsonArray("contents");
 
@@ -407,10 +407,6 @@ public class AntigravityApiClientTest {
         AiChatMessage msg2 = AiChatMessage.model("Hi there");
         assertEquals("model", msg2.role);
         assertEquals("Hi there", msg2.content);
-
-        AiChatMessage msg3 = AiChatMessage.assistant("Hi there");
-        assertEquals("model", msg3.role);
-        assertEquals("Hi there", msg3.content);
 
         AiChatMessage msg1Duplicate = new AiChatMessage("user", "Hello");
         assertEquals(msg1, msg1Duplicate);
@@ -670,38 +666,6 @@ public class AntigravityApiClientTest {
         assertTrue(handle.isCancelled());
         assertFalse("onComplete must NOT be called after cancellation", completeTriggered.get());
         assertFalse("onError must NOT be called after cancellation", errorTriggered.get());
-    }
-
-    @Test
-    public void testCancelAllAbortsActiveCalls() throws InterruptedException {
-        fakeAuthManager.mockToken = "ya29.valid-token";
-        mockInterceptor.responseSseStream =
-                "data: {\"response\": {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Part\"}]}}]}}\n\n";
-
-        final AtomicBoolean completeTriggered = new AtomicBoolean(false);
-        final AtomicBoolean errorTriggered = new AtomicBoolean(false);
-
-        List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user("Test"));
-        AntigravityApiClient.Cancellable handle = apiClient.generateContentStream("gemini-3-flash", messages, false, null, new AntigravityApiClient.StreamListener() {
-            @Override
-            public void onDelta(String textDelta) {}
-
-            @Override
-            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
-                completeTriggered.set(true);
-            }
-
-            @Override
-            public void onError(Exception error) {
-                errorTriggered.set(true);
-            }
-        });
-
-        apiClient.cancelAll();
-        Thread.sleep(100);
-        assertTrue(handle.isCancelled());
-        assertFalse("onComplete must NOT be called after cancelAll", completeTriggered.get());
-        assertFalse("onError must NOT be called after cancelAll", errorTriggered.get());
     }
 
     // --- Test Helpers ---

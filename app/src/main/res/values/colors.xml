@@ -20,7 +20,6 @@
     <!-- Accent: keep Spotify-green vibe but a touch brighter/cleaner. -->
     <color name="accent">#FF1ED760</color>
     <color name="accent_dark">#FF17B34E</color>
-    <color name="accent_soft">#291ED760</color>
 
     <!-- Semantic state colours (were hardcoded ints in MainActivity). -->
     <color name="state_ok">#FF1ED760</color>
