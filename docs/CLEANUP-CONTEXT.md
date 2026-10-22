@@ -3,6 +3,27 @@
 State as of branch `simplify/trim-feature-surface` (6 commits on top of `464a65c`).
 `app/src` holds 174 Java + XML files, 34,018 lines; the branch is +1,102 / −9,029.
 
+## 2026-10-22 — safe refactoring pass (6 commits `6fc8cb6..a712495`, all on master)
+
+Plan: `docs/superpowers/plans/2026-10-22-safe-refactor-pass.md`. Ledger of rulings:
+`.superpowers/sdd/` (deleted after wrap-up; see `git log`). Verification per commit:
+affected unit suites + `assembleDebug`; final gate `assembleDebug testDebugUnitTest
+lintDebug` → BUILD SUCCESSFUL, lint **0 errors / 73 warnings** (one down from 74).
+
+- `6fc8cb6` `typeRank` duplicated in `LyricsCacheManager` + `LyricsProviderManager` → `LyricsData.rankOf(Type)` (null→0, SYLLABLE 3 > LINE 2 > STATIC 1).
+- `a9e7b32` `SongChatManager.sendMessage`: staleness guard + listener forwarding each collapsed into `stale()` / `safeForward()` / `failFast()`.
+- `9a9b19f` `AntigravityApiClient.onResponse`: `cancelledExit` (2 outer cancel paths — inner cancel guards deliberately keep their no-remove shape) / `failAndCleanup` / `withStreamSignature`; error strings byte-identical.
+- `637bdf2` `manageLines` 9 params → `LyricActionDelegate.LineOp` (wire arg keys untouched).
+- `04fe8fb` Dead API: removed `AiChatMessage.assistant()`, `CleanMarkdownFormatter.setMarkwonInstance()`, `AntigravityApiClient.cancelAll()`, `AntigravityApiClient.buildRequestBody()`; `accent_soft` deleted. **Still kept, on purpose:** `SongChatManager.getTitle/getArtist/getModelId` (only assertion surface for `setCurrentSong`/`setModelId` in tests), `SyllableHighlighter.getLineViews()` (test injection seam), `SyllableHighlighter.updateProgress()` (pins layer-progress math).
+- `a712495` **First slice of the overlay split:** chat history dialog + new-chat + session-restore moved verbatim to `overlay/OverlayChatHistoryController` (holds the service; same package). Service 3,659 → 3,457. 9 fields + 5 helpers went package-private for it.
+
+**Still unverified on the device:** the history dialog item-tap restore, delete-one,
+and clear-all flows inside the new controller (compile- and suite-verified only).
+
+Known residue (deferred minors from the review): `AntigravityApiClient.activeCalls`
+is now write-only (`cancelAll()` was its only reader); `SongChatManager` `stale()` is
+an instance method (reads `currentSessionId`) though planned as static.
+
 This note exists so the next cleanup pass does not have to rediscover the
 environment, the traps, or what was deliberately left alone.
 
@@ -65,6 +86,8 @@ Net across the branch: **+1,102 / −9,029 lines.** `MainActivity` 2,957 → 1,4
    `AntigravityApiClient.cancelAll()`, `AntigravityApiClient.buildRequestBody()`,
    `SongChatManager.getTitle()`, `getArtist()`, `getModelId()`,
    `SyllableHighlighter.getLineViews()`, `SyllableHighlighter.updateProgress()`.
+   *(2026-10-22 update: the first four were removed in `04fe8fb`; the remaining five
+   are deliberately kept — see the dated section above for the reasons.)*
    Removing them means editing the tests that exercise them. Two were deliberately kept:
    `SyllableLyricsParser.decryptKrcToString()` and `JapaneseRomanizer.containsKana()` —
    for those the test is the only evidence the behaviour works.
@@ -77,6 +100,8 @@ Net across the branch: **+1,102 / −9,029 lines.** `MainActivity` 2,957 → 1,4
    −43 lines there, and dead-code removal only −113. It is one class carrying the window,
    drag, resize, render loop, lyric editing, chat and tool status. Only splitting it will
    move the number, and that touches init order and shared fields, so it needs the device.
+   *(2026-10-22 update: 3,457 after the history-dialog slice `a712495`; next slices are
+   the bubbles/tool-status cluster and the prompt-templates wiring.)*
 
 4. **74 lint warnings remain**, all style/i18n/accessibility and mostly pre-existing:
    `SetTextI18n` (22), `DefaultLocale` (9), `SmallSp` (7), `ClickableViewAccessibility` (6),
