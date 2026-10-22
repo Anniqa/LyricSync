@@ -6,29 +6,21 @@ Floating synced lyrics over any player that posts a media notification.
 ```
 ./gradlew assembleDebug          # debug APK
 ./gradlew assembleRelease        # minified release (R8)
-./gradlew testDebugUnitTest      # 323 unit tests
-./gradlew lintDebug              # must stay at 0 errors / ~88 warnings
+./gradlew testDebugUnitTest      # all JVM unit tests
+./gradlew lintDebug              # must stay at 0 errors / ~73 warnings
 ```
 Toolchain: JDK 17, Android SDK 35 (`platforms;android-35`, `build-tools;35.0.0`).
 `local.properties` / `ANDROID_HOME` must point at the SDK.
 
 ### Building on this device (aarch64)
-Google ships build-tools for **x86-64 Linux only** — every `aapt2` on Google Maven 404s
-under a `linux-aarch64` classifier, so the stock SDK cannot run here. The native
-build-tools binaries are therefore replaced with the aarch64 static builds from
-[lzhiyong/android-sdk-tools](https://github.com/lzhiyong/android-sdk-tools) (`35.0.2`),
-dropped into `build-tools/35.0.0/` (`aapt2`, `zipalign`, `aapt`, `aidl`, `dexdump`,
-`split-select`; everything else in that directory is a jar or shell script and stays as
-shipped). AGP also needs telling, via `~/.gradle/gradle.properties` — user level, so the
-repo and CI stay untouched:
-
-```
-android.aapt2FromMavenOverride=/opt/android-sdk/build-tools/35.0.0/aapt2
-```
-
-`buildToolsVersion '35.0.0'` is pinned in `app/build.gradle` so AGP does not silently
-download the x86-64 `34.0.0` it would otherwise default to. The aarch64 `aapt2` prints a
-harmless `__bionic_open_tzdata` warning on every resource task.
+Google ships build-tools for x86-64 only, so the binaries in `build-tools/35.0.0/`
+(`aapt2`, `zipalign`, `aapt`, `aidl`, `dexdump`, `split-select`) were replaced with the
+aarch64 static builds from [lzhiyong/android-sdk-tools](https://github.com/lzhiyong/android-sdk-tools).
+AGP must be told via user-level `~/.gradle/gradle.properties` (repo/CI stay untouched):
+`android.aapt2FromMavenOverride=/opt/android-sdk/build-tools/35.0.0/aapt2`.
+`buildToolsVersion '35.0.0'` is pinned in `app/build.gradle` so AGP doesn't silently
+download x86-64 `34.0.0`. The aarch64 `aapt2` prints a harmless
+`__bionic_open_tzdata` warning on every resource task.
 
 ## Where things live (`app/src/main/java/com/lyricsync/app`)
 | Area | Responsibility |
@@ -41,7 +33,7 @@ harmless `__bionic_open_tzdata` warning on every resource task.
 | `renderer/*` | Syllable highlight, gradient text, flow layout, animations |
 | `overlay/FloatingOverlayService` | The window: layout, gestures, controls, AI sheet |
 | `ai/*` | Antigravity (Gemini) chat, translation, transliteration, tools |
-| — scope | The AI **does not** search for lyrics. Finding and loading lyrics is the provider chain's job alone; the AI translates, transliterates, edits lines, drives playback/appearance, and explains the song. Keep it that way when adding tools. |
+| — scope | The AI **does not** search for lyrics; the provider chain alone finds/loads them. The AI translates, transliterates, edits lines, drives playback/appearance, explains the song. Keep it that way when adding tools. |
 | `ui/*` | Small view helpers (chips, palettes) |
 | `MainActivity` | Settings screen |
 
@@ -61,22 +53,18 @@ The manager stops as soon as a **SYLLABLE** result lands; everything after is a 
    - response `{Status, Body}`; `Body` is parsed by `parseOfficialResponse` (Syllable/Line/Static)
 4. **Render** → `LyricsData` → `overlay` → `renderer`
 
-### Cover-version reality check (verified live 2026-10-22)
-For tracks where the playing artist is a cover artist (e.g. "Braaten - Without You",
-Spotify id `4L065RwyTOcNXKejPQaX98`):
-- **SpicyLyrics:** 404 — the cover release has no lyrics in that catalog. Only the
-  original recording maps to syllable lyrics.
-- **Kugou:** every query permutation includes the cleaned artist, and Kugou's krcs
-  catalog indexes only the original artist ("Avicii - Without You" → candidates;
-  anything with "Braaten" → `candidates:[]`; a bare title can also return `[]`).
-  Deterministic miss for covers; not a code bug.
-- **Netease:** combined search does surface the cover entry, but that entry often
-  carries only `lrc` (LINE) with no `yrc`; the original artist's entries (which have
-  `yrc` syllables) are filtered out by the artist gatekeeper. The title-only fallback
-  only fires when the combined search returns zero ids, so the original's syllables
-  stay out of reach. Occasional transient empty searches happen; the SQLite cache
-  (keyed on the sanitized track) then serves the earlier LINE fetch — by design.
-- **LRCLIB:** 503s come and go — transient server side, retry later.
+### Cover-version reality (live-verified 2026-10-22)
+For cover releases (e.g. "Braaten - Without You", `4L065RwyTOcNXKejPQaX98`):
+- **SpicyLyrics** → 404: the cover release has no lyrics; only the original recording
+  maps to syllables.
+- **Kugou** → deterministic miss: every query permutation carries the cleaned artist,
+  and krcs indexes the original artist only ("Avicii - Without You" hits; anything with
+  "Braaten" → `candidates:[]`; a bare title can also be empty). Not a code bug.
+- **Netease** → finds the cover entry, but it has `lrc` (LINE) only, no `yrc`; the
+  original's `yrc` syllables are gated out by the artist match, and the title-only
+  fallback only fires on an *empty* combined result. Transient empty searches happen;
+  the cache then serves the earlier LINE fetch (by design).
+- **LRCLIB** → 503s are transient.
 
 ## Conventions
 - Log through `util/AppLog` (never `System.out`).
@@ -86,14 +74,13 @@ Spotify id `4L065RwyTOcNXKejPQaX98`):
   raw string/JSON so tests run offline (see `app/src/test/resources/*.json`).
 - Network uses OkHttp with tight timeouts; nothing blocks the main thread.
 - `Locale.ROOT` for any case folding / cache key.
-- A host that the AI tools can act on implements `AntigravityApiClient.LyricActionDelegate`
-  and wires itself up with
-  `setLyricActionDelegate(new MainThreadLyricActionRouter(handler, this))`. The router's
-  only job is the main-thread hop, so no host hand-rolls the delegate.
+- An AI-tool host implements `AntigravityApiClient.LyricActionDelegate` and wires itself
+  with `setLyricActionDelegate(new MainThreadLyricActionRouter(handler, this))` — the
+  router is only the main-thread hop, so no host hand-rolls the delegate.
 
 ## Known split candidates (deliberately not done yet)
-- `overlay/FloatingOverlayService.java` (~4.0k lines) — split window / gestures / chat / playback
-- `MainActivity.java` (~3.0k lines) — split settings sections out
+- `overlay/FloatingOverlayService.java` (~3.5k lines) — split window / gestures / chat / playback
+- `MainActivity.java` (~1.5k lines) — split settings sections out
 - `ai/client/AntigravityApiClient.java`, `ai/tools/AntigravityToolExecutor.java`
 - `renderer/GradientWordView.java`, `renderer/SyllableHighlighter.java`
 
