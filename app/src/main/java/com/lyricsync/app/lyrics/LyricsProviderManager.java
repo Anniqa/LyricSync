@@ -279,20 +279,11 @@ public class LyricsProviderManager {
         executor.execute(() -> cacheManager.cache(track, lyrics));
     }
 
-    private static int typeRank(LyricsData.Type type) {
-        if (type == null) return 0;
-        switch (type) {
-            case SYLLABLE: return 3;
-            case LINE: return 2;
-            default: return 1;
-        }
-    }
-
     public static boolean betterThan(LyricsData candidate, LyricsData current) {
         if (current == null) return candidate != null && !candidate.isEmpty();
         if (candidate == null || candidate.isEmpty()) return false;
-        int candRank = typeRank(candidate.type);
-        int currRank = typeRank(current.type);
+        int candRank = LyricsData.rankOf(candidate.type);
+        int currRank = LyricsData.rankOf(current.type);
         if (candRank > currRank) return true;
         if (candRank == currRank) {
             int candLines = candidate.lines != null ? candidate.lines.size() : 0;

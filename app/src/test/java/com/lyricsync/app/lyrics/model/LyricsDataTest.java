@@ -18,4 +18,12 @@ public class LyricsDataTest {
         LyricsData lineData = new LyricsData(LyricsData.Type.LINE);
         assertEquals(LyricsData.Type.LINE, lineData.type);
     }
+
+    @Test
+    public void rankOfOrdersLyricsTypesForCachePromotion() {
+        assertEquals(3, LyricsData.rankOf(LyricsData.Type.SYLLABLE));
+        assertEquals(2, LyricsData.rankOf(LyricsData.Type.LINE));
+        assertEquals(1, LyricsData.rankOf(LyricsData.Type.STATIC));
+        assertEquals(0, LyricsData.rankOf(null));
+    }
 }

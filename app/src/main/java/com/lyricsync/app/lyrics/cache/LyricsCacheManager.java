@@ -63,20 +63,11 @@ public class LyricsCacheManager {
         return null;
     }
 
-    private static int typeRank(LyricsData.Type type) {
-        if (type == null) return 0;
-        switch (type) {
-            case SYLLABLE: return 3;
-            case LINE: return 2;
-            default: return 1;
-        }
-    }
-
     public void cache(TrackInfo track, LyricsData lyrics) {
         if (lyrics == null || lyrics.type == null || dbHelper == null) return;
         LyricsData existing = getCached(track);
         if (existing != null && existing.type != null) {
-            if (typeRank(existing.type) > typeRank(lyrics.type)) {
+            if (LyricsData.rankOf(existing.type) > LyricsData.rankOf(lyrics.type)) {
                 return;
             }
         }

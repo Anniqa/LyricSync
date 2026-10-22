@@ -63,6 +63,20 @@ public class LyricsData {
         }
     }
 
+    /**
+     * Quality rank used to decide which lyrics representation wins a slot:
+     * SYLLABLE (3) beats LINE (2) beats STATIC (1). Null counts as nothing (0).
+     * Single source for the cache-promotion and provider-comparison order.
+     */
+    public static int rankOf(Type type) {
+        if (type == null) return 0;
+        switch (type) {
+            case SYLLABLE: return 3;
+            case LINE: return 2;
+            default: return 1;
+        }
+    }
+
     public static class Word {
         public long startTime;
         public long endTime;
