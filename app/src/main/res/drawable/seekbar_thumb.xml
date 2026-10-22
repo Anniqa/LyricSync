@@ -7,11 +7,7 @@
             <size android:width="28dp" android:height="28dp" />
         </shape>
     </item>
-    <item
-        android:top="8dp"
-        android:bottom="8dp"
-        android:left="8dp"
-        android:right="8dp">
+    <item android:top="8dp" android:bottom="8dp" android:left="8dp" android:right="8dp">
         <shape android:shape="oval">
             <solid android:color="@color/white" />
             <size android:width="12dp" android:height="12dp" />

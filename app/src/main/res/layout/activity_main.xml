@@ -1,1308 +1,234 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/background_primary">
-
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/background_primary">
     <!-- Ambient wash behind the header; re-tinted from the album art while playing. -->
-    <View
-        android:id="@+id/hero_glow"
-        android:layout_width="match_parent"
-        android:layout_height="340dp"
-        android:layout_gravity="top"
-        android:background="@drawable/bg_hero_glow" />
-
-    <ScrollView
-        android:id="@+id/main_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clipToPadding="false"
-        android:scrollbars="none"
-        android:overScrollMode="ifContentScrolls"
-        android:fillViewport="true">
-
-        <LinearLayout
-            android:id="@+id/main_content"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="@dimen/screen_padding"
-            android:paddingEnd="@dimen/screen_padding"
-            android:paddingBottom="56dp">
-
+    <View android:id="@+id/hero_glow" android:layout_width="match_parent" android:layout_height="340dp" android:layout_gravity="top" android:background="@drawable/bg_hero_glow" />
+    <ScrollView android:id="@+id/main_scroll" android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false" android:scrollbars="none" android:overScrollMode="ifContentScrolls" android:fillViewport="true">
+        <LinearLayout android:id="@+id/main_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="@dimen/screen_padding" android:paddingEnd="@dimen/screen_padding" android:paddingBottom="56dp">
             <!-- ── Header ────────────────────────────────────────────── -->
-            <LinearLayout
-                android:id="@+id/header"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="28dp"
-                android:layout_marginBottom="24dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/app_name"
-                    android:textColor="@color/text_primary"
-                    android:textSize="36sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="-0.03" />
-
-                <TextView
-                    android:id="@+id/header_tagline"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/app_tagline"
-                    android:textColor="@color/accent"
-                    android:textSize="14sp"
-                    android:letterSpacing="0.01"
-                    android:layout_marginTop="6dp" />
+            <LinearLayout android:id="@+id/header" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="28dp" android:layout_marginBottom="24dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/app_name" android:textColor="@color/text_primary" android:textSize="36sp" android:textStyle="bold" android:letterSpacing="-0.03" />
+                <TextView android:id="@+id/header_tagline" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/app_tagline" android:textColor="@color/accent" android:textSize="14sp" android:letterSpacing="0.01" android:layout_marginTop="6dp" />
             </LinearLayout>
-
             <!-- ── Now playing ───────────────────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_now_playing"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <com.google.android.material.card.MaterialCardView
-                        android:layout_width="60dp"
-                        android:layout_height="60dp"
-                        app:cardCornerRadius="16dp"
-                        app:cardElevation="0dp"
-                        app:cardBackgroundColor="#1FFFFFFF"
-                        app:strokeWidth="0dp">
-
-                        <ImageView
-                            android:id="@+id/np_art"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:scaleType="centerCrop"
-                            android:contentDescription="@string/cd_album_art" />
-
-                        <ImageView
-                            android:id="@+id/np_art_placeholder"
-                            android:layout_width="26dp"
-                            android:layout_height="26dp"
-                            android:layout_gravity="center"
-                            android:src="@drawable/ic_music_note"
-                            app:tint="@color/text_faint"
-                            android:contentDescription="@null" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_now_playing" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="@dimen/card_padding">
+                    <com.google.android.material.card.MaterialCardView android:layout_width="60dp" android:layout_height="60dp" app:cardCornerRadius="16dp" app:cardElevation="0dp" app:cardBackgroundColor="#1FFFFFFF" app:strokeWidth="0dp">
+                        <ImageView android:id="@+id/np_art" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:contentDescription="@string/cd_album_art" />
+                        <ImageView android:id="@+id/np_art_placeholder" android:layout_width="26dp" android:layout_height="26dp" android:layout_gravity="center" android:src="@drawable/ic_music_note" app:tint="@color/text_faint" android:contentDescription="@null" />
                     </com.google.android.material.card.MaterialCardView>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:paddingStart="14dp"
-                        android:paddingEnd="10dp">
-
-                        <TextView
-                            android:id="@+id/np_title"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/nothing_playing"
-                            android:textColor="@color/text_primary"
-                            android:textSize="15sp"
-                            android:textStyle="bold"
-                            android:maxLines="1"
-                            android:ellipsize="end" />
-
-                        <TextView
-                            android:id="@+id/np_artist"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/nothing_playing_desc"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
-                            android:layout_marginTop="2dp"
-                            android:maxLines="1"
-                            android:ellipsize="end" />
-
-                        <TextView
-                            android:id="@+id/np_status"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:background="@drawable/bg_badge"
-                            android:paddingStart="8dp"
-                            android:paddingEnd="8dp"
-                            android:paddingTop="3dp"
-                            android:paddingBottom="3dp"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="10sp"
-                            android:textStyle="bold"
-                            android:letterSpacing="0.04"
-                            android:layout_marginTop="7dp"
-                            android:visibility="gone" />
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="14dp" android:paddingEnd="10dp">
+                        <TextView android:id="@+id/np_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/nothing_playing" android:textColor="@color/text_primary" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+                        <TextView android:id="@+id/np_artist" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/nothing_playing_desc" android:textColor="@color/text_secondary" android:textSize="13sp" android:layout_marginTop="2dp" android:maxLines="1" android:ellipsize="end" />
+                        <TextView android:id="@+id/np_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:background="@drawable/bg_badge" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:textColor="@color/text_secondary" android:textSize="10sp" android:textStyle="bold" android:letterSpacing="0.04" android:layout_marginTop="7dp" android:visibility="gone" />
                     </LinearLayout>
-
                     <!-- Playing indicator: three bars driven by ObjectAnimators. -->
-                    <LinearLayout
-                        android:id="@+id/np_equalizer"
-                        android:layout_width="wrap_content"
-                        android:layout_height="20dp"
-                        android:orientation="horizontal"
-                        android:gravity="bottom"
-                        android:visibility="invisible">
-
-                        <View
-                            android:id="@+id/eq_bar_1"
-                            android:layout_width="3dp"
-                            android:layout_height="match_parent"
-                            android:background="@drawable/bg_eq_bar" />
-
-                        <View
-                            android:id="@+id/eq_bar_2"
-                            android:layout_width="3dp"
-                            android:layout_height="match_parent"
-                            android:layout_marginStart="3dp"
-                            android:background="@drawable/bg_eq_bar" />
-
-                        <View
-                            android:id="@+id/eq_bar_3"
-                            android:layout_width="3dp"
-                            android:layout_height="match_parent"
-                            android:layout_marginStart="3dp"
-                            android:background="@drawable/bg_eq_bar" />
+                    <LinearLayout android:id="@+id/np_equalizer" android:layout_width="wrap_content" android:layout_height="20dp" android:orientation="horizontal" android:gravity="bottom" android:visibility="invisible">
+                        <View android:id="@+id/eq_bar_1" android:layout_width="3dp" android:layout_height="match_parent" android:background="@drawable/bg_eq_bar" />
+                        <View android:id="@+id/eq_bar_2" android:layout_width="3dp" android:layout_height="match_parent" android:layout_marginStart="3dp" android:background="@drawable/bg_eq_bar" />
+                        <View android:id="@+id/eq_bar_3" android:layout_width="3dp" android:layout_height="match_parent" android:layout_marginStart="3dp" android:background="@drawable/bg_eq_bar" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Permissions ───────────────────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_permissions"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <LinearLayout
-                        android:id="@+id/permissions_header"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:clickable="true"
-                        android:focusable="true">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/permissions_title"
-                                android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
-
-                            <TextView
-                                android:id="@+id/permissions_summary"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/permissions_needed"
-                                android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                                android:layout_marginTop="2dp" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_permissions" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
+                    <LinearLayout android:id="@+id/permissions_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:clickable="true" android:focusable="true">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/permissions_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+                            <TextView android:id="@+id/permissions_summary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/permissions_needed" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:layout_marginTop="2dp" />
                         </LinearLayout>
-
-                        <ImageView
-                            android:id="@+id/permissions_chevron"
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:src="@drawable/ic_chevron_down"
-                            app:tint="@color/text_dim"
-                            android:contentDescription="@string/cd_expand_section" />
+                        <ImageView android:id="@+id/permissions_chevron" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_down" app:tint="@color/text_dim" android:contentDescription="@string/cd_expand_section" />
                     </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/permissions_content"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:layout_marginTop="14dp">
-
-                        <LinearLayout
-                            android:id="@+id/btn_notification_access"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:padding="@dimen/row_padding"
-                            android:background="@drawable/ripple_row"
-                            android:clickable="true"
-                            android:focusable="true">
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:orientation="vertical"
-                                android:paddingEnd="10dp"
-                                android:paddingStart="0dp">
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/notification_access"
-                                    android:textColor="@color/text_primary"
-                                    android:textSize="14sp" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/notification_access_desc"
-                                    android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                                    android:layout_marginTop="1dp" />
+                    <LinearLayout android:id="@+id/permissions_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="14dp">
+                        <LinearLayout android:id="@+id/btn_notification_access" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="@dimen/row_padding" android:background="@drawable/ripple_row" android:clickable="true" android:focusable="true">
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="10dp" android:paddingStart="0dp">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/notification_access" android:textColor="@color/text_primary" android:textSize="14sp" />
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/notification_access_desc" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:layout_marginTop="1dp" />
                             </LinearLayout>
-
-                            <LinearLayout
-                                android:id="@+id/notification_pill"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:gravity="center_vertical"
-                                android:background="@drawable/bg_pill_warn"
-                                android:paddingStart="9dp"
-                                android:paddingEnd="11dp"
-                                android:paddingTop="5dp"
-                                android:paddingBottom="5dp">
-
-                                <ImageView
-                                    android:id="@+id/notification_pill_icon"
-                                    android:layout_width="13dp"
-                                    android:layout_height="13dp"
-                                    android:src="@drawable/ic_alert"
-                                    app:tint="@color/state_warn"
-                                    android:contentDescription="@null" />
-
-                                <TextView
-                                    android:id="@+id/notification_status"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/disabled"
-                                    android:textColor="@color/state_warn"
-                                    android:textSize="12sp"
-                                    android:textStyle="bold"
-                                    android:layout_marginStart="5dp" />
+                            <LinearLayout android:id="@+id/notification_pill" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/bg_pill_warn" android:paddingStart="9dp" android:paddingEnd="11dp" android:paddingTop="5dp" android:paddingBottom="5dp">
+                                <ImageView android:id="@+id/notification_pill_icon" android:layout_width="13dp" android:layout_height="13dp" android:src="@drawable/ic_alert" app:tint="@color/state_warn" android:contentDescription="@null" />
+                                <TextView android:id="@+id/notification_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/disabled" android:textColor="@color/state_warn" android:textSize="12sp" android:textStyle="bold" android:layout_marginStart="5dp" />
                             </LinearLayout>
                         </LinearLayout>
-
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="1dp"
-                            android:layout_marginStart="@dimen/row_padding"
-                            android:layout_marginEnd="@dimen/row_padding"
-                            android:background="@color/divider" />
-
-                        <LinearLayout
-                            android:id="@+id/btn_overlay_permission"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:padding="@dimen/row_padding"
-                            android:background="@drawable/ripple_row"
-                            android:clickable="true"
-                            android:focusable="true">
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:orientation="vertical"
-                                android:paddingEnd="10dp"
-                                android:paddingStart="0dp">
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/overlay_permission"
-                                    android:textColor="@color/text_primary"
-                                    android:textSize="14sp" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/overlay_permission_desc"
-                                    android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                                    android:layout_marginTop="1dp" />
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginStart="@dimen/row_padding" android:layout_marginEnd="@dimen/row_padding" android:background="@color/divider" />
+                        <LinearLayout android:id="@+id/btn_overlay_permission" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="@dimen/row_padding" android:background="@drawable/ripple_row" android:clickable="true" android:focusable="true">
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="10dp" android:paddingStart="0dp">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/overlay_permission" android:textColor="@color/text_primary" android:textSize="14sp" />
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/overlay_permission_desc" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:layout_marginTop="1dp" />
                             </LinearLayout>
-
-                            <LinearLayout
-                                android:id="@+id/overlay_pill"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:gravity="center_vertical"
-                                android:background="@drawable/bg_pill_warn"
-                                android:paddingStart="9dp"
-                                android:paddingEnd="11dp"
-                                android:paddingTop="5dp"
-                                android:paddingBottom="5dp">
-
-                                <ImageView
-                                    android:id="@+id/overlay_pill_icon"
-                                    android:layout_width="13dp"
-                                    android:layout_height="13dp"
-                                    android:src="@drawable/ic_alert"
-                                    app:tint="@color/state_warn"
-                                    android:contentDescription="@null" />
-
-                                <TextView
-                                    android:id="@+id/overlay_status"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/disabled"
-                                    android:textColor="@color/state_warn"
-                                    android:textSize="12sp"
-                                    android:textStyle="bold"
-                                    android:layout_marginStart="5dp" />
+                            <LinearLayout android:id="@+id/overlay_pill" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/bg_pill_warn" android:paddingStart="9dp" android:paddingEnd="11dp" android:paddingTop="5dp" android:paddingBottom="5dp">
+                                <ImageView android:id="@+id/overlay_pill_icon" android:layout_width="13dp" android:layout_height="13dp" android:src="@drawable/ic_alert" app:tint="@color/state_warn" android:contentDescription="@null" />
+                                <TextView android:id="@+id/overlay_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/disabled" android:textColor="@color/state_warn" android:textSize="12sp" android:textStyle="bold" android:layout_marginStart="5dp" />
                             </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Primary Action (Prominent Hero Button) ─────────────── -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_start"
-                android:layout_width="match_parent"
-                android:layout_height="58dp"
-                android:text="@string/start"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.02"
-                android:backgroundTint="@color/accent"
-                android:textColor="@color/black"
-                android:layout_marginBottom="@dimen/card_gap"
-                app:cornerRadius="20dp"
-                app:icon="@drawable/ic_play"
-                app:iconGravity="textStart"
-                app:iconPadding="10dp"
-                app:iconTint="@color/black" />
-
+            <com.google.android.material.button.MaterialButton android:id="@+id/btn_start" android:layout_width="match_parent" android:layout_height="58dp" android:text="@string/start" android:textSize="16sp" android:textStyle="bold" android:letterSpacing="0.02" android:backgroundTint="@color/accent" android:textColor="@color/black" android:layout_marginBottom="@dimen/card_gap" app:cornerRadius="20dp" app:icon="@drawable/ic_play" app:iconGravity="textStart" app:iconPadding="10dp" app:iconTint="@color/black" />
             <!-- ── Typography & Animation Card ────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_appearance"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/appearance_title"
-                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle"
-                        android:layout_marginBottom="14dp" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/font_family_label"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="8dp" />
-
-                    <HorizontalScrollView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:scrollbars="none"
-                        android:overScrollMode="never"
-                        android:layout_marginBottom="14dp">
-
-                        <LinearLayout
-                            android:id="@+id/font_chips"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_appearance" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/appearance_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" android:layout_marginBottom="14dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/font_family_label" android:textColor="@color/text_secondary" android:textSize="13sp" android:textStyle="bold" android:layout_marginBottom="8dp" />
+                    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never" android:layout_marginBottom="14dp">
+                        <LinearLayout android:id="@+id/font_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
                     </HorizontalScrollView>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/anim_style_label"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="4dp" />
-
-                    <TextView
-                        android:id="@+id/anim_combo_label"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/text_faint"
-                        android:textSize="12sp"
-                        android:layout_marginBottom="8dp" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/anim_motion_label"
-                        android:textColor="@color/text_dim"
-                        android:textSize="12sp"
-                        android:layout_marginBottom="6dp" />
-
-                    <HorizontalScrollView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:scrollbars="none"
-                        android:overScrollMode="never"
-                        android:layout_marginBottom="10dp">
-
-                        <LinearLayout
-                            android:id="@+id/anim_chips"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/anim_style_label" android:textColor="@color/text_secondary" android:textSize="13sp" android:textStyle="bold" android:layout_marginBottom="4dp" />
+                    <TextView android:id="@+id/anim_combo_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_faint" android:textSize="12sp" android:layout_marginBottom="8dp" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/anim_motion_label" android:textColor="@color/text_dim" android:textSize="12sp" android:layout_marginBottom="6dp" />
+                    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never" android:layout_marginBottom="10dp">
+                        <LinearLayout android:id="@+id/anim_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
                     </HorizontalScrollView>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/anim_effect_label"
-                        android:textColor="@color/text_dim"
-                        android:textSize="12sp"
-                        android:layout_marginBottom="6dp" />
-
-                    <HorizontalScrollView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:scrollbars="none"
-                        android:overScrollMode="never"
-                        android:layout_marginBottom="14dp">
-
-                        <LinearLayout
-                            android:id="@+id/anim_effect_chips"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/anim_effect_label" android:textColor="@color/text_dim" android:textSize="12sp" android:layout_marginBottom="6dp" />
+                    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never" android:layout_marginBottom="14dp">
+                        <LinearLayout android:id="@+id/anim_effect_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
                     </HorizontalScrollView>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:baselineAligned="false">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/font_size"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/font_size_label"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            tools:text="100%"
-                            android:textAppearance="@style/TextAppearance.LyricSync.Value" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:baselineAligned="false">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/font_size" android:textColor="@color/text_secondary" android:textSize="13sp" android:textStyle="bold" />
+                        <TextView android:id="@+id/font_size_label" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="100%" android:textAppearance="@style/TextAppearance.LyricSync.Value" />
                     </LinearLayout>
-
-                    <SeekBar
-                        android:id="@+id/font_size_slider"
-                        style="@style/Widget.LyricSync.SeekBar"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:max="200"
-                        android:min="50"
-                        android:progress="100" />
+                    <SeekBar android:id="@+id/font_size_slider" style="@style/Widget.LyricSync.SeekBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:min="50" android:progress="100" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Overlay Dimensions Card ────────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_dimensions"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/overlay_dimensions_title"
-                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle"
-                        android:layout_marginBottom="14dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:baselineAligned="false">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/overlay_width"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/overlay_width_label"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            tools:text="88%"
-                            android:textAppearance="@style/TextAppearance.LyricSync.Value" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_dimensions" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/overlay_dimensions_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" android:layout_marginBottom="14dp" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:baselineAligned="false">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/overlay_width" android:textColor="@color/text_secondary" android:textSize="13sp" android:textStyle="bold" />
+                        <TextView android:id="@+id/overlay_width_label" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="88%" android:textAppearance="@style/TextAppearance.LyricSync.Value" />
                     </LinearLayout>
-
-                    <SeekBar
-                        android:id="@+id/overlay_width_slider"
-                        style="@style/Widget.LyricSync.SeekBar"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:max="100"
-                        android:min="55"
-                        android:progress="88" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:baselineAligned="false"
-                        android:layout_marginTop="12dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/overlay_height"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/overlay_height_label"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            tools:text="36%"
-                            android:textAppearance="@style/TextAppearance.LyricSync.Value" />
+                    <SeekBar android:id="@+id/overlay_width_slider" style="@style/Widget.LyricSync.SeekBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="100" android:min="55" android:progress="88" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:baselineAligned="false" android:layout_marginTop="12dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/overlay_height" android:textColor="@color/text_secondary" android:textSize="13sp" android:textStyle="bold" />
+                        <TextView android:id="@+id/overlay_height_label" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="36%" android:textAppearance="@style/TextAppearance.LyricSync.Value" />
                     </LinearLayout>
-
-                    <SeekBar
-                        android:id="@+id/overlay_height_slider"
-                        style="@style/Widget.LyricSync.SeekBar"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:max="70"
-                        android:min="20"
-                        android:progress="36" />
-
+                    <SeekBar android:id="@+id/overlay_height_slider" style="@style/Widget.LyricSync.SeekBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="70" android:min="20" android:progress="36" />
                     <!-- Tip callout for handle resize -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:background="@drawable/bg_tip_box"
-                        android:padding="12dp"
-                        android:layout_marginTop="14dp">
-
-                        <ImageView
-                            android:layout_width="18dp"
-                            android:layout_height="18dp"
-                            android:src="@drawable/ic_resize_grip"
-                            app:tint="@color/accent"
-                            android:contentDescription="@null" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="10dp"
-                            android:text="@string/overlay_resize_tip"
-                            android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                            android:textSize="12sp"
-                            android:lineSpacingExtra="1dp" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/bg_tip_box" android:padding="12dp" android:layout_marginTop="14dp">
+                        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_resize_grip" app:tint="@color/accent" android:contentDescription="@null" />
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:text="@string/overlay_resize_tip" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:textSize="12sp" android:lineSpacingExtra="1dp" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── App Language Card ──────────────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_language"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/app_language_title"
-                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/app_language_desc"
-                        android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="12dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/btn_lang_en"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:gravity="center"
-                            android:text="@string/lang_en"
-                            android:textColor="@color/text_primary"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:paddingTop="10dp"
-                            android:paddingBottom="10dp"
-                            android:background="@drawable/bg_pill_ok"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:layout_marginEnd="6dp" />
-
-                        <TextView
-                            android:id="@+id/btn_lang_id"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:gravity="center"
-                            android:text="@string/lang_id"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:paddingTop="10dp"
-                            android:paddingBottom="10dp"
-                            android:background="@drawable/bg_icon_button"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:layout_marginStart="6dp" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_language" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/app_language_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/app_language_desc" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:layout_marginTop="2dp" android:layout_marginBottom="12dp" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <TextView android:id="@+id/btn_lang_en" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="@string/lang_en" android:textColor="@color/text_primary" android:textSize="13sp" android:textStyle="bold" android:paddingTop="10dp" android:paddingBottom="10dp" android:background="@drawable/bg_pill_ok" android:clickable="true" android:focusable="true" android:layout_marginEnd="6dp" />
+                        <TextView android:id="@+id/btn_lang_id" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="@string/lang_id" android:textColor="@color/text_secondary" android:textSize="13sp" android:textStyle="bold" android:paddingTop="10dp" android:paddingBottom="10dp" android:background="@drawable/bg_icon_button" android:clickable="true" android:focusable="true" android:layout_marginStart="6dp" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Sync offset ───────────────────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_sync"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:baselineAligned="false">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/sync_title"
-                            android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
-
-                        <TextView
-                            android:id="@+id/btn_sync_reset"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/sync_reset"
-                            android:textColor="@color/accent"
-                            android:textSize="13sp"
-                            android:textStyle="bold"
-                            android:background="@drawable/ripple_row"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:paddingStart="12dp"
-                            android:paddingEnd="12dp"
-                            android:paddingTop="6dp"
-                            android:paddingBottom="6dp" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_sync" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:baselineAligned="false">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/sync_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+                        <TextView android:id="@+id/btn_sync_reset" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/sync_reset" android:textColor="@color/accent" android:textSize="13sp" android:textStyle="bold" android:background="@drawable/ripple_row" android:clickable="true" android:focusable="true" android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="6dp" android:paddingBottom="6dp" />
                     </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/sync_offset_label"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        tools:text="0 ms"
-                        android:textAppearance="@style/TextAppearance.LyricSync.Value"
-                        android:textSize="18sp"
-                        android:layout_marginTop="8dp"
-                        android:layout_marginBottom="4dp" />
-
-                    <SeekBar
-                        android:id="@+id/sync_offset_slider"
-                        style="@style/Widget.LyricSync.SeekBar"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:max="3000"
-                        android:progress="1500" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/sync_hint"
-                        android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                        android:layout_marginTop="6dp" />
+                    <TextView android:id="@+id/sync_offset_label" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="0 ms" android:textAppearance="@style/TextAppearance.LyricSync.Value" android:textSize="18sp" android:layout_marginTop="8dp" android:layout_marginBottom="4dp" />
+                    <SeekBar android:id="@+id/sync_offset_slider" style="@style/Widget.LyricSync.SeekBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="3000" android:progress="1500" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/sync_hint" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:layout_marginTop="6dp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Translation Card ───────────────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_translation"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:paddingEnd="12dp"
-                            android:paddingStart="0dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/lyrics_translation_title"
-                                android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/lyrics_translation_desc"
-                                android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                                android:layout_marginTop="2dp" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_translation" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="12dp" android:paddingStart="0dp">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/lyrics_translation_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/lyrics_translation_desc" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:layout_marginTop="2dp" />
                         </LinearLayout>
-
-                        <androidx.appcompat.widget.SwitchCompat
-                            android:id="@+id/switch_main_translation"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textOn=""
-                            android:textOff=""
-                            android:showText="false"
-                            app:showText="false" />
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switch_main_translation" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOn="" android:textOff="" android:showText="false" app:showText="false" />
                     </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/layout_target_lang"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginTop="16dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/lyrics_translation_target"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <Spinner
-                            android:id="@+id/spinner_target_lang"
-                            android:layout_width="wrap_content"
-                            android:layout_height="40dp"
-                            android:background="@drawable/bg_spinner_modern"
-                            android:popupBackground="@drawable/bg_spinner_popup"
-                            android:spinnerMode="dropdown" />
+                    <LinearLayout android:id="@+id/layout_target_lang" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="16dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/lyrics_translation_target" android:textColor="@color/text_secondary" android:textSize="13sp" android:textStyle="bold" />
+                        <Spinner android:id="@+id/spinner_target_lang" android:layout_width="wrap_content" android:layout_height="40dp" android:background="@drawable/bg_spinner_modern" android:popupBackground="@drawable/bg_spinner_popup" android:spinnerMode="dropdown" />
                     </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/layout_ai_translation_toggle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginTop="14dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/ai_translation_label"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
-
-                        <androidx.appcompat.widget.SwitchCompat
-                            android:id="@+id/switch_ai_translation"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:showText="false"
-                            app:showText="false" />
+                    <LinearLayout android:id="@+id/layout_ai_translation_toggle" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="14dp">
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/ai_translation_label" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switch_ai_translation" android:layout_width="wrap_content" android:layout_height="wrap_content" android:showText="false" app:showText="false" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Syllable Lyrics API Card ──────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_lyrics_api"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/lyrics_api_title"
-                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/lyrics_api_desc"
-                        android:textAppearance="@style/TextAppearance.LyricSync.Hint" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btn_spicy_key"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="50dp"
-                        android:layout_marginTop="12dp"
-                        android:text="@string/spicy_key_button"
-                        android:textColor="@color/accent"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        app:cornerRadius="14dp" />
-
-                    <TextView
-                        android:id="@+id/tv_spicy_key_status"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="6dp"
-                        android:text="@string/spicy_key_status_none"
-                        android:textColor="@color/text_dim"
-                        android:textSize="11sp" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_lyrics_api" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/lyrics_api_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/lyrics_api_desc" android:textAppearance="@style/TextAppearance.LyricSync.Hint" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_spicy_key" style="@style/Widget.MaterialComponents.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="12dp" android:text="@string/spicy_key_button" android:textColor="@color/accent" android:textSize="14sp" android:textStyle="bold" app:cornerRadius="14dp" />
+                    <TextView android:id="@+id/tv_spicy_key_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center_horizontal" android:layout_marginTop="6dp" android:text="@string/spicy_key_status_none" android:textColor="@color/text_dim" android:textSize="11sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Google Antigravity AI Card ────────────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_ai_account"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/card_padding">
-
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_ai_account" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/card_padding">
                     <!-- Title & Tagline -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ai_account_title"
-                        android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ai_account_desc"
-                        android:textAppearance="@style/TextAppearance.LyricSync.Hint"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="14dp" />
-
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_account_title" android:textAppearance="@style/TextAppearance.LyricSync.SectionTitle" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_account_desc" android:textAppearance="@style/TextAppearance.LyricSync.Hint" android:layout_marginTop="2dp" android:layout_marginBottom="14dp" />
                     <!-- Disconnected View -->
-                    <LinearLayout
-                        android:id="@+id/layout_ai_disconnected"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:visibility="visible">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_connect_google"
-                            android:layout_width="match_parent"
-                            android:layout_height="50dp"
-                            android:text="@string/ai_connect_google"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:backgroundTint="@color/accent"
-                            android:textColor="@color/black"
-                            app:cornerRadius="14dp"
-                            app:icon="@drawable/ic_sparkles"
-                            app:iconGravity="textStart"
-                            app:iconPadding="8dp"
-                            app:iconTint="@color/black" />
-
-                        <TextView
-                            android:id="@+id/btn_manual_token"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="center_horizontal"
-                            android:text="@string/ai_manual_token"
-                            android:textColor="@color/text_dim"
-                            android:textSize="12sp"
-                            android:padding="8dp"
-                            android:layout_marginTop="4dp" />
+                    <LinearLayout android:id="@+id/layout_ai_disconnected" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="visible">
+                        <com.google.android.material.button.MaterialButton android:id="@+id/btn_connect_google" android:layout_width="match_parent" android:layout_height="50dp" android:text="@string/ai_connect_google" android:textSize="14sp" android:textStyle="bold" android:backgroundTint="@color/accent" android:textColor="@color/black" app:cornerRadius="14dp" app:icon="@drawable/ic_sparkles" app:iconGravity="textStart" app:iconPadding="8dp" app:iconTint="@color/black" />
+                        <TextView android:id="@+id/btn_manual_token" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center_horizontal" android:text="@string/ai_manual_token" android:textColor="@color/text_dim" android:textSize="12sp" android:padding="8dp" android:layout_marginTop="4dp" />
                     </LinearLayout>
-
                     <!-- Connected View -->
-                    <LinearLayout
-                        android:id="@+id/layout_ai_connected"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
+                    <LinearLayout android:id="@+id/layout_ai_connected" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
                         <!-- Email & Logout -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:layout_marginBottom="14dp">
-
-                            <TextView
-                                android:id="@+id/tv_ai_email"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:textColor="@color/text_primary"
-                                android:textSize="14sp"
-                                android:textStyle="bold"
-                                android:ellipsize="end"
-                                android:maxLines="1" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/btn_disconnect_google"
-                                style="@style/Widget.MaterialComponents.Button.TextButton"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/ai_disconnect"
-                                android:textColor="#FF5252"
-                                android:textSize="12sp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="14dp">
+                            <TextView android:id="@+id/tv_ai_email" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" android:ellipsize="end" android:maxLines="1" />
+                            <com.google.android.material.button.MaterialButton android:id="@+id/btn_disconnect_google" style="@style/Widget.MaterialComponents.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_disconnect" android:textColor="#FF5252" android:textSize="12sp" />
                         </LinearLayout>
-
                         <!-- Model AI. Moved here from the chat panel's header when the
                              in-app chat was removed; the overlay reads pref_ai_model. -->
-                        <LinearLayout
-                            android:id="@+id/ai_model_row"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:background="?attr/selectableItemBackground"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:paddingTop="6dp"
-                            android:paddingBottom="14dp">
-
-                            <ImageView
-                                android:id="@+id/ai_model_pill_icon"
-                                android:layout_width="26dp"
-                                android:layout_height="26dp"
-                                android:contentDescription="@null"
-                                app:tint="@color/accent" />
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:orientation="vertical"
-                                android:layout_marginStart="10dp">
-
-                                <TextView
-                                    android:id="@+id/ai_model_pill_name"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:textColor="@color/text_primary"
-                                    android:textSize="14sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:id="@+id/ai_model_desc_badge"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:textColor="@color/text_dim"
-                                    android:textSize="11sp" />
+                        <LinearLayout android:id="@+id/ai_model_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true" android:paddingTop="6dp" android:paddingBottom="14dp">
+                            <ImageView android:id="@+id/ai_model_pill_icon" android:layout_width="26dp" android:layout_height="26dp" android:contentDescription="@null" app:tint="@color/accent" />
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="10dp">
+                                <TextView android:id="@+id/ai_model_pill_name" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
+                                <TextView android:id="@+id/ai_model_desc_badge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_dim" android:textSize="11sp" />
                             </LinearLayout>
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/ai_model_change"
-                                android:textColor="@color/accent"
-                                android:textSize="12sp" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_model_change" android:textColor="@color/accent" android:textSize="12sp" />
                         </LinearLayout>
-
                         <!-- Quota Weekly Progress -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginTop="8dp"
-                            android:layout_marginBottom="10dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal">
-
-                                <TextView
-                                    android:layout_width="0dp"
-                                    android:layout_height="wrap_content"
-                                    android:layout_weight="1"
-                                    android:text="@string/ai_quota_weekly"
-                                    android:textColor="@color/text_dim"
-                                    android:textSize="11sp" />
-
-                                <TextView
-                                    android:id="@+id/tv_quota_weekly"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:textColor="@color/accent"
-                                    android:textSize="11sp"
-                                    tools:text="100%" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="8dp" android:layout_marginBottom="10dp">
+                            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/ai_quota_weekly" android:textColor="@color/text_dim" android:textSize="11sp" />
+                                <TextView android:id="@+id/tv_quota_weekly" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/accent" android:textSize="11sp" tools:text="100%" />
                             </LinearLayout>
-
-                            <ProgressBar
-                                android:id="@+id/quota_weekly_progress"
-                                style="?android:attr/progressBarStyleHorizontal"
-                                android:layout_width="match_parent"
-                                android:layout_height="6dp"
-                                android:layout_marginTop="4dp"
-                                android:progress="100"
-                                android:progressTint="@color/accent" />
+                            <ProgressBar android:id="@+id/quota_weekly_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="4dp" android:progress="100" android:progressTint="@color/accent" />
                         </LinearLayout>
-
                         <!-- Quota 5h Progress -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginBottom="8dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal">
-
-                                <TextView
-                                    android:layout_width="0dp"
-                                    android:layout_height="wrap_content"
-                                    android:layout_weight="1"
-                                    android:text="@string/ai_quota_5h"
-                                    android:textColor="@color/text_dim"
-                                    android:textSize="11sp" />
-
-                                <TextView
-                                    android:id="@+id/tv_quota_5h"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:textColor="@color/accent"
-                                    android:textSize="11sp"
-                                    tools:text="100%" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="8dp">
+                            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/ai_quota_5h" android:textColor="@color/text_dim" android:textSize="11sp" />
+                                <TextView android:id="@+id/tv_quota_5h" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/accent" android:textSize="11sp" tools:text="100%" />
                             </LinearLayout>
-
-                            <ProgressBar
-                                android:id="@+id/quota_5h_progress"
-                                style="?android:attr/progressBarStyleHorizontal"
-                                android:layout_width="match_parent"
-                                android:layout_height="6dp"
-                                android:layout_marginTop="4dp"
-                                android:progress="100"
-                                android:progressTint="@color/accent" />
+                            <ProgressBar android:id="@+id/quota_5h_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="4dp" android:progress="100" android:progressTint="@color/accent" />
                         </LinearLayout>
-
                         <!-- Token Usage Counter -->
-                        <TextView
-                            android:id="@+id/tv_ai_tokens"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textColor="@color/text_dim"
-                            android:textSize="11sp"
-                            android:layout_marginTop="4dp" />
+                        <TextView android:id="@+id/tv_ai_tokens" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_dim" android:textSize="11sp" android:layout_marginTop="4dp" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
             <!-- ── Developer (collapsed by default) ──────────────────── -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/card_dev"
-                style="@style/Widget.LyricSync.Card"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <LinearLayout
-                        android:id="@+id/dev_header"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:padding="@dimen/card_padding"
-                        android:background="@drawable/ripple_row"
-                        android:clickable="true"
-                        android:focusable="true">
-
-                        <ImageView
-                            android:layout_width="18dp"
-                            android:layout_height="18dp"
-                            android:src="@drawable/ic_code"
-                            app:tint="@color/text_dim"
-                            android:contentDescription="@null" />
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/developer_title"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:layout_marginStart="12dp" />
-
-                        <ImageView
-                            android:id="@+id/dev_chevron"
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:src="@drawable/ic_chevron_down"
-                            app:tint="@color/text_dim"
-                            android:contentDescription="@string/cd_expand_section" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_dev" style="@style/Widget.LyricSync.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout android:id="@+id/dev_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="@dimen/card_padding" android:background="@drawable/ripple_row" android:clickable="true" android:focusable="true">
+                        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_code" app:tint="@color/text_dim" android:contentDescription="@null" />
+                        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/developer_title" android:textColor="@color/text_secondary" android:textSize="14sp" android:textStyle="bold" android:layout_marginStart="12dp" />
+                        <ImageView android:id="@+id/dev_chevron" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_down" app:tint="@color/text_dim" android:contentDescription="@string/cd_expand_section" />
                     </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/dev_content"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingStart="@dimen/card_padding"
-                        android:paddingEnd="@dimen/card_padding"
-                        android:paddingBottom="18dp"
-                        android:visibility="gone">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:layout_marginBottom="8dp">
-
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="@string/logs"
-                                android:textColor="@color/text_dim"
-                                android:textSize="11sp"
-                                android:textStyle="bold"
-                                android:letterSpacing="0.08" />
-
-                            <ImageView
-                                android:id="@+id/btn_clear_logs"
-                                android:layout_width="30dp"
-                                android:layout_height="30dp"
-                                android:padding="6dp"
-                                android:background="@drawable/bg_icon_button"
-                                android:src="@drawable/ic_trash"
-                                app:tint="@color/text_secondary"
-                                android:contentDescription="@string/clear_logs" />
-
-                            <ImageView
-                                android:id="@+id/btn_share_logs"
-                                android:layout_width="30dp"
-                                android:layout_height="30dp"
-                                android:padding="6dp"
-                                android:layout_marginStart="8dp"
-                                android:background="@drawable/bg_icon_button"
-                                android:src="@drawable/ic_share"
-                                app:tint="@color/text_secondary"
-                                android:contentDescription="@string/share_logs" />
+                    <LinearLayout android:id="@+id/dev_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="@dimen/card_padding" android:paddingEnd="@dimen/card_padding" android:paddingBottom="18dp" android:visibility="gone">
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
+                            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/logs" android:textColor="@color/text_dim" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.08" />
+                            <ImageView android:id="@+id/btn_clear_logs" android:layout_width="30dp" android:layout_height="30dp" android:padding="6dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_trash" app:tint="@color/text_secondary" android:contentDescription="@string/clear_logs" />
+                            <ImageView android:id="@+id/btn_share_logs" android:layout_width="30dp" android:layout_height="30dp" android:padding="6dp" android:layout_marginStart="8dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_share" app:tint="@color/text_secondary" android:contentDescription="@string/share_logs" />
                         </LinearLayout>
-
-                        <ScrollView
-                            android:id="@+id/log_scroll"
-                            android:layout_width="match_parent"
-                            android:layout_height="220dp"
-                            android:background="@drawable/bg_skeleton"
-                            android:padding="10dp"
-                            android:scrollbars="none"
-                            android:fillViewport="true">
-
-                            <TextView
-                                android:id="@+id/log_text"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:textColor="#CCFFFFFF"
-                                android:textSize="10sp"
-                                android:fontFamily="monospace"
-                                android:lineSpacingExtra="2dp"
-                                android:textIsSelectable="true" />
+                        <ScrollView android:id="@+id/log_scroll" android:layout_width="match_parent" android:layout_height="220dp" android:background="@drawable/bg_skeleton" android:padding="10dp" android:scrollbars="none" android:fillViewport="true">
+                            <TextView android:id="@+id/log_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#CCFFFFFF" android:textSize="10sp" android:fontFamily="monospace" android:lineSpacingExtra="2dp" android:textIsSelectable="true" />
                         </ScrollView>
                     </LinearLayout>
                 </LinearLayout>

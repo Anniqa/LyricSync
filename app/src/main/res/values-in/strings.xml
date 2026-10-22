@@ -2,7 +2,6 @@
 <resources>
     <string name="app_name">LyricSync</string>
     <string name="app_tagline">Lirik tersinkronisasi indah untuk musikmu</string>
-
     <!-- Permissions -->
     <string name="permissions_title">Izin Akses</string>
     <string name="notification_access">Akses Notifikasi</string>
@@ -13,18 +12,15 @@
     <string name="disabled">Ketuk untuk izinkan</string>
     <string name="permissions_all_set">Semua siap — aplikasi siap digunakan</string>
     <string name="permissions_needed">Berikan kedua izin untuk memulai</string>
-
     <!-- Actions -->
     <string name="start">Mulai Overlay</string>
     <string name="stop">Hentikan Overlay</string>
     <string name="grant_permissions_first">Berikan kedua izin terlebih dahulu</string>
     <string name="overlay_started">Overlay lirik dimulai</string>
     <string name="overlay_stopped">Overlay lirik dihentikan</string>
-
     <!-- Now playing -->
     <string name="nothing_playing">Tidak ada lagu yang diputar</string>
     <string name="nothing_playing_desc">Putar lagu di aplikasi musik apa pun</string>
-
     <!-- Appearance -->
     <string name="appearance_title">Tipografi &amp; Efek</string>
     <string name="font_size">Ukuran font</string>
@@ -36,12 +32,10 @@
     <string name="overlay_width">Lebar</string>
     <string name="overlay_height">Tinggi</string>
     <string name="overlay_resize_tip">Tarik pegangan di sudut kanan bawah overlay untuk mengubah ukuran bebas.</string>
-
     <!-- Overlay settings sections -->
     <string name="section_playback">PEMUTARAN</string>
     <string name="section_font">FONT</string>
     <string name="section_animation">ANIMASI</string>
-
     <!-- Sync -->
     <string name="sync_title">Offset Sinkronisasi Lirik</string>
     <string name="sync_hint">Jika lirik terlalu cepat mendahului lagu, tambah nilai ini. Jika tertinggal, kurangi.</string>
@@ -50,12 +44,10 @@
     <string name="lyrics_later">lirik terlambat</string>
     <string name="lyrics_earlier">lirik lebih awal</string>
     <string name="in_sync">sinkron</string>
-
     <!-- Translation -->
     <string name="lyrics_translation_title">Terjemahan Lirik</string>
     <string name="lyrics_translation_desc">Tampilkan teks terjemahan di bawah lirik sinkron</string>
     <string name="lyrics_translation_target">Bahasa Tujuan</string>
-
     <!-- Syllable lyrics official API -->
     <string name="lyrics_api_title">API Lirik Suku Kata</string>
     <string name="lyrics_api_desc">Lirik per suku kata berasal dari API resmi Spicy Lyrics. Kunci bawaan langsung berfungsi; tempel kunci milikmu dari developers.spicylyrics.org untuk batas akses lebih tinggi.</string>
@@ -69,20 +61,17 @@
     <string name="spicy_key_saved_toast">Kunci Spicy Lyrics tersimpan</string>
     <string name="spicy_key_removed_toast">Kunci Spicy Lyrics dihapus</string>
     <string name="spicy_key_invalid_toast">Kunci tidak valid (harus diawali sl_pk_ atau sl_sk_)</string>
-
     <!-- Developer -->
     <string name="developer_title">Pengembang</string>
     <string name="logs">Log</string>
     <string name="clear_logs">Hapus log</string>
     <string name="share_logs">Bagikan log</string>
     <string name="share_logs_failed">Gagal membagikan log</string>
-
     <!-- Overlay -->
     <string name="lyrics_loading">Mencari lirik…</string>
     <string name="lyrics_none">Lirik tidak ditemukan</string>
     <string name="lyrics_none_desc">Lagu ini belum ada di database lirik mana pun</string>
     <string name="no_music">Tidak ada musik</string>
-
     <!-- Content descriptions -->
     <string name="cd_album_art">Sampul album</string>
     <string name="cd_collapse">Tutup lirik</string>
@@ -94,13 +83,11 @@
     <string name="cd_expand_section">Perluas bagian</string>
     <string name="cd_resize">Ubah ukuran overlay</string>
     <string name="overlay_resize_title">Pegangan Ukuran</string>
-
     <!-- Notification -->
     <string name="notif_active">Overlay lirik aktif</string>
     <string name="notif_hide">Sembunyikan</string>
     <string name="notif_show">Tampilkan</string>
     <string name="notif_stop">Berhenti</string>
-
     <!-- Google Antigravity AI -->
     <string name="ai_account_title">Google Antigravity AI</string>
     <string name="ai_account_desc">Dukung terjemahan puitis dan analisis lagu dengan Gemini AI</string>
@@ -119,13 +106,11 @@
     <string name="ai_custom_model_title">ID Model Kustom</string>
     <string name="ai_custom_model_hint">Masukkan ID model (misal: gemini-3.8-flash-low)</string>
     <string name="ai_translation_label">Gunakan Gemini AI untuk terjemahan puitis</string>
-
     <!-- App Language -->
     <string name="app_language_title">Bahasa Aplikasi</string>
     <string name="app_language_desc">Pilih bahasa antarmuka aplikasi dan respon AI</string>
     <string name="lang_en">English</string>
     <string name="lang_id">Bahasa Indonesia</string>
-
     <!-- AI Chat & Insights -->
     <string name="ai_insights_title">AI Insights</string>
     <string name="ai_empty_hint">Pilih topik untuk dieksplorasi atau ajukan pertanyaan tentang lagu ini:</string>
@@ -178,10 +163,8 @@
     <string name="toggle_latin_transliteration">Transliterasi ke Latin</string>
     <string name="save">Simpan</string>
     <string name="cancel">Batal</string>
-
     <!-- Lyric Retry & AI Retrieval -->
     <string name="btn_retry_standard">Coba Lagi</string>
-
     <string name="settings_open_failed">Tidak dapat membuka layar pengaturan</string>
     <string name="google_signin_opening">Membuka browser untuk login Google…</string>
     <string name="google_signin_success">Berhasil login: %1$s</string>

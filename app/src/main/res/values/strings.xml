@@ -2,7 +2,6 @@
 <resources>
     <string name="app_name">LyricSync</string>
     <string name="app_tagline">Beautiful synced lyrics for your music</string>
-
     <!-- Permissions -->
     <string name="permissions_title">Permissions</string>
     <string name="notification_access">Notification Access</string>
@@ -13,18 +12,15 @@
     <string name="disabled">Tap to grant</string>
     <string name="permissions_all_set">All set — you\'re ready to go</string>
     <string name="permissions_needed">Grant both to start</string>
-
     <!-- Actions -->
     <string name="start">Start Overlay</string>
     <string name="stop">Stop Overlay</string>
     <string name="grant_permissions_first">Grant both permissions first</string>
     <string name="overlay_started">Lyrics overlay started</string>
     <string name="overlay_stopped">Lyrics overlay stopped</string>
-
     <!-- Now playing -->
     <string name="nothing_playing">Nothing playing</string>
     <string name="nothing_playing_desc">Start a song in any music app</string>
-
     <!-- Appearance -->
     <string name="appearance_title">Typography &amp; Effects</string>
     <string name="font_size">Font size</string>
@@ -36,12 +32,10 @@
     <string name="overlay_width">Width</string>
     <string name="overlay_height">Height</string>
     <string name="overlay_resize_tip">Drag the handle at the bottom-right corner of the overlay to resize freely.</string>
-
     <!-- Overlay settings sections -->
     <string name="section_playback">PLAYBACK</string>
     <string name="section_font">FONT</string>
     <string name="section_animation">ANIMATION</string>
-
     <!-- Sync -->
     <string name="sync_title">Lyrics Sync Offset</string>
     <string name="sync_hint">If lyrics run ahead of the singing, increase this. If they lag, decrease it.</string>
@@ -50,12 +44,10 @@
     <string name="lyrics_later">lyrics later</string>
     <string name="lyrics_earlier">lyrics earlier</string>
     <string name="in_sync">in sync</string>
-
     <!-- Translation -->
     <string name="lyrics_translation_title">Lyrics Translation</string>
     <string name="lyrics_translation_desc">Display translated subtitles under synced lyrics</string>
     <string name="lyrics_translation_target">Target Language</string>
-
     <!-- Syllable lyrics official API -->
     <string name="lyrics_api_title">Syllable Lyrics API</string>
     <string name="lyrics_api_desc">Word-by-word lyrics come from the Spicy Lyrics official API. The built-in key works out of the box; paste your own from developers.spicylyrics.org for higher rate limits.</string>
@@ -69,20 +61,17 @@
     <string name="spicy_key_saved_toast">Spicy Lyrics key saved</string>
     <string name="spicy_key_removed_toast">Spicy Lyrics key removed</string>
     <string name="spicy_key_invalid_toast">Invalid key (must start with sl_pk_ or sl_sk_)</string>
-
     <!-- Developer -->
     <string name="developer_title">Developer</string>
     <string name="logs">Logs</string>
     <string name="clear_logs">Clear logs</string>
     <string name="share_logs">Share logs</string>
     <string name="share_logs_failed">Failed to share logs</string>
-
     <!-- Overlay -->
     <string name="lyrics_loading">Finding lyrics…</string>
     <string name="lyrics_none">No lyrics found</string>
     <string name="lyrics_none_desc">This track isn\'t in any lyrics database yet</string>
     <string name="no_music">No music</string>
-
     <!-- Content descriptions -->
     <string name="cd_album_art">Album art</string>
     <string name="cd_collapse">Collapse lyrics</string>
@@ -94,13 +83,11 @@
     <string name="cd_expand_section">Expand section</string>
     <string name="cd_resize">Resize overlay</string>
     <string name="overlay_resize_title">Resize Handle</string>
-
     <!-- Notification -->
     <string name="notif_active">Lyrics overlay active</string>
     <string name="notif_hide">Hide</string>
     <string name="notif_show">Show</string>
     <string name="notif_stop">Stop</string>
-
     <!-- Google Antigravity AI -->
     <string name="ai_account_title">Google Antigravity AI</string>
     <string name="ai_account_desc">Power poetic lyrics translation and song insights using Gemini AI</string>
@@ -124,7 +111,6 @@
     <string name="app_language_desc">Choose language for app interface and AI responses</string>
     <string name="lang_en">English</string>
     <string name="lang_id">Bahasa Indonesia</string>
-
     <!-- AI Chat & Insights -->
     <string name="ai_insights_title">AI Insights</string>
     <string name="ai_empty_hint">Choose a topic to explore or ask anything about this song:</string>
@@ -177,10 +163,8 @@
     <string name="toggle_latin_transliteration">Transliterate to Latin</string>
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
-
     <!-- Lyric Retry & AI Retrieval -->
     <string name="btn_retry_standard">Retry</string>
-
     <!-- Account & settings feedback (localized) -->
     <string name="settings_open_failed">Couldn\'t open that settings screen</string>
     <string name="google_signin_opening">Opening browser for Google sign-in…</string>

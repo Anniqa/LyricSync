@@ -1,36 +1,10 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <group
-        android:translateX="21"
-        android:translateY="21"
-        android:scaleX="0.6875"
-        android:scaleY="0.6875">
-        <path
-            android:fillColor="#2563eb"
-            android:fillAlpha="0.4"
-            android:pathData="M22.5,45 a2.5,2.5 0 0 1 2.5,2.5 v1 a2.5,2.5 0 0 1 -2.5,2.5 v-1 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
-        <path
-            android:fillColor="#2563eb"
-            android:fillAlpha="0.65"
-            android:pathData="M32.5,38 a2.5,2.5 0 0 1 2.5,2.5 v15 a2.5,2.5 0 0 1 -2.5,2.5 v-15 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
-        <path
-            android:fillColor="#2563eb"
-            android:fillAlpha="1.0"
-            android:pathData="M42.5,28 a2.5,2.5 0 0 1 2.5,2.5 v35 a2.5,2.5 0 0 1 -2.5,2.5 v-35 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
-        <path
-            android:fillColor="#2563eb"
-            android:fillAlpha="0.8"
-            android:pathData="M52.5,35 a2.5,2.5 0 0 1 2.5,2.5 v21 a2.5,2.5 0 0 1 -2.5,2.5 v-21 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
-        <path
-            android:fillColor="#2563eb"
-            android:fillAlpha="0.55"
-            android:pathData="M62.5,40 a2.5,2.5 0 0 1 2.5,2.5 v11 a2.5,2.5 0 0 1 -2.5,2.5 v-11 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
-        <path
-            android:fillColor="#2563eb"
-            android:fillAlpha="0.35"
-            android:pathData="M72.5,43 a2.5,2.5 0 0 1 2.5,2.5 v5 a2.5,2.5 0 0 1 -2.5,2.5 v-5 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="21" android:translateY="21" android:scaleX="0.6875" android:scaleY="0.6875">
+        <path android:fillColor="#2563eb" android:fillAlpha="0.4" android:pathData="M22.5,45 a2.5,2.5 0 0 1 2.5,2.5 v1 a2.5,2.5 0 0 1 -2.5,2.5 v-1 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
+        <path android:fillColor="#2563eb" android:fillAlpha="0.65" android:pathData="M32.5,38 a2.5,2.5 0 0 1 2.5,2.5 v15 a2.5,2.5 0 0 1 -2.5,2.5 v-15 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
+        <path android:fillColor="#2563eb" android:fillAlpha="1.0" android:pathData="M42.5,28 a2.5,2.5 0 0 1 2.5,2.5 v35 a2.5,2.5 0 0 1 -2.5,2.5 v-35 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
+        <path android:fillColor="#2563eb" android:fillAlpha="0.8" android:pathData="M52.5,35 a2.5,2.5 0 0 1 2.5,2.5 v21 a2.5,2.5 0 0 1 -2.5,2.5 v-21 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
+        <path android:fillColor="#2563eb" android:fillAlpha="0.55" android:pathData="M62.5,40 a2.5,2.5 0 0 1 2.5,2.5 v11 a2.5,2.5 0 0 1 -2.5,2.5 v-11 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
+        <path android:fillColor="#2563eb" android:fillAlpha="0.35" android:pathData="M72.5,43 a2.5,2.5 0 0 1 2.5,2.5 v5 a2.5,2.5 0 0 1 -2.5,2.5 v-5 a2.5,2.5 0 0 1 -2.5,-2.5 a2.5,2.5 0 0 1 2.5,-2.5 Z" />
     </group>
 </vector>

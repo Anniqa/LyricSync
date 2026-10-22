@@ -1,188 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@drawable/overlay_bg_rounded"
-    android:padding="18dp">
-
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/overlay_bg_rounded" android:padding="18dp">
     <!-- Header title TextView @id/dialog_title (@string/edit_syllables_title) and line index -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="12dp">
-
-        <ImageView
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:src="@drawable/ic_code"
-            app:tint="@color/accent"
-            android:contentDescription="@null" />
-
-        <TextView
-            android:id="@+id/dialog_title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="10dp"
-            android:text="@string/edit_syllables_title"
-            android:textColor="@color/text_primary"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/dialog_line_index"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_dim"
-            android:textSize="12sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="12dp">
+        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:src="@drawable/ic_code" app:tint="@color/accent" android:contentDescription="@null" />
+        <TextView android:id="@+id/dialog_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:text="@string/edit_syllables_title" android:textColor="@color/text_primary" android:textSize="16sp" android:textStyle="bold" />
+        <TextView android:id="@+id/dialog_line_index" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_dim" android:textSize="12sp" />
     </LinearLayout>
-
     <!-- Original line preview TextView @id/text_line_original -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/edit_syllables_original"
-        android:textColor="@color/text_dim"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:textAllCaps="true"
-        android:letterSpacing="0.05"
-        android:layout_marginBottom="4dp" />
-
-    <TextView
-        android:id="@+id/text_line_original"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/text_primary"
-        android:textSize="15sp"
-        android:textStyle="bold"
-        android:padding="10dp"
-        android:background="@drawable/bg_prompt_card"
-        android:layout_marginBottom="12dp" />
-
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/edit_syllables_original" android:textColor="@color/text_dim" android:textSize="11sp" android:textStyle="bold" android:textAllCaps="true" android:letterSpacing="0.05" android:layout_marginBottom="4dp" />
+    <TextView android:id="@+id/text_line_original" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_primary" android:textSize="15sp" android:textStyle="bold" android:padding="10dp" android:background="@drawable/bg_prompt_card" android:layout_marginBottom="12dp" />
     <!-- Syllable Chips Section -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/edit_syllables_romaji"
-        android:textColor="@color/text_dim"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:textAllCaps="true"
-        android:letterSpacing="0.05"
-        android:layout_marginBottom="6dp" />
-
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/edit_syllables_romaji" android:textColor="@color/text_dim" android:textSize="11sp" android:textStyle="bold" android:textAllCaps="true" android:letterSpacing="0.05" android:layout_marginBottom="6dp" />
     <!-- HorizontalScrollView containing LinearLayout @id/container_syllables -->
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none"
-        android:overScrollMode="never"
-        android:layout_marginBottom="14dp">
-
-        <LinearLayout
-            android:id="@+id/container_syllables"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal" />
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never" android:layout_marginBottom="14dp">
+        <LinearLayout android:id="@+id/container_syllables" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
     </HorizontalScrollView>
-
     <!-- Section label TextView for translation (@string/edit_syllables_translation) -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/edit_syllables_translation"
-        android:textColor="@color/text_dim"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:textAllCaps="true"
-        android:letterSpacing="0.05"
-        android:layout_marginBottom="4dp" />
-
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/edit_syllables_translation" android:textColor="@color/text_dim" android:textSize="11sp" android:textStyle="bold" android:textAllCaps="true" android:letterSpacing="0.05" android:layout_marginBottom="4dp" />
     <!-- EditText @id/edit_line_translation (hint: @string/edit_syllables_translation, maxLines 3) -->
-    <EditText
-        android:id="@+id/edit_line_translation"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:minHeight="44dp"
-        android:maxLines="3"
-        android:hint="@string/edit_syllables_translation"
-        android:textColor="@color/text_primary"
-        android:textColorHint="@color/text_dim"
-        android:textSize="13sp"
-        android:background="@drawable/bg_chat_input_pill"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:gravity="top|start"
-        android:layout_marginBottom="16dp" />
-
+    <EditText android:id="@+id/edit_line_translation" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:maxLines="3" android:hint="@string/edit_syllables_translation" android:textColor="@color/text_primary" android:textColorHint="@color/text_dim" android:textSize="13sp" android:background="@drawable/bg_chat_input_pill" android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="8dp" android:paddingBottom="8dp" android:gravity="top|start" android:layout_marginBottom="16dp" />
     <!-- Action buttons row:
          - Button or TextView @id/btn_ai_regenerate (@string/btn_ai_regenerate)
          - Button or TextView @id/btn_cancel (@string/cancel)
          - Button or TextView @id/btn_save (@string/save) -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
-
-        <TextView
-            android:id="@+id/btn_ai_regenerate"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/btn_ai_regenerate"
-            android:textColor="@color/accent"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:background="@drawable/bg_icon_button"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
-            android:clickable="true"
-            android:focusable="true" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <TextView
-            android:id="@+id/btn_cancel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/cancel"
-            android:textColor="@color/text_secondary"
-            android:textSize="13sp"
-            android:background="@drawable/bg_icon_button"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:layout_marginEnd="8dp" />
-
-        <TextView
-            android:id="@+id/btn_save"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/save"
-            android:textColor="@color/black"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:background="@drawable/btn_start_bg"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
-            android:clickable="true"
-            android:focusable="true" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/btn_ai_regenerate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/btn_ai_regenerate" android:textColor="@color/accent" android:textSize="12sp" android:textStyle="bold" android:background="@drawable/bg_icon_button" android:paddingStart="10dp" android:paddingEnd="10dp" android:paddingTop="8dp" android:paddingBottom="8dp" android:clickable="true" android:focusable="true" />
+        <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+        <TextView android:id="@+id/btn_cancel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/cancel" android:textColor="@color/text_secondary" android:textSize="13sp" android:background="@drawable/bg_icon_button" android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="8dp" android:paddingBottom="8dp" android:clickable="true" android:focusable="true" android:layout_marginEnd="8dp" />
+        <TextView android:id="@+id/btn_save" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/save" android:textColor="@color/black" android:textSize="13sp" android:textStyle="bold" android:background="@drawable/btn_start_bg" android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="8dp" android:paddingBottom="8dp" android:clickable="true" android:focusable="true" />
     </LinearLayout>
 </LinearLayout>
