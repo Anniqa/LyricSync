@@ -77,9 +77,8 @@ public final class MainThreadLyricActionRouter implements LyricActionDelegate {
     }
 
     @Override
-    public void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation,
-                            String romanji, long shiftMs, ActionCallback callback) {
-        onMain(() -> target.manageLines(action, lineIndex, startMs, endMs, text, translation, romanji, shiftMs, callback));
+    public void manageLines(LineOp op, ActionCallback callback) {
+        onMain(() -> target.manageLines(op, callback));
     }
 
     @Override

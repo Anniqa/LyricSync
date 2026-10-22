@@ -1922,13 +1922,20 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
     }
 
-    public void manageLines(String action, int lineIndex, long startMs, long endMs, String text,
-                                String translation, String romanji, long shiftMs,
+    public void manageLines(AntigravityApiClient.LyricActionDelegate.LineOp op,
                                 AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
         if (currentLyrics == null || currentLyrics.lines == null) {
             if (callback != null) callback.onError("Tidak ada lirik aktif");
             return;
         }
+        final String action = op.action;
+        final int lineIndex = op.lineIndex;
+        final long startMs = op.startMs;
+        final long endMs = op.endMs;
+        final String text = op.text;
+        final String translation = op.translation;
+        final String romanji = op.romanji;
+        final long shiftMs = op.shiftMs;
         String act = action != null ? action.trim().toLowerCase(java.util.Locale.ROOT) : "";
         if ("delete".equals(act)) {
             if (lineIndex < 0 || lineIndex >= currentLyrics.lines.size()) {

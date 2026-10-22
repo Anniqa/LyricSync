@@ -96,6 +96,27 @@ public class AntigravityApiClient {
                 this.romanji = romanji;
             }
         }
+        class LineOp {
+            public final String action;
+            public final int lineIndex;
+            public final long startMs;
+            public final long endMs;
+            public final String text;
+            public final String translation;
+            public final String romanji;
+            public final long shiftMs;
+            public LineOp(String action, int lineIndex, long startMs, long endMs,
+                          String text, String translation, String romanji, long shiftMs) {
+                this.action = action;
+                this.lineIndex = lineIndex;
+                this.startMs = startMs;
+                this.endMs = endMs;
+                this.text = text;
+                this.translation = translation;
+                this.romanji = romanji;
+                this.shiftMs = shiftMs;
+            }
+        }
         void translateLyrics(String targetLang, ActionCallback callback);
         void transliterateLyrics(String mode, ActionCallback callback);
         default void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
@@ -120,7 +141,7 @@ public class AntigravityApiClient {
         default void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent, ActionCallback callback) {
             if (callback != null) callback.onError("adjustAppearance belum didukung");
         }
-        default void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
+        default void manageLines(LineOp op, ActionCallback callback) {
             if (callback != null) callback.onError("manageLines belum didukung");
         }
         default void getCurrentPlayingTrack(TrackInfoCallback callback) {
@@ -1106,7 +1127,7 @@ public class AntigravityApiClient {
                         ToolArgs.intOrNull(toolArgs, "height_percent"),
                         wrapActionCallback(callback, "Gagal mengubah tampilan"));
             } else if ("manage_lyric_lines".equals(toolName)) {
-                lyricActionDelegate.manageLines(
+                lyricActionDelegate.manageLines(new LyricActionDelegate.LineOp(
                         ToolArgs.str(toolArgs, "action", ""),
                         ToolArgs.intValue(toolArgs, "line_index", -1),
                         ToolArgs.longValue(toolArgs, "start_time_ms", 0L),
@@ -1114,7 +1135,7 @@ public class AntigravityApiClient {
                         ToolArgs.str(toolArgs, "text", null),
                         ToolArgs.str(toolArgs, "translation", null),
                         ToolArgs.str(toolArgs, "romanji", null),
-                        ToolArgs.longValue(toolArgs, "shift_ms", 0L),
+                        ToolArgs.longValue(toolArgs, "shift_ms", 0L)),
                         wrapActionCallback(callback, "Gagal mengelola baris lirik"));
             } else if ("get_current_playing_track".equals(toolName)) {
                 lyricActionDelegate.getCurrentPlayingTrack(new LyricActionDelegate.TrackInfoCallback() {

@@ -700,9 +700,9 @@ public class AntigravityApiClientToolLoopTest {
             }
 
             @Override
-            public void manageLines(String action, int lineIndex, long startMs, long endMs, String text, String translation, String romanji, long shiftMs, ActionCallback callback) {
-                lastManageAction.set(action);
-                lastManageLine.set(lineIndex);
+            public void manageLines(AntigravityApiClient.LyricActionDelegate.LineOp op, ActionCallback callback) {
+                lastManageAction.set(op.action);
+                lastManageLine.set(op.lineIndex);
                 callback.onSuccess("Line managed");
             }
         });
