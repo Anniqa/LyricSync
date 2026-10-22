@@ -12,7 +12,7 @@ It reads what's playing from the media notification (Spotify, YT Music, etc.), p
 
 ## What it does
 - Word / syllable highlighting that follows the beat, with a smooth spring scroll
-- **8 lyric animation styles** — Spring Pop, Bubble, Wave, Pulse, Rise, Typewriter, Calm, Neon Glow — each with its own spring physics, pickable from the app or the overlay (live animated previews in the app)
+- **18 motion styles × 12 effects** — combinable (spring, bubble, wave, typewriter, glow, shimmer, … with springs, splines, letter physics), pickable from the app or the overlay (live animated previews in the app)
 - **Font picker** — Montserrat, Poppins, Barlow, Lato, or the system font, all bundled (OFL) so no downloads are needed
 - Auto-syncs to the player position (no manual seeking) and self-corrects drift
 - **Tap any line to jump the player there**
