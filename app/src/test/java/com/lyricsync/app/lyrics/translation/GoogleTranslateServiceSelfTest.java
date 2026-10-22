@@ -1,14 +1,20 @@
 package com.lyricsync.app.lyrics.translation;
 
 import com.lyricsync.app.lyrics.model.LyricsData;
+
+import org.junit.Test;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import static org.junit.Assert.assertEquals;
+
 public class GoogleTranslateServiceSelfTest {
 
-    public static void main(String[] args) {
-        // Test query text building with interlude and empty lines filtering
+    @Test
+    public void filtersAndBuildsQueryText() {
+        // Interlude and blank lines are filtered out of the translatable set.
         List<LyricsData.LyricsLine> lines = new ArrayList<>();
         lines.add(new LyricsData.LyricsLine(0, 2000, "Line 1"));
         LyricsData.LyricsLine interlude = new LyricsData.LyricsLine(2000, 4000, "");
@@ -18,26 +24,23 @@ public class GoogleTranslateServiceSelfTest {
         lines.add(new LyricsData.LyricsLine(6000, 8000, "Line 2\nwith newline"));
 
         List<LyricsData.LyricsLine> translatable = GoogleTranslateService.filterTranslatableLines(lines);
-        check(translatable.size() == 2, "filtered translatable count");
-        check("Line 1".equals(translatable.get(0).text), "line 1 text");
-        check("Line 2\nwith newline".equals(translatable.get(1).text), "line 2 text");
+        assertEquals(2, translatable.size());
+        assertEquals("Line 1", translatable.get(0).text);
+        assertEquals("Line 2\nwith newline", translatable.get(1).text);
 
+        // Newlines inside a line are normalized to spaces in the batch query.
         String query = GoogleTranslateService.buildQueryText(translatable);
-        check("Line 1\nLine 2 with newline\n".equals(query), "query text normalized newlines");
-
-        // Test language resolution
-        check("en".equals(GoogleTranslateService.resolveTargetLang("en", Locale.FRENCH)), "explicit en");
-        check("fr".equals(GoogleTranslateService.resolveTargetLang("auto", Locale.FRENCH)), "auto resolved to system");
-        check("id".equals(GoogleTranslateService.resolveTargetLang(null, new Locale("id"))), "null resolved to system");
-        check("id".equals(GoogleTranslateService.resolveTargetLang("in", Locale.ENGLISH)), "legacy in normalized to id");
-        check("id".equals(GoogleTranslateService.resolveTargetLang("auto", new Locale("in"))), "legacy system locale in normalized to id");
-        check("he".equals(GoogleTranslateService.resolveTargetLang("iw", Locale.ENGLISH)), "legacy iw normalized to he");
-        check("yi".equals(GoogleTranslateService.resolveTargetLang("ji", Locale.ENGLISH)), "legacy ji normalized to yi");
-
-        System.out.println("GoogleTranslateServiceSelfTest OK");
+        assertEquals("Line 1\nLine 2 with newline\n", query);
     }
 
-    private static void check(boolean cond, String name) {
-        if (!cond) throw new AssertionError("FAIL: " + name);
+    @Test
+    public void resolvesTargetLangIncludingLegacyCodes() {
+        assertEquals("en", GoogleTranslateService.resolveTargetLang("en", Locale.FRENCH));
+        assertEquals("fr", GoogleTranslateService.resolveTargetLang("auto", Locale.FRENCH));
+        assertEquals("id", GoogleTranslateService.resolveTargetLang(null, new Locale("id")));
+        assertEquals("id", GoogleTranslateService.resolveTargetLang("in", Locale.ENGLISH)); // legacy in → id
+        assertEquals("id", GoogleTranslateService.resolveTargetLang("auto", new Locale("in")));
+        assertEquals("he", GoogleTranslateService.resolveTargetLang("iw", Locale.ENGLISH)); // legacy iw → he
+        assertEquals("yi", GoogleTranslateService.resolveTargetLang("ji", Locale.ENGLISH)); // legacy ji → yi
     }
 }
