@@ -374,16 +374,12 @@ public class SongChatManager {
     public AntigravityApiClient.Cancellable sendMessage(final String userMessage, final boolean enableWebSearch,
                                                         final AntigravityApiClient.StreamListener listener) {
         if (userMessage == null || userMessage.trim().isEmpty()) {
-            if (listener != null) {
-                listener.onError(new IllegalArgumentException("User message cannot be empty"));
-            }
+            failFast(listener, new IllegalArgumentException("User message cannot be empty"));
             return new NoOpCancellable();
         }
 
         if (apiClient == null) {
-            if (listener != null) {
-                listener.onError(new IllegalStateException("AntigravityApiClient is null"));
-            }
+            failFast(listener, new IllegalStateException("AntigravityApiClient is null"));
             return new NoOpCancellable();
         }
 
@@ -414,43 +410,25 @@ public class SongChatManager {
                 modelId, messagesToSend, enableWebSearch, null, new AntigravityApiClient.StreamListener() {
             @Override
             public void onDelta(String textDelta) {
-                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
-                    return;
-                }
-                if (listener != null) {
-                    try {
-                        listener.onDelta(textDelta);
-                    } catch (Throwable ignored) {}
-                }
+                if (stale(sessionHandle, sessionId)) return;
+                safeForward(listener, l -> l.onDelta(textDelta));
             }
 
             @Override
             public void onToolExecuting(String toolName, String queryOrUrl) {
-                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
-                    return;
-                }
-                if (listener != null) {
-                    try {
-                        listener.onToolExecuting(toolName, queryOrUrl);
-                    } catch (Throwable ignored) {}
-                }
+                if (stale(sessionHandle, sessionId)) return;
+                safeForward(listener, l -> l.onToolExecuting(toolName, queryOrUrl));
             }
 
             @Override
             public void onToolCompleted(String toolName, int resultsCount) {
-                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
-                    return;
-                }
-                if (listener != null) {
-                    try {
-                        listener.onToolCompleted(toolName, resultsCount);
-                    } catch (Throwable ignored) {}
-                }
+                if (stale(sessionHandle, sessionId)) return;
+                safeForward(listener, l -> l.onToolCompleted(toolName, resultsCount));
             }
 
             @Override
             public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
-                if (sessionHandle.isCancelled() || sessionId != currentSessionId) {
+                if (stale(sessionHandle, sessionId)) {
                     rollbackUserTurnIfOrphaned(userTurn);
                     return;
                 }
@@ -478,29 +456,47 @@ public class SongChatManager {
                     } catch (Exception ignored) {}
                 }
 
-                if (listener != null) {
-                    try {
-                        listener.onComplete(fullText, webSources, promptTokens, candidateTokens);
-                    } catch (Throwable ignored) {}
-                }
+                safeForward(listener, l -> l.onComplete(fullText, webSources, promptTokens, candidateTokens));
             }
 
             @Override
             public void onError(Exception error) {
                 // Roll back orphaned user turn to preserve strict alternating role invariant
                 rollbackUserTurnIfOrphaned(userTurn);
-
-                if (listener != null) {
-                    try {
-                        listener.onError(error);
-                    } catch (Throwable ignored) {}
-                }
+                safeForward(listener, l -> l.onError(error));
             }
         });
 
         sessionHandle.setInner(innerCall);
         this.activeCall = sessionHandle;
         return sessionHandle;
+    }
+
+    /**
+     * A turn or callback belongs to this session only while the send is still live
+     * and no newer session has started: cancelled handles and stale sessions must
+     * neither reach the outer listener nor commit history.
+     */
+    private boolean stale(SessionCancellable handle, long sessionId) {
+        return handle.isCancelled() || sessionId != currentSessionId;
+    }
+
+    private interface Forward {
+        void send(AntigravityApiClient.StreamListener l) throws Throwable;
+    }
+
+    /** Single copy of the never-let-a-throw-escape forwarding the callbacks repeat five times. */
+    private static void safeForward(AntigravityApiClient.StreamListener listener, Forward f) {
+        if (listener == null) return;
+        try {
+            f.send(listener);
+        } catch (Throwable ignored) {}
+    }
+
+    private void failFast(AntigravityApiClient.StreamListener listener, RuntimeException e) {
+        if (listener != null) {
+            listener.onError(e);
+        }
     }
 
     private synchronized void rollbackUserTurnIfOrphaned(AiChatMessage userTurn) {
