@@ -796,10 +796,7 @@ public class AntigravityApiClient {
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     try {
-                        if (call.isCanceled() || handle.isCancelled()) {
-                            activeHandles.remove(handle);
-                            return;
-                        }
+                        if (cancelledExit(call, handle)) return;
 
                         FunctionCall detectedFunctionCall = null;
                         String streamThoughtSig = null;
@@ -809,8 +806,7 @@ public class AntigravityApiClient {
                         try (ResponseBody responseBody = response.body()) {
                             if (responseBody == null) {
                                 if (call.isCanceled() || handle.isCancelled()) return;
-                                activeHandles.remove(handle);
-                                dispatchOnError(listener, new IOException("Empty response body from Antigravity API"));
+                                failAndCleanup(call, handle, listener, new IOException("Empty response body from Antigravity API"));
                                 return;
                             }
 
@@ -818,8 +814,7 @@ public class AntigravityApiClient {
                                 if (call.isCanceled() || handle.isCancelled()) return;
                                 String errString = responseBody.string();
                                 String parsedMsg = ApiErrors.message(errString, "HTTP " + response.code() + ": " + response.message());
-                                activeHandles.remove(handle);
-                                dispatchOnError(listener, new IOException("Antigravity API request failed: " + parsedMsg));
+                                failAndCleanup(call, handle, listener, new IOException("Antigravity API request failed: " + parsedMsg));
                                 return;
                             }
 
@@ -834,8 +829,7 @@ public class AntigravityApiClient {
                                     // Check for in-band error frame
                                     if (chunk.errorMessage != null) {
                                         if (call.isCanceled() || handle.isCancelled()) return;
-                                        activeHandles.remove(handle);
-                                        dispatchOnError(listener, new IOException("Antigravity API stream error: " + chunk.errorMessage));
+                                        failAndCleanup(call, handle, listener, new IOException("Antigravity API stream error: " + chunk.errorMessage));
                                         return;
                                     }
 
@@ -868,33 +862,15 @@ public class AntigravityApiClient {
                             if (call.isCanceled() || handle.isCancelled()) {
                                 return;
                             }
-                            activeHandles.remove(handle);
-                            dispatchOnError(listener, e);
+                            failAndCleanup(call, handle, listener, e);
                             return;
                         }
 
-                        if (call.isCanceled() || handle.isCancelled()) {
-                            activeHandles.remove(handle);
-                            return;
-                        }
+                        if (cancelledExit(call, handle)) return;
 
                         // Attach stream-level thoughtSignature if not attached directly to functionCall
                         if (detectedFunctionCall != null) {
-                            String fcSig = detectedFunctionCall.getThoughtSignature();
-                            if (fcSig == null || fcSig.trim().isEmpty()) {
-                                if (streamThoughtSig != null && !streamThoughtSig.trim().isEmpty()) {
-                                    fcSig = streamThoughtSig;
-                                }
-                            }
-                            if (fcSig != null) {
-                                detectedFunctionCall = new FunctionCall(
-                                        detectedFunctionCall.name,
-                                        detectedFunctionCall.args,
-                                        detectedFunctionCall.id,
-                                        fcSig,
-                                        detectedFunctionCall.rawPart
-                                );
-                            }
+                            detectedFunctionCall = withStreamSignature(detectedFunctionCall, streamThoughtSig);
                         }
 
                         // Check if model invoked a tool functionCall
@@ -1339,6 +1315,40 @@ public class AntigravityApiClient {
             } catch (Throwable ignored) {
             }
         }
+    }
+
+    /**
+     * Cancelled or superseded: drop the handle silently and tell the caller to unwind.
+     * Mirrors the historical outer cancel paths, which removed the handle without
+     * dispatching an error.
+     */
+    private boolean cancelledExit(Call call, ApiCallHandle handle) {
+        if (call.isCanceled() || handle.isCancelled()) {
+            activeHandles.remove(handle);
+            return true;
+        }
+        return false;
+    }
+
+    /** Error path: drop the handle, then surface the failure to the listener. */
+    private void failAndCleanup(Call call, ApiCallHandle handle,
+                                   AntigravityApiClient.StreamListener listener, Exception e) {
+        activeHandles.remove(handle);
+        dispatchOnError(listener, e);
+    }
+
+    /** Attach stream-level thoughtSignature only when the functionCall itself carries none. */
+    private static FunctionCall withStreamSignature(FunctionCall fc, String streamThoughtSig) {
+        String fcSig = fc.getThoughtSignature();
+        if (fcSig == null || fcSig.trim().isEmpty()) {
+            if (streamThoughtSig != null && !streamThoughtSig.trim().isEmpty()) {
+                fcSig = streamThoughtSig;
+            }
+        }
+        if (fcSig != null) {
+            return new FunctionCall(fc.name, fc.args, fc.id, fcSig, fc.rawPart);
+        }
+        return fc;
     }
 
 
