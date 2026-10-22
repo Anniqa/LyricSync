@@ -3,6 +3,9 @@
 So the next cleanup pass does not have to rediscover the environment, the traps, or
 what was deliberately left alone. Build setup lives in `docs/PROJECT.md`.
 
+Archived docs live **outside** the repo at `~/LyricSync-docs/` (`superpowers/` plans
+and specs, `design/` discussions and reports).
+
 ## Verification standard — read this first
 
 No emulator, no display, no Robolectric (JUnit only). "Verified" means exactly:
@@ -34,7 +37,7 @@ tried on the phone; say so rather than implying it was tested.
   `RECORD_AUDIO` · `1704880` chat UI resources · `2e14aa0` `SongMeaningService` + 40 dead
   members · `2418124` last orphans. `MainActivity` 2,957 → 1,465.
 - **2026-10-22 refactor pass** `6fc8cb6..a712495` (plan:
-  `docs/superpowers/plans/2026-10-22-safe-refactor-pass.md`): `6fc8cb6`
+  `~/LyricSync-docs/superpowers/plans/2026-10-22-safe-refactor-pass.md`): `6fc8cb6`
   `typeRank` → `LyricsData.rankOf` · `a9e7b32` `SongChatManager` seams (`stale` /
   `safeForward` / `failFast`) · `9a9b19f` `onResponse` seams (`cancelledExit` /
   `failAndCleanup` / `withStreamSignature`) · `637bdf2` `manageLines` → `LineOp` param
