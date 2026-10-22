@@ -61,6 +61,23 @@ The manager stops as soon as a **SYLLABLE** result lands; everything after is a 
    - response `{Status, Body}`; `Body` is parsed by `parseOfficialResponse` (Syllable/Line/Static)
 4. **Render** → `LyricsData` → `overlay` → `renderer`
 
+### Cover-version reality check (verified live 2026-10-22)
+For tracks where the playing artist is a cover artist (e.g. "Braaten - Without You",
+Spotify id `4L065RwyTOcNXKejPQaX98`):
+- **SpicyLyrics:** 404 — the cover release has no lyrics in that catalog. Only the
+  original recording maps to syllable lyrics.
+- **Kugou:** every query permutation includes the cleaned artist, and Kugou's krcs
+  catalog indexes only the original artist ("Avicii - Without You" → candidates;
+  anything with "Braaten" → `candidates:[]`; a bare title can also return `[]`).
+  Deterministic miss for covers; not a code bug.
+- **Netease:** combined search does surface the cover entry, but that entry often
+  carries only `lrc` (LINE) with no `yrc`; the original artist's entries (which have
+  `yrc` syllables) are filtered out by the artist gatekeeper. The title-only fallback
+  only fires when the combined search returns zero ids, so the original's syllables
+  stay out of reach. Occasional transient empty searches happen; the SQLite cache
+  (keyed on the sanitized track) then serves the earlier LINE fetch — by design.
+- **LRCLIB:** 503s come and go — transient server side, retry later.
+
 ## Conventions
 - Log through `util/AppLog` (never `System.out`).
 - A provider implements `LyricsProvider` (`getName`, `fetchLyrics`) and throws `IOException`
