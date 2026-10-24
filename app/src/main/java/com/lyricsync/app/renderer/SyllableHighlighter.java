@@ -153,6 +153,11 @@ public class SyllableHighlighter {
         return !originalScriptEnabled ? (fontSizeSp * 0.90f) : (fontSizeSp * 0.70f);
     }
 
+    /** The line font size in pixels — spacing scales hang off this value. */
+    private float fontPx() {
+        return fontSizeSp * context.getResources().getDisplayMetrics().scaledDensity;
+    }
+
     private boolean transliterationEnabled = true;
     private boolean originalScriptEnabled = true;
 
@@ -345,8 +350,11 @@ public class SyllableHighlighter {
             container.setPadding(0, dpToPx(6), 0, dpToPx(6));
 
             InterludeDotView dotView = new InterludeDotView(context, line.startTime, line.endTime);
+            // The countdown dot scales with the lyric font instead of a fixed 40dp:
+            // at small overlay sizes a fixed dot ate a third of the body height.
+            int dotHeight = Math.max(dpToPx(24), Math.round(fontPx() * 2.2f));
             LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(40));
+                    LinearLayout.LayoutParams.MATCH_PARENT, dotHeight);
             dotView.setLayoutParams(dotParams);
             container.addView(dotView);
 
@@ -412,6 +420,9 @@ public class SyllableHighlighter {
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         flow.setLayoutParams(flowParams);
         flow.setPadding(0, dpToPx(6), 0, dpToPx(2));
+        // Row gap scales with the font: wrapped rows must keep breathing room
+        // for word glow/lift that paints outside bounds (clipping is disabled).
+        flow.setRowSpacing(Math.round(fontPx() * 0.12f));
         // Word views must paint outside their own box too (fireworks bursts and
         // welding sparks fly beyond the word); without this the flow slices them.
         flow.setClipChildren(false);
@@ -477,6 +488,7 @@ public class SyllableHighlighter {
         romajiFlow.setLayoutParams(romajiParams);
         int topPadding = !originalScriptEnabled ? dpToPx(4) : dpToPx(1);
         romajiFlow.setPadding(0, topPadding, 0, dpToPx(1));
+        romajiFlow.setRowSpacing(Math.round(fontPx() * 0.08f));
         romajiFlow.setClipChildren(false);
         romajiFlow.setClipToPadding(false);
 

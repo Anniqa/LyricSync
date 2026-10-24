@@ -854,6 +854,11 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         int verticalPadding = Math.max(dpToPx(14), Math.round(spToPx(overlayFontSizeSp * 1.2f)));
         int horizontalPadding = Math.max(dpToPx(6), Math.round(spToPx(overlayFontSizeSp * 0.35f)));
         lyricsContainer.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
+        // Scale the fade band with the body height: at the 140dp minimum a fixed
+        // 36dp top/bottom fade swallowed half the panel and the outer rows of the
+        // active line faded into "invisible". 14% per edge, clamped 10..36dp.
+        scrollView.setFadingEdgeLength(
+                Math.max(dpToPx(10), Math.min(dpToPx(36), Math.round(lyricsHeightPx * 0.14f))));
     }
 
     private float calculateScrollPositionRatio() {
@@ -3125,7 +3130,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.bottomMargin = Math.max(1, Math.round(spToPx(overlayFontSizeSp * 0.08f)));
+            // Line gap scales with the font (min 3dp): at small sizes a hairline
+            // margin plus the active line's out-of-bounds glow read as overlap.
+            lp.bottomMargin = Math.max(dpToPx(3), Math.round(spToPx(overlayFontSizeSp) * 0.30f));
 
             SyllableHighlighter.LineView lv = highlighter.createLineView(line, lp);
             lineViews.add(lv);

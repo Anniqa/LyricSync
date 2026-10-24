@@ -29,6 +29,19 @@ public class WordFlowLayout extends ViewGroup {
     private final java.util.List<View> rowViews = new java.util.ArrayList<>();
     private final java.util.List<Integer> rowLefts = new java.util.ArrayList<>();
 
+    // Extra vertical gap between wrapped rows. Lives here (not in child margins)
+    // because row spacing must scale with the font, and the glow/lift of an
+    // active word paints OUTSIDE its bounds (clipping is off) — at small font
+    // sizes with zero gap those overpaints read as overlapping lyrics.
+    private int rowSpacing = 0;
+
+    public void setRowSpacing(int px) {
+        int next = Math.max(0, px);
+        if (next == rowSpacing) return;
+        rowSpacing = next;
+        requestLayout();
+    }
+
     public static class LayoutParams extends MarginLayoutParams {
         public LayoutParams(int width, int height) {
             super(width, height);
@@ -80,7 +93,7 @@ public class WordFlowLayout extends ViewGroup {
             if (x + childW > availableWidth && x > 0) {
                 x = 0;
                 int fullRowH = (maxBaseline > 0) ? Math.max(rowHeight, maxBaseline + maxDescender) : rowHeight;
-                y += fullRowH;
+                y += fullRowH + rowSpacing;
                 rowHeight = 0;
                 maxBaseline = 0;
                 maxDescender = 0;
@@ -124,7 +137,7 @@ public class WordFlowLayout extends ViewGroup {
             if (x + childW > left + availableWidth && x > left) {
                 layoutRow(rowViews, rowLefts, top, maxBaseline);
                 int fullRowH = (maxBaseline > 0) ? Math.max(rowHeight, maxBaseline + maxDescender) : rowHeight;
-                top += fullRowH;
+                top += fullRowH + rowSpacing;
 
                 rowViews.clear();
                 rowLefts.clear();
