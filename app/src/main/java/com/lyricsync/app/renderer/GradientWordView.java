@@ -94,6 +94,9 @@ public class GradientWordView extends AppCompatTextView {
     private boolean fireworksStyle;
     private boolean weldingStyle;
     private boolean burningStyle;
+    private boolean auroraStyle;
+    private boolean meteorStyle;
+    private boolean ringPulseStyle;
     // Blur Trail: this frame's word yOffset plus the previous two frames'
     // values (ghost positions). frameYOffset mirrors the frameFlicker pattern
     // (computed once per onDraw, readable from drawEffects).
@@ -116,6 +119,11 @@ public class GradientWordView extends AppCompatTextView {
     private final Paint fireworksPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint weldingPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint burningPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint auroraPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint meteorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    // Reused meteor state buffer - zero allocation per frame.
+    private final float[] meteorState = new float[5];
     // Reused line buffer for sparkle stars — zero per-frame allocation.
     private final float[] sparkleLines = new float[8];
     // Reused particle trail buffer (Fireworks 36 particles + Welding sparks)
@@ -183,6 +191,9 @@ public class GradientWordView extends AppCompatTextView {
         fireworksStyle = config.fireworks;
         weldingStyle = config.welding;
         burningStyle = config.burning;
+        auroraStyle = config.aurora;
+        meteorStyle = config.meteor;
+        ringPulseStyle = config.ringPulse;
         // Re-tune the scale spring for the combination's bounce character.
         scaleSpring.dampingRatio = config.scaleDamp;
         scaleSpring.frequency = config.scaleFreq;
@@ -515,7 +526,8 @@ public class GradientWordView extends AppCompatTextView {
         // with. The fire effects used to be the only ones doing this.
         boolean binaryStruck = binaryLetters && letters != null && letterProgress != null;
         float edgeP = -1f;
-        if (!backgroundMode && (shimmerStyle || sparkleStyle || weldingStyle || burningStyle)) {
+        if (!backgroundMode && (shimmerStyle || sparkleStyle || weldingStyle || burningStyle
+                || auroraStyle || meteorStyle)) {
             edgeP = EffectLayout.fillEdge(progress, p, classicStyle, binaryStruck,
                     binaryStruck ? struckFraction(shaderW) : 0f);
         }
@@ -753,6 +765,83 @@ public class GradientWordView extends AppCompatTextView {
                     burningPaint.setColor((fa << 24) | (i % 2 == 0 ? 0x00FF7043 : 0x00FFD54F));
                     canvas.drawPath(flamePath, burningPaint);
                 }
+            }
+        }
+
+        // AURORA: the sung region repaints in a slow teal->purple->pink colour
+        // cycle with a breathing brightness - sky light riding the singing.
+        // Drawn with the Burning pattern: a vertical gradient over the text
+        // clipped to the true sung edge, so it never brightens upcoming text.
+        if (auroraStyle && !backgroundMode && progress > 0f && edgeP > 0f) {
+            float sungW = edgeP * shaderW;
+            if (sungW > 1f) {
+                float hue = EffectFx.auroraHue(lastPositionMs, wordIndex);
+                int a = Math.round(EffectFx.auroraBreathe(lastPositionMs) * 200f);
+                int body = android.graphics.Color.HSVToColor(new float[]{hue, 0.55f, 1f});
+                auroraPaint.setShader(new LinearGradient(0, baseline - getPaint().getTextSize(),
+                        0, baseline,
+                        new int[]{(a << 24) | 0x00B39DFF, (a << 24) | body},
+                        new float[]{0f, 1f}, Shader.TileMode.CLAMP));
+                canvas.save();
+                canvas.clipRect(drawX, 0, drawX + sungW + 2f, getHeight());
+                canvas.drawText(text, drawX, baseline, auroraPaint);
+                canvas.restore();
+                auroraPaint.setShader(null);
+            }
+        }
+
+        // METEOR SHOWER: three short diagonal streaks rain across the sung
+        // region while the word is sung. Deterministic per word seed + playback
+        // clock (a seek re-renders the same rain), clipped to the sung edge so
+        // nothing bright rides over the dimmed upcoming text.
+        if (meteorStyle && !backgroundMode && progress > 0f && progress < 1f && edgeP > 0f) {
+            float ts = getPaint().getTextSize();
+            meteorPaint.setStyle(Paint.Style.STROKE);
+            meteorPaint.setStrokeCap(Paint.Cap.ROUND);
+            int seed = wordIndex * 31 + text.length() * 7;
+            canvas.save();
+            canvas.clipRect(drawX, 0, drawX + edgeP * shaderW + 2f, getHeight());
+            for (int k = 0; k < 3; k++) {
+                float life = EffectFx.meteorLife(lastPositionMs, k);
+                EffectFx.meteorState(seed, k, meteorState);
+                float px = drawX + meteorState[0] * shaderW + meteorState[2] * ts * life;
+                float py = baseline - 0.75f * ts + meteorState[1] * ts + meteorState[3] * ts * life;
+                float len = meteorState[4] * ts;
+                float mag = (float) Math.hypot(meteorState[2], meteorState[3]);
+                float nx = meteorState[2] / mag;
+                float ny = meteorState[3] / mag;
+                float fade = 1f - life;
+                // Wide soft tail first, bright core on top.
+                meteorPaint.setStrokeWidth(Math.max(3f, ts * 0.06f));
+                meteorPaint.setColor((Math.round(70f * fade) << 24) | 0x00B3E5FC);
+                canvas.drawLine(px - nx * len, py - ny * len, px, py, meteorPaint);
+                meteorPaint.setStrokeWidth(Math.max(1.5f, ts * 0.028f));
+                meteorPaint.setColor((Math.round(185f * fade) << 24) | 0x00E1F5FE);
+                canvas.drawLine(px - nx * len * 0.55f, py - ny * len * 0.55f, px, py, meteorPaint);
+            }
+            canvas.restore();
+            meteorPaint.setStyle(Paint.Style.FILL);
+        }
+
+        // RING PULSE: the instant a word finishes, a soft ring pops outward
+        // from its centre - a tiny celebratory beat. Phase is analytic in the
+        // karaoke clock (like Fireworks), so it survives seeks with no state.
+        if (ringPulseStyle && !backgroundMode && endTime > startTime) {
+            float tSec = (lastPositionMs - endTime) / 1000f;
+            if (tSec > 0f && tSec < 0.55f) {
+                float ts = getPaint().getTextSize();
+                float cx = drawX + shaderW / 2f;
+                float cy = baseline - 0.35f * ts;
+                float r = EffectFx.ringRadius(tSec, ts);
+                int a = Math.round(EffectFx.ringAlpha(tSec) * 255f);
+                ringPaint.setStyle(Paint.Style.STROKE);
+                // Faint wide halo underpass, then the bright core ring.
+                ringPaint.setStrokeWidth(Math.max(4f, ts * 0.10f));
+                ringPaint.setColor(((a / 3) << 24) | 0x00FFFFFF);
+                canvas.drawCircle(cx, cy, r, ringPaint);
+                ringPaint.setStrokeWidth(Math.max(1.5f, ts * 0.035f));
+                ringPaint.setColor((a << 24) | 0x00FFFFFF);
+                canvas.drawCircle(cx, cy, r, ringPaint);
             }
         }
     }

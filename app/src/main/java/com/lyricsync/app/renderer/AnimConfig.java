@@ -35,6 +35,9 @@ public final class AnimConfig {
     public final boolean fireworks;
     public final boolean welding;
     public final boolean burning;
+    public final boolean aurora;
+    public final boolean meteor;
+    public final boolean ringPulse;
 
     public final float glowBoost;
     public final double scaleFreq;
@@ -74,6 +77,9 @@ public final class AnimConfig {
         fireworks = effect.fireworks;
         welding = effect.welding;
         burning = effect.burning;
+        aurora = effect.aurora;
+        meteor = effect.meteor;
+        ringPulse = effect.ringPulse;
         glowBoost = effect.glowBoost;
 
         // Glow: the effect's signature spline wins when it defines one

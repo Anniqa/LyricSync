@@ -14,8 +14,9 @@ import java.util.List;
  *  - MOTION (18): how words/letters move — spring, bubble, wave, pulse, rise,
  *    typewriter, drop, zoom, swing, scatter, calm, classic, bounce, elastic,
  *    heartbeat, spin, squash, pop.
- *  - EFFECT (12): a visual overlay — none, glow, echo, shimmer, flicker,
- *    outline, trail, flash, sparkle, fireworks, welding, burning.
+ *  - EFFECT (15): a visual overlay — none, glow, echo, shimmer, flicker,
+ *    outline, trail, flash, sparkle, fireworks, welding, burning, aurora,
+ *    meteor, ringpulse.
  *
  * A motion and an effect are merged into an {@link AnimConfig} for rendering.
  *
@@ -62,6 +63,9 @@ public final class AnimStyleDef {
     public final boolean fireworks;
     public final boolean welding;
     public final boolean burning;
+    public final boolean aurora;
+    public final boolean meteor;
+    public final boolean ringPulse;
 
     private AnimStyleDef(Builder b) {
         key = b.key;
@@ -96,6 +100,9 @@ public final class AnimStyleDef {
         fireworks = b.fireworks;
         welding = b.welding;
         burning = b.burning;
+        aurora = b.aurora;
+        meteor = b.meteor;
+        ringPulse = b.ringPulse;
     }
 
     private static Spline spline(double[] times, double[] values) {
@@ -142,6 +149,9 @@ public final class AnimStyleDef {
         boolean fireworks = false;
         boolean welding = false;
         boolean burning = false;
+        boolean aurora = false;
+        boolean meteor = false;
+        boolean ringPulse = false;
 
         Builder(String key, String displayName, Category category) {
             this.key = key;
@@ -178,6 +188,9 @@ public final class AnimStyleDef {
         Builder fireworks() { fireworks = true; return this; }
         Builder welding() { welding = true; return this; }
         Builder burning() { burning = true; return this; }
+        Builder aurora() { aurora = true; return this; }
+        Builder meteor() { meteor = true; return this; }
+        Builder ringPulse() { ringPulse = true; return this; }
 
         AnimStyleDef build() { return new AnimStyleDef(this); }
     }
@@ -343,6 +356,12 @@ public final class AnimStyleDef {
             e.add(new Builder("fireworks", "Fireworks", Category.EFFECT).fireworks().build());
             e.add(new Builder("welding", "Welding", Category.EFFECT).welding().build());
             e.add(new Builder("burning", "Burning", Category.EFFECT).burning().build());
+            e.add(new Builder("aurora", "Aurora", Category.EFFECT)
+                    .glow(new double[]{0.0, 0.12, 0.6, 1.0}, new double[]{0.0, 0.85, 0.85, 0.0})
+                    .glowOn().boost(1.4f).aurora()
+                    .build());
+            e.add(new Builder("meteor", "Meteor Shower", Category.EFFECT).meteor().build());
+            e.add(new Builder("ringpulse", "Ring Pulse", Category.EFFECT).ringPulse().build());
             EFFECT = Collections.unmodifiableList(e);
         }
 

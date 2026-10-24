@@ -20,7 +20,7 @@ public class AnimStyleDefSelfTest {
     @Test
     public void registryCountsAndLegacyKeysResolve() {
         assertEquals(18, AnimStyleDef.Registry.motionStyles().size());
-        assertEquals(12, AnimStyleDef.Registry.effectStyles().size());
+        assertEquals(15, AnimStyleDef.Registry.effectStyles().size());
         assertEquals("none", AnimStyleDef.Registry.effectStyles().get(0).key);
         assertTrue("none is EFFECT", AnimStyleDef.Registry.none().category == AnimStyleDef.Category.EFFECT);
 
@@ -50,9 +50,11 @@ public class AnimStyleDefSelfTest {
         for (String k : new String[]{"bounce", "elastic", "heartbeat", "spin", "squash", "pop"}) {
             assertTrue(k + " is MOTION", motion(k).category == AnimStyleDef.Category.MOTION);
         }
-        for (String k : new String[]{"outline", "trail", "flash", "sparkle", "fireworks", "welding", "burning"}) {
+        for (String k : new String[]{"outline", "trail", "flash", "sparkle", "fireworks", "welding", "burning",
+                "meteor", "ringpulse"}) {
             assertTrue(k + " is EFFECT", effect(k).category == AnimStyleDef.Category.EFFECT);
         }
+        assertTrue("aurora is EFFECT", effect("aurora").category == AnimStyleDef.Category.EFFECT);
 
         assertEquals("spring", motion("nope").key);
         assertEquals("spring", motion(null).key);
@@ -75,13 +77,21 @@ public class AnimStyleDefSelfTest {
         assertTrue("fireworks flag", effect("fireworks").fireworks);
         assertTrue("welding flag", effect("welding").welding);
         assertTrue("burning flag", effect("burning").burning);
+        assertTrue("aurora flag", effect("aurora").aurora);
+        assertTrue("meteor flag", effect("meteor").meteor);
+        assertTrue("ringpulse flag", effect("ringpulse").ringPulse);
         assertFalse("sparkle has no fireworks", effect("sparkle").fireworks);
         assertFalse("fireworks has no sparkle", effect("fireworks").sparkle);
+        assertFalse("meteor has no ring pulse", effect("meteor").ringPulse);
 
-        // New effects define no glow spline: they inherit the motion's, like shimmer.
-        for (String k : new String[]{"outline", "trail", "flash", "sparkle", "fireworks", "welding", "burning"}) {
+        // Effects with no glow spline of their own inherit the motion's (shimmer
+        // pattern): everything from outline through ringpulse. Aurora carries its
+        // own glow envelope, like glow/echo/flicker.
+        for (String k : new String[]{"outline", "trail", "flash", "sparkle",
+                "fireworks", "welding", "burning", "meteor", "ringpulse"}) {
             assertNull(k + " glowSpline null (inherits motion)", effect(k).glowSpline);
         }
+        assertTrue("aurora glowSpline set", effect("aurora").glowSpline != null);
 
         // Nullable glowSpline: shimmer + none inherit; glow/echo/flicker define their own.
         assertNull("shimmer glowSpline null", effect("shimmer").glowSpline);
