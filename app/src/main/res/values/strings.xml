@@ -174,4 +174,10 @@
     <string name="google_connected">Connected: %1$s</string>
     <string name="google_connect_failed">Failed: %1$s</string>
     <string name="ai_model_set">AI model set to: %1$s</string>
+    <!-- Overlay formatting (were string-concatenated in code) -->
+    <string name="overlay_track_line">%1$s • %2$s</string>
+    <string name="overlay_ai_quota">AI Quota: %1$d%%</string>
+    <string name="overlay_web_sources_prefix">%1$s:\u0020</string>
+    <string name="overlay_sync_offset_value">%1$d ms</string>
+    <string name="overlay_sync_offset_positive">+%1$d ms</string>
 </resources>

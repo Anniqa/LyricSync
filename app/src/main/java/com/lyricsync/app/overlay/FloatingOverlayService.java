@@ -2,9 +2,9 @@ package com.lyricsync.app.overlay;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
-import android.animation.ArgbEvaluator;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.NotificationManager;
@@ -14,21 +14,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import com.lyricsync.app.util.LocaleHelper;
 import android.graphics.Bitmap;
-import android.graphics.PixelFormat;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
-import android.util.DisplayMetrics;
-import android.view.Choreographer;
 import android.view.Gravity;
-import android.view.KeyEvent;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -48,7 +43,6 @@ import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.client.MainThreadLyricActionRouter;
 import com.lyricsync.app.ai.client.AntigravityQuotaClient;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
-import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
@@ -78,7 +72,6 @@ import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.renderer.AnimConfig;
 import com.lyricsync.app.renderer.SpringScroller;
 import com.lyricsync.app.renderer.SyllableHighlighter;
-import com.lyricsync.app.ui.AlbumPalette;
 import com.lyricsync.app.ui.AndroidPrefs;
 import com.lyricsync.app.ui.Anim;
 import com.lyricsync.app.ui.AnimSelection;
@@ -102,8 +95,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     public static final String ACTION_STOP = "com.lyricsync.app.action.STOP";
     public static final String ACTION_TOGGLE = "com.lyricsync.app.action.TOGGLE";
 
-    /** Sync slider is 0..3000 with 1500 meaning "no offset". */
-    private static final int SYNC_LIMIT_MS = 1500;
+    /** Every overlay tunable (sizes, gestures, timings, theme). Swap for a custom build. */
+    private final OverlayConfig config = OverlayConfig.DEFAULT;
 
     /** Read by MainActivity to render Start vs Stop without binding to the service. */
     private static volatile boolean running = false;
@@ -127,6 +120,11 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
     private WindowManager windowManager;
     private View overlayView;
+    private OverlayScreen screen;
+    private OverlayWindowController window;
+    private OverlayChatWindows chatWindows;
+    private OverlayTheme theme;
+    private OverlayRenderLoop renderLoop;
     private MediaSessionTracker sessionTracker;
     private LyricsProviderManager lyricsManager;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -167,7 +165,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     private int currentRetryState = RETRY_STATE_IDLE;
     private View overlayRetryActionsContainer;
     private TextView btnRetryStandard;
-    private WindowManager.LayoutParams overlayParams;
     private SharedPreferences sharedPrefs;
 
     private LyricsData currentLyrics;
@@ -179,8 +176,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     private Typeface fontBold;
     private Typeface fontMedium;
     private AnimConfig lyricAnimConfig = AnimConfig.defaultConfig();
-    private float overlayFontSizeSp = 13f;
-    private int overlayWidthPercent = 88;
+    private float overlayFontSizeSp;
+    private int overlayWidthPercent;
     private int lyricsHeightPx = 0;
     private boolean lyricsVisible = true;
     private View overlayResizeContainer;
@@ -203,15 +200,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     // AI Insights UI & Subsystems
     private ImageView overlayAiButton;
 
-    // Secondary Window: Floating AI Chat
-    private FrameLayout aiChatContainer;
-    private View aiChatView;
-    private WindowManager.LayoutParams aiChatParams;
-    private boolean isAiChatAttached = false;
+    // Secondary windows (floating AI chat + its minimised bubble): see OverlayChatWindows.
     private TextView aiChatTitle;
     private TextView aiChatArtist;
-    private ImageView aiMinimizeButton;
-    private ImageView aiCloseButton;
     private ImageView aiWebSearchChip;
     ScrollView aiChatEmptyState;
     LinearLayout aiPromptTemplatesContainer;
@@ -227,11 +218,6 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     private TextView aiToolStatusText;
     private Runnable pendingToolStatusHide;
 
-    // Secondary Window: Floating AI Bubble (Minimized mode)
-    private View aiBubbleView;
-    private WindowManager.LayoutParams aiBubbleParams;
-    private boolean isAiBubbleAttached = false;
-
     SongChatManager songChatManager;
     AiChatHistoryManager aiChatHistoryManager;
     private AntigravityQuotaClient quotaClient;
@@ -241,13 +227,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     AiStreamingAnimator activeAiBubbleAnimator;
     private boolean aiWebSearchEnabled = false;
 
-    // Album-derived colouring
-    private final ArgbEvaluator argb = new ArgbEvaluator();
-    private GradientDrawable overlayBackground;
-    private ValueAnimator colorAnimator;
     private ObjectAnimator skeletonAnimator;
-    private int overlayAccent = AlbumPalette.DEFAULT_ACCENT;
-    private int overlayDeep = AlbumPalette.DEFAULT_DEEP;
+    private ValueAnimator bodyAnimator;
     /** updateTrackInfo runs on metadata refreshes too; only re-run Palette on new art. */
     private Bitmap lastPaletteArt;
     /** Same guard for URI-loaded art; the palette runs on the decoded bitmap. */
@@ -261,17 +242,15 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
     private final Runnable applySettingsRunnable = () -> applyRuntimeSettings(true);
     private final SharedPreferences.OnSharedPreferenceChangeListener settingsListener = (prefs, key) -> {
-        if ("font_scale".equals(key)
-                || "overlay_width_percent".equals(key)
-                || "overlay_height_percent".equals(key)) {
-            handler.removeCallbacks(applySettingsRunnable);
-            handler.postDelayed(applySettingsRunnable, 100);
+        if (OverlayPrefKeys.FONT_SCALE.equals(key)
+                || OverlayPrefKeys.WIDTH_PERCENT.equals(key)
+                || OverlayPrefKeys.HEIGHT_PERCENT.equals(key)) {
+            scheduleApplySettings();
         } else if (AppFont.PREF_KEY.equals(key)
                 || AnimSelection.PREF_MOTION.equals(key) || AnimSelection.PREF_EFFECT.equals(key)) {
             // Typeface / animation-style changes need a full highlighter rebuild,
             // and the panel chips must reflect choices made in the activity.
-            handler.removeCallbacks(applySettingsRunnable);
-            handler.postDelayed(applySettingsRunnable, 100);
+            scheduleApplySettings();
             if (overlayFontChips != null) {
                 FontChips.refresh(overlayFontChips,
                         prefs.getString(AppFont.PREF_KEY, AppFont.DEFAULT_KEY));
@@ -284,8 +263,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 AnimStyleChips.refresh(overlayAnimEffectChips,
                         AnimSelection.effectKey(new AndroidPrefs(prefs)));
             }
-        } else if ("sync_offset_ms".equals(key) && sessionTracker != null) {
-            long offset = prefs.getLong("sync_offset_ms", 0);
+        } else if (OverlayPrefKeys.SYNC_OFFSET_MS.equals(key) && sessionTracker != null) {
+            long offset = prefs.getLong(OverlayPrefKeys.SYNC_OFFSET_MS, 0);
             sessionTracker.setSyncOffsetMs(offset);
             syncOffsetSliderFromPrefs(offset);
         } else if (GoogleTranslateService.PREF_TRANSLATION_ENABLED.equals(key)) {
@@ -306,7 +285,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             if (translationEnabled && currentLyrics != null) {
                 fetchTranslationForCurrentLyrics();
             }
-        } else if ("overlay_show_resize_handle".equals(key)) {
+        } else if (OverlayPrefKeys.SHOW_RESIZE_HANDLE.equals(key)) {
             boolean show = prefs.getBoolean(key, false);
             if (this.showResizeHandle != show) {
                 this.showResizeHandle = show;
@@ -315,7 +294,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 }
                 updateResizeHandleVisibility();
             }
-        } else if ("pref_romaji_enabled".equals(key)) {
+        } else if (OverlayPrefKeys.ROMAJI_ENABLED.equals(key)) {
             boolean enabled = prefs.getBoolean(key, true);
             if (highlighter != null) {
                 highlighter.setTransliterationEnabled(enabled);
@@ -325,7 +304,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 overlayRomajiSwitch.setChecked(enabled);
                 isProgrammaticRomajiUpdate = false;
             }
-        } else if ("pref_original_script_enabled".equals(key)) {
+        } else if (OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED.equals(key)) {
             boolean enabled = prefs.getBoolean(key, true);
             if (highlighter != null) {
                 highlighter.setOriginalScriptEnabled(enabled);
@@ -333,13 +312,13 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
     };
 
+    private void scheduleApplySettings() {
+        handler.removeCallbacks(applySettingsRunnable);
+        handler.postDelayed(applySettingsRunnable, config.settingsDebounceMs);
+    }
+
     private final List<SyllableHighlighter.LineView> lineViews = new ArrayList<>();
     private SpringScroller springScroller;
-
-    private Choreographer choreographer;
-    private boolean renderRunning = false;
-    private boolean renderActive = false;
-    private long lastFrameNanos = 0;
 
     @Override
     protected void attachBaseContext(Context newBase) {
@@ -351,8 +330,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         super.onCreate();
         activeInstanceRef = new WeakReference<>(this);
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        screen = new OverlayScreen(windowManager, getResources());
 
-        sharedPrefs = getSharedPreferences("lyricsync", MODE_PRIVATE);
+        sharedPrefs = getSharedPreferences(OverlayPrefKeys.FILE, MODE_PRIVATE);
         translateService = new GoogleTranslateService();
         AntigravityAuthManager authManager =
                 AntigravityAuthManager.getInstance(this);
@@ -370,20 +350,21 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         // does not keep the Service (a Context) alive after onDestroy.
         final SharedPreferences chatModelPrefs = sharedPrefs;
         AntigravityToolExecutor.setChatModelSupplier(() ->
-                chatModelPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL));
+                chatModelPrefs.getString(OverlayPrefKeys.AI_MODEL, SongChatManager.DEFAULT_MODEL));
         translationEnabled = sharedPrefs.getBoolean(
                 GoogleTranslateService.PREF_TRANSLATION_ENABLED, false);
         loadTypefaces();
         lyricAnimConfig = AnimSelection.current(new AndroidPrefs(sharedPrefs));
 
+        overlayWidthPercent = OverlayGeometry.widthPercent(config,
+                sharedPrefs.getInt(OverlayPrefKeys.WIDTH_PERCENT, config.widthPercentDefault));
         overlayFontSizeSp = calculateFontSizeSp();
         highlighter = new SyllableHighlighter(this, fontBold, fontMedium, overlayFontSizeSp);
         highlighter.setAnimConfig(lyricAnimConfig);
-        boolean romajiPref = sharedPrefs.getBoolean("pref_romaji_enabled", true);
-        highlighter.setTransliterationEnabled(romajiPref);
-        boolean origPref = sharedPrefs.getBoolean("pref_original_script_enabled", true);
-        highlighter.setOriginalScriptEnabled(origPref);
-        choreographer = Choreographer.getInstance();
+        highlighter.setTransliterationEnabled(romajiPref());
+        highlighter.setOriginalScriptEnabled(originalScriptPref());
+        renderLoop = new OverlayRenderLoop(config, renderFrame);
+        theme = new OverlayTheme(config, screen, this::applyAccent);
         sharedPrefs.registerOnSharedPreferenceChangeListener(settingsListener);
 
         // Start foreground before any early-exit path so the system never sees a
@@ -441,9 +422,12 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
     // ── Overlay construction ───────────────────────────────────────────────
 
+    @SuppressLint("InflateParams") // a window root has no parent to inflate against
     private boolean createOverlay() {
         android.content.Context themedContext = new ContextThemeWrapper(this, R.style.Theme_LyricSync);
         overlayView = LayoutInflater.from(themedContext).inflate(R.layout.overlay_lyrics, null);
+        window = new OverlayWindowController(windowManager, screen, sharedPrefs, config, windowHost);
+        chatWindows = new OverlayChatWindows(themedContext, windowManager, screen, sharedPrefs, config, chatHost);
 
         overlayTitle = overlayView.findViewById(R.id.overlay_title);
         overlayArtist = overlayView.findViewById(R.id.overlay_artist);
@@ -487,15 +471,14 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             overlayRomajiSwitch.setTextOn("");
             overlayRomajiSwitch.setTextOff("");
             isProgrammaticRomajiUpdate = true;
-            boolean romajiPref = sharedPrefs.getBoolean("pref_romaji_enabled", true);
-            overlayRomajiSwitch.setChecked(romajiPref);
+            overlayRomajiSwitch.setChecked(romajiPref());
             isProgrammaticRomajiUpdate = false;
             overlayRomajiSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
                 if (isProgrammaticRomajiUpdate) return;
                 if (highlighter != null) {
                     highlighter.setTransliterationEnabled(isChecked);
                 }
-                sharedPrefs.edit().putBoolean("pref_romaji_enabled", isChecked).apply();
+                sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, isChecked).apply();
                 if (isChecked && currentLyrics != null && isLyricsNonLatin(currentLyrics) && !currentLyrics.hasTransliteration) {
                     performTransliteration();
                 }
@@ -511,7 +494,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 if (highlighter != null) {
                     boolean newOrig = !highlighter.isOriginalScriptEnabled();
                     highlighter.setOriginalScriptEnabled(newOrig);
-                    sharedPrefs.edit().putBoolean("pref_original_script_enabled", newOrig).apply();
+                    sharedPrefs.edit().putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, newOrig).apply();
                     Toast.makeText(this, newOrig ? "Aksara asli ditampilkan" : "Aksara asli disembunyikan (Latin Saja)", Toast.LENGTH_SHORT).show();
                 }
                 return true;
@@ -524,7 +507,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         overlayResizeContainer = overlayView.findViewById(R.id.overlay_resize_container);
         overlayResizeHandle = overlayView.findViewById(R.id.overlay_resize_handle);
         overlayResizeSwitch = overlayView.findViewById(R.id.overlay_resize_switch);
-        showResizeHandle = sharedPrefs.getBoolean("overlay_show_resize_handle", false);
+        showResizeHandle = sharedPrefs.getBoolean(OverlayPrefKeys.SHOW_RESIZE_HANDLE, false);
         if (overlayResizeSwitch != null) {
             overlayResizeSwitch.setShowText(false);
             overlayResizeSwitch.setTextOn("");
@@ -532,7 +515,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             overlayResizeSwitch.setChecked(showResizeHandle);
             overlayResizeSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
                 showResizeHandle = isChecked;
-                sharedPrefs.edit().putBoolean("overlay_show_resize_handle", isChecked).apply();
+                sharedPrefs.edit().putBoolean(OverlayPrefKeys.SHOW_RESIZE_HANDLE, isChecked).apply();
                 updateResizeHandleVisibility();
             });
         }
@@ -551,19 +534,12 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         btnRetryStandard = overlayView.findViewById(R.id.btn_retry_standard);
         setupRetryViews();
 
-        lyricsVisible = sharedPrefs.getBoolean("lyrics_visible", true);
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int widthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 55, 100);
-        overlayWidthPercent = widthPercent;
-        int heightPercent = clamp(sharedPrefs.getInt("overlay_height_percent", 36), 20, 70);
-        int overlayWidth = Math.max(dpToPx(220), metrics.widthPixels * widthPercent / 100);
-        lyricsHeightPx = Math.max(dpToPx(140), metrics.heightPixels * heightPercent / 100);
+        lyricsVisible = sharedPrefs.getBoolean(OverlayPrefKeys.LYRICS_VISIBLE, true);
+        overlayWidthPercent = window.widthPercentPref();
+        lyricsHeightPx = window.bodyHeightFromPrefs();
+        setBodyHeight(lyricsHeightPx);
 
-        ViewGroup.LayoutParams bodyParams = overlayBody.getLayoutParams();
-        bodyParams.height = lyricsHeightPx;
-        overlayBody.setLayoutParams(bodyParams);
-
-        installOverlayBackground();
+        theme.install(overlayView);
         applyResponsiveHeaderSizing();
         applyResponsiveLyricsSpacing();
 
@@ -581,7 +557,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
         // Tap the title block (or the cover) to hide/show the header buttons, so a
         // long song title can use the full overlay width instead of being ellipsized.
-        compactHeader = sharedPrefs.getBoolean("overlay_header_compact", false);
+        compactHeader = sharedPrefs.getBoolean(OverlayPrefKeys.HEADER_COMPACT, false);
         View.OnClickListener compactToggle = v -> {
             Haptics.tick(v);
             setHeaderCompact(!compactHeader, true);
@@ -597,10 +573,10 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         if (overlayAiButton != null) {
             overlayAiButton.setOnClickListener(v -> {
                 Haptics.tick(v);
-                if (isAiChatAttached) {
-                    minimizeAiChatToBubble();
+                if (chatWindows.isChatShown()) {
+                    chatWindows.minimizeToBubble();
                 } else {
-                    showAiChatOverlay();
+                    chatWindows.showChat();
                 }
             });
         }
@@ -612,109 +588,68 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         overlayArtist.setText("");
         showIdleState();
 
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                overlayWidth,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                PixelFormat.TRANSLUCENT);
-
-        params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        params.x = sharedPrefs.getInt("overlay_x", 0);
-        params.y = sharedPrefs.getInt("overlay_y", dpToPx(64));
-        overlayParams = params;
-
-        setupDragging(params);
-        setupResizeHandling();
         updateResizeHandleVisibility();
+        renderLoop.setDisplayView(overlayView);
 
-        try {
-            windowManager.addView(overlayView, params);
-        } catch (Exception e) {
-            // A revoked overlay grant (or an OEM restriction) throws here; don't crash.
-            AppLog.e(TAG, "Failed to add overlay view", e);
+        if (!window.attach(overlayView, overlayBody, overlayResizeHandle)) {
             overlayView = null;
             return false;
         }
 
-        playOverlayEntrance();
+        // Bubble entrance: the overlay inflates from a blob with a rubbery overshoot.
+        Anim.bubbleIn(overlayView);
         return true;
     }
 
-    /** Replaces the static XML shape with a drawable we can recolour per album. */
-    private void installOverlayBackground() {
-        overlayBackground = new GradientDrawable();
-        overlayBackground.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
-        overlayBackground.setCornerRadius(dpToPx(28));
-        applyOverlayColors(overlayAccent, overlayDeep);
-        overlayView.setBackground(overlayBackground);
-    }
-
-    private void playOverlayEntrance() {
-        // Bubble entrance: the overlay inflates from a blob with a rubbery overshoot.
-        Anim.bubbleIn(overlayView);
-    }
-
     private void animateOutAndStop() {
-        if (overlayView == null) {
+        if (overlayView == null || window == null) {
             stopSelf();
             return;
         }
-        overlayView.animate()
-                .alpha(0f)
-                .scaleX(0.9f)
-                .scaleY(0.9f)
-                .setDuration(200)
-                .setInterpolator(Anim.STANDARD)
-                .withEndAction(this::stopSelf)
-                .start();
+        window.animateOut(this::stopSelf);
+    }
+
+    /** Rotation, fold, split-screen: re-fit every window and restyle for the new size. */
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (isDestroyed) return;
+        if (window != null) window.onConfigurationChanged();
+        if (chatWindows != null) chatWindows.onConfigurationChanged();
+    }
+
+    /** Window callbacks: resize gesture feedback and screen changes. */
+    private final OverlayWindowController.Host windowHost = new OverlayWindowController.Host() {
+        @Override
+        public void onBodyResized(int bodyHeightPx) {
+            lyricsHeightPx = bodyHeightPx;
+        }
+
+        @Override
+        public void onResizeCommitted() {
+            // The width%/height% prefs were written; the pref listener (debounced) restyles.
+            // Apply now as well so the release lands without waiting for the debounce.
+            applyRuntimeSettings(true);
+        }
+
+        @Override
+        public void onScreenChanged() {
+            applyRuntimeSettings(true);
+        }
+    };
+
+    private void setBodyHeight(int heightPx) {
+        if (overlayBody == null) return;
+        ViewGroup.LayoutParams lp = overlayBody.getLayoutParams();
+        if (lp.height == heightPx) return;
+        lp.height = heightPx;
+        overlayBody.setLayoutParams(lp);
     }
 
     // ── Colour ─────────────────────────────────────────────────────────────
 
-    private void applyAlbumColors(Bitmap art) {
-        AlbumPalette.from(art, (accent, deep) -> {
-            if (isDestroyed) return;
-            animateOverlayColors(accent, deep);
-        });
-    }
-
-    private void animateOverlayColors(int accent, int deep) {
-        if (accent == overlayAccent && deep == overlayDeep) return;
-        if (colorAnimator != null) colorAnimator.cancel();
-
-        final int fromAccent = overlayAccent;
-        final int fromDeep = overlayDeep;
-        final int toAccent = accent;
-        final int toDeep = deep;
-        overlayAccent = accent;
-        overlayDeep = deep;
-
-        colorAnimator = ValueAnimator.ofFloat(0f, 1f);
-        colorAnimator.setDuration(650);
-        colorAnimator.setInterpolator(Anim.STANDARD);
-        colorAnimator.addUpdateListener(a -> {
-            float f = a.getAnimatedFraction();
-            int ac = (Integer) argb.evaluate(f, fromAccent, toAccent);
-            int dp = (Integer) argb.evaluate(f, fromDeep, toDeep);
-            applyOverlayColors(ac, dp);
-        });
-        colorAnimator.start();
-    }
-
-    private void applyOverlayColors(int accent, int deep) {
-        if (overlayBackground != null) {
-            // Top edge leans toward the accent, the body stays near-black so lyrics
-            // keep their contrast whatever the album art is.
-            int top = AlbumPalette.withAlpha(AlbumPalette.blend(deep, accent, 0.18f), 0xF5);
-            int mid = AlbumPalette.withAlpha(deep, 0xF0);
-            int bottom = AlbumPalette.withAlpha(AlbumPalette.blend(deep, 0xFF000000, 0.45f), 0xF7);
-            overlayBackground.setColors(new int[]{top, mid, bottom});
-            overlayBackground.setStroke(Math.max(1, dpToPx(1)),
-                    AlbumPalette.withAlpha(accent, 0x4D));
-        }
-        ColorStateList tint = ColorStateList.valueOf(accent);
+    /** Album accent reaching the controls; called for every frame of a colour fade. */
+    private void applyAccent(ColorStateList tint, int accent) {
         if (overlaySyncOffsetSlider != null) {
             overlaySyncOffsetSlider.setProgressTintList(tint);
             overlaySyncOffsetSlider.setThumbTintList(tint);
@@ -742,35 +677,42 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             Haptics.confirm(v);
             if (sessionTracker != null) sessionTracker.togglePlayPause();
             Anim.pop(v);
-            handler.postDelayed(this::updatePlayPauseIcon, 180);
+            handler.postDelayed(this::updatePlayPauseIcon, config.playPauseRefreshDelayMs);
         });
-        overlayPlayPause.setColorFilter(overlayAccent);
+        overlayPlayPause.setColorFilter(theme.accent());
     }
 
     private void updatePlayPauseIcon() {
         if (overlayPlayPause == null) return;
         boolean playing = sessionTracker != null && sessionTracker.isPlaying();
         overlayPlayPause.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
-        overlayPlayPause.setColorFilter(overlayAccent);
+        overlayPlayPause.setColorFilter(theme.accent());
     }
 
     // ── Sizing ─────────────────────────────────────────────────────────────
+    // Window and body size live in OverlayWindowController; the formulas in
+    // OverlayGeometry. Screen metrics come from OverlayScreen so they follow rotation.
 
     private int dpToPx(int dp) {
-        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+        return screen.px(dp);
     }
 
-    private static int clamp(int value, int lo, int hi) {
-        return value < lo ? lo : (value > hi ? hi : value);
+    private float spToPx(float sp) {
+        return OverlayGeometry.spPx(sp, screen.scaledDensity());
     }
 
     private float calculateFontSizeSp() {
-        float screenWidthDp = getResources().getConfiguration().screenWidthDp;
-        float baseFontSize = Math.max(11f, Math.min(22f, screenWidthDp * 0.038f));
-        float fontScale = Math.max(0.5f, Math.min(2.0f, sharedPrefs.getFloat("font_scale", 1.0f)));
-        int widthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 45, 100);
-        float widthFactor = Math.max(0.70f, Math.min(1.15f, widthPercent / 88f));
-        return Math.max(9f, Math.min(24f, baseFontSize * fontScale * widthFactor));
+        return OverlayGeometry.fontSizeSp(config, screen.widthDp(),
+                sharedPrefs.getFloat(OverlayPrefKeys.FONT_SCALE, config.fontScaleDefault),
+                sharedPrefs.getInt(OverlayPrefKeys.WIDTH_PERCENT, config.widthPercentDefault));
+    }
+
+    private boolean romajiPref() {
+        return sharedPrefs.getBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true);
+    }
+
+    private boolean originalScriptPref() {
+        return sharedPrefs.getBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, true);
     }
 
     /** (Re)load the user's chosen typeface pair through the shared registry. */
@@ -781,11 +723,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     }
 
     private void applyRuntimeSettings(boolean rebuildLyrics) {
-        if (overlayView == null || overlayBody == null || lyricsContainer == null) return;
+        if (overlayView == null || overlayBody == null || lyricsContainer == null || window == null) return;
 
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int newWidthPercent = clamp(sharedPrefs.getInt("overlay_width_percent", 88), 55, 100);
-        int newHeightPercent = clamp(sharedPrefs.getInt("overlay_height_percent", 36), 20, 70);
         float newFontSizeSp = calculateFontSizeSp();
         AnimConfig newAnimConfig = AnimSelection.current(new AndroidPrefs(sharedPrefs));
         Typeface prevBold = fontBold;
@@ -794,26 +733,16 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         boolean styleChanged = newAnimConfig != lyricAnimConfig;
         lyricAnimConfig = newAnimConfig;
 
-        boolean fontChanged = Math.abs(newFontSizeSp - overlayFontSizeSp) > 0.05f;
+        boolean fontChanged = Math.abs(newFontSizeSp - overlayFontSizeSp) > config.fontRebuildThresholdSp;
         overlayFontSizeSp = newFontSizeSp;
-        overlayWidthPercent = newWidthPercent;
-        lyricsHeightPx = Math.max(dpToPx(140), metrics.heightPixels * newHeightPercent / 100);
+        overlayWidthPercent = window.widthPercentPref();
+        lyricsHeightPx = window.bodyHeightFromPrefs();
 
-        if (lyricsVisible) {
-            ViewGroup.LayoutParams bodyParams = overlayBody.getLayoutParams();
-            bodyParams.height = lyricsHeightPx;
-            overlayBody.setLayoutParams(bodyParams);
+        // Never resize a body that is mid open/close animation; it lands on lyricsHeightPx.
+        if (lyricsVisible && (bodyAnimator == null || !bodyAnimator.isRunning())) {
+            setBodyHeight(lyricsHeightPx);
         }
-
-        if (overlayParams != null && windowManager != null) {
-            overlayParams.width = Math.max(dpToPx(220), metrics.widthPixels * newWidthPercent / 100);
-            clampOverlayPosition(overlayParams);
-            try {
-                windowManager.updateViewLayout(overlayView, overlayParams);
-            } catch (Exception e) {
-                AppLog.w(TAG, "Failed to update overlay layout: " + e.getMessage());
-            }
-        }
+        window.applyPrefWidth();
 
         applyResponsiveHeaderSizing();
         applyResponsiveLyricsSpacing();
@@ -834,40 +763,33 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     }
 
     private void applyResponsiveHeaderSizing() {
-        float widthFactor = Math.max(0.78f, Math.min(1.08f, overlayWidthPercent / 88f));
-        int coverSize = Math.round(Math.max(dpToPx(28), Math.min(dpToPx(54), spToPx(overlayFontSizeSp * 2.65f) * widthFactor)));
-
+        float density = screen.density();
+        float scaled = screen.scaledDensity();
+        int coverSize = OverlayGeometry.coverSizePx(config, overlayFontSizeSp, overlayWidthPercent, density, scaled);
         ViewGroup.LayoutParams coverParams = overlayCover.getLayoutParams();
-        coverParams.width = coverSize;
-        coverParams.height = coverSize;
-        overlayCover.setLayoutParams(coverParams);
-
-        overlayTitle.setTextSize(Math.max(11f, Math.min(18f, overlayFontSizeSp * 0.92f)));
-        overlayArtist.setTextSize(Math.max(9f, Math.min(15f, overlayFontSizeSp * 0.78f)));
-    }
-
-    private float spToPx(float sp) {
-        return sp * getResources().getDisplayMetrics().scaledDensity;
+        if (coverParams.width != coverSize || coverParams.height != coverSize) {
+            coverParams.width = coverSize;
+            coverParams.height = coverSize;
+            overlayCover.setLayoutParams(coverParams);
+        }
+        overlayTitle.setTextSize(OverlayGeometry.titleSp(config, overlayFontSizeSp));
+        overlayArtist.setTextSize(OverlayGeometry.artistSp(config, overlayFontSizeSp));
     }
 
     private void applyResponsiveLyricsSpacing() {
-        int verticalPadding = Math.max(dpToPx(14), Math.round(spToPx(overlayFontSizeSp * 1.2f)));
-        int horizontalPadding = Math.max(dpToPx(6), Math.round(spToPx(overlayFontSizeSp * 0.35f)));
-        lyricsContainer.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
-        // Scale the fade band with the body height: at the 140dp minimum a fixed
-        // 36dp top/bottom fade swallowed half the panel and the outer rows of the
-        // active line faded into "invisible". 14% per edge, clamped 10..36dp.
-        scrollView.setFadingEdgeLength(
-                Math.max(dpToPx(10), Math.min(dpToPx(36), Math.round(lyricsHeightPx * 0.14f))));
+        float density = screen.density();
+        float scaled = screen.scaledDensity();
+        int v = OverlayGeometry.lyricsPadVerticalPx(config, overlayFontSizeSp, density, scaled);
+        int h = OverlayGeometry.lyricsPadHorizontalPx(config, overlayFontSizeSp, density, scaled);
+        lyricsContainer.setPadding(h, v, h, v);
+        // Scale the fade band with the body height: at the minimum body a fixed
+        // band swallowed half the panel and the active line faded out.
+        scrollView.setFadingEdgeLength(OverlayGeometry.fadeEdgePx(config, lyricsHeightPx, density));
     }
 
     private float calculateScrollPositionRatio() {
-        float fontPx = spToPx(overlayFontSizeSp);
-        float height = Math.max(dpToPx(140), lyricsHeightPx);
-        float fontHeightRatio = Math.max(0.04f, Math.min(0.18f, fontPx / height));
-        float compactBoost = overlayWidthPercent < 75 ? 0.05f : 0f;
-        float tallOverlayPullUp = height > dpToPx(320) ? -0.04f : 0f;
-        return 0.34f + fontHeightRatio + compactBoost + tallOverlayPullUp;
+        return OverlayGeometry.scrollAnchorRatio(config, spToPx(overlayFontSizeSp), lyricsHeightPx,
+                overlayWidthPercent, screen.density());
     }
 
     // ── Collapse / expand ──────────────────────────────────────────────────
@@ -879,7 +801,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
      */
     private void setHeaderCompact(boolean compact, boolean animate) {
         compactHeader = compact;
-        sharedPrefs.edit().putBoolean("overlay_header_compact", compact).apply();
+        sharedPrefs.edit().putBoolean(OverlayPrefKeys.HEADER_COMPACT, compact).apply();
         if (overlayHeaderActions == null) return;
 
         // An open settings panel would be stranded without its gear button.
@@ -912,18 +834,17 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     private void setLyricsVisible(boolean visible, boolean persist, boolean animate) {
         lyricsVisible = visible;
         if (persist) {
-            sharedPrefs.edit().putBoolean("lyrics_visible", visible).apply();
+            sharedPrefs.edit().putBoolean(OverlayPrefKeys.LYRICS_VISIBLE, visible).apply();
         }
-        Anim.rotateTo(overlayToggle, visible ? 0f : 180f);
-        overlayToggle.setAlpha(visible ? 1.0f : 0.65f);
+        Anim.rotateTo(overlayToggle, visible ? 0f : config.toggleCollapsedRotationDeg);
+        overlayToggle.setAlpha(visible ? 1.0f : config.toggleCollapsedAlpha);
         updateResizeHandleVisibility();
 
         if (animate) {
             animateBody(visible);
         } else {
-            ViewGroup.LayoutParams lp = overlayBody.getLayoutParams();
-            lp.height = lyricsHeightPx;
-            overlayBody.setLayoutParams(lp);
+            if (bodyAnimator != null) bodyAnimator.cancel();
+            setBodyHeight(lyricsHeightPx);
             overlayBody.setAlpha(visible ? 1f : 0f);
             overlayBody.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
@@ -944,11 +865,14 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     private void animateBody(final boolean show) {
         final ViewGroup.LayoutParams lp = overlayBody.getLayoutParams();
         if (lp == null) return;
+        // A fast double-tap reverses from wherever the running animation is now.
+        if (bodyAnimator != null) bodyAnimator.cancel();
 
-        int from = show ? 0 : Math.max(1, overlayBody.getHeight());
+        int current = overlayBody.getVisibility() == View.VISIBLE ? Math.max(0, overlayBody.getHeight()) : 0;
+        int from = show ? (current < lyricsHeightPx ? current : 0) : Math.max(1, current);
         int to = show ? lyricsHeightPx : 0;
         if (show) {
-            lp.height = 0;
+            lp.height = from;
             overlayBody.setLayoutParams(lp);
             overlayBody.setVisibility(View.VISIBLE);
         }
@@ -956,21 +880,32 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         ValueAnimator anim = ValueAnimator.ofInt(from, to);
         anim.setDuration(Anim.D_MED);
         // Expanding gets a gentle rubber-band overshoot; collapsing stays smooth.
-        anim.setInterpolator(show ? new android.view.animation.OvershootInterpolator(0.8f)
+        anim.setInterpolator(show
+                ? new android.view.animation.OvershootInterpolator(config.bodyExpandOvershoot)
                 : Anim.STANDARD);
         anim.addUpdateListener(a -> {
             lp.height = (int) a.getAnimatedValue();
             overlayBody.setLayoutParams(lp);
         });
         anim.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
             @Override
             public void onAnimationEnd(Animator animation) {
+                if (bodyAnimator == animation) bodyAnimator = null;
+                if (cancelled) return; // the replacing animation owns the body now
                 if (!show) overlayBody.setVisibility(View.GONE);
                 lp.height = lyricsHeightPx;
                 overlayBody.setLayoutParams(lp);
             }
         });
         overlayBody.animate().alpha(show ? 1f : 0f).setDuration(Anim.D_MED).start();
+        bodyAnimator = anim;
         anim.start();
     }
 
@@ -989,7 +924,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     // ── Sync offset UI ─────────────────────────────────────────────────────
 
     private void setupSyncOffsetUi() {
-        int saved = clamp((int) sharedPrefs.getLong("sync_offset_ms", 0), -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
+        int saved = OverlayGeometry.syncOffset(config, sharedPrefs.getLong(OverlayPrefKeys.SYNC_OFFSET_MS, 0));
         updateSyncOffsetLabel(saved);
         buildOverlayChips();
 
@@ -1002,14 +937,17 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 Anim.expand(overlaySettingsPanel);
                 updatePlayPauseIcon();
             }
-            Anim.rotateTo(overlaySettings, visible ? 0f : 90f);
+            Anim.rotateTo(overlaySettings, visible ? 0f : config.settingsOpenRotationDeg);
             updateResizeHandleVisibility(!visible);
         });
 
-        SeekBars.bind(overlaySyncOffsetSlider, saved + SYNC_LIMIT_MS, (progress, fromUser) -> {
-            int offset = clamp(progress - SYNC_LIMIT_MS, -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
+        // The slider spans [0, 2 × limit]; its midpoint is "no offset".
+        int limit = config.syncOffsetLimitMs;
+        overlaySyncOffsetSlider.setMax(limit * 2);
+        SeekBars.bind(overlaySyncOffsetSlider, saved + limit, (progress, fromUser) -> {
+            int offset = OverlayGeometry.syncOffset(config, progress - limit);
             updateSyncOffsetLabel(offset);
-            sharedPrefs.edit().putLong("sync_offset_ms", offset).apply();
+            sharedPrefs.edit().putLong(OverlayPrefKeys.SYNC_OFFSET_MS, offset).apply();
             if (sessionTracker != null) {
                 sessionTracker.setSyncOffsetMs(offset);
             }
@@ -1020,68 +958,38 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     /** Keeps the overlay slider in step when the offset is changed from the activity. */
     private void syncOffsetSliderFromPrefs(long offset) {
         if (overlaySyncOffsetSlider == null) return;
-        int clamped = clamp((int) offset, -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
-        if (overlaySyncOffsetSlider.getProgress() != clamped + SYNC_LIMIT_MS) {
-            overlaySyncOffsetSlider.setProgress(clamped + SYNC_LIMIT_MS);
+        int clamped = OverlayGeometry.syncOffset(config, offset);
+        int progress = clamped + config.syncOffsetLimitMs;
+        if (overlaySyncOffsetSlider.getProgress() != progress) {
+            overlaySyncOffsetSlider.setProgress(progress);
         }
         updateSyncOffsetLabel(clamped);
     }
 
-    // ── Dual Window AI Overlay & Bubble ────────────────────────────────────
+    // ── AI chat content ────────────────────────────────────────────────────
+    // The chat / bubble windows themselves (attach, size, drag, snap, rotation)
+    // live in OverlayChatWindows; this section owns what is inside the chat.
 
-    private void showAiChatOverlay() {
-        if (isDestroyed || windowManager == null) return;
-
-        // If bubble is currently attached, remove it
-        if (isAiBubbleAttached && aiBubbleView != null) {
-            try {
-                windowManager.removeView(aiBubbleView);
-            } catch (Exception e) {
-                AppLog.w(TAG, "Error removing bubble view: " + e.getMessage());
-            }
-            isAiBubbleAttached = false;
+    private final OverlayChatWindows.Host chatHost = new OverlayChatWindows.Host() {
+        @Override
+        public View createChatContent(FrameLayout container) {
+            return initAiChatView(container);
         }
 
-        if (isAiChatAttached) {
-            return;
+        @Override
+        public void onChatShown() {
+            onAiChatShown();
         }
+    };
 
-        if (aiChatView == null || aiChatContainer == null) {
-            initAiChatView();
-        }
-
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int screenWidth = metrics.widthPixels;
-        int chatWidth = Math.min((int) (screenWidth * 0.92f), dpToPx(440));
-        int chatHeight = dpToPx(460);
-
-        aiChatParams = new WindowManager.LayoutParams(
-                chatWidth,
-                chatHeight,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                PixelFormat.TRANSLUCENT
-        );
-        aiChatParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
-        aiChatParams.gravity = Gravity.CENTER;
-
-        try {
-            windowManager.addView(aiChatContainer, aiChatParams);
-            isAiChatAttached = true;
-            Anim.bubbleIn(aiChatView);
-        } catch (Exception e) {
-            AppLog.e(TAG, "Failed to add AI chat overlay", e);
-            isAiChatAttached = false;
-            return;
-        }
-
+    private void onAiChatShown() {
         fetchQuotaIfAuthenticated();
         if (aiChatTitle != null) {
             aiChatTitle.setText(R.string.ai_insights_title);
         }
         if (currentTrack != null) {
             if (aiChatArtist != null) {
-                aiChatArtist.setText(currentTrack.title + " • " + currentTrack.artist);
+                aiChatArtist.setText(getString(R.string.overlay_track_line, currentTrack.title, currentTrack.artist));
             }
             if (songChatManager != null) {
                 songChatManager.setAppLanguage(LocaleHelper.getLanguage(this));
@@ -1099,29 +1007,15 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
     }
 
-    private void initAiChatView() {
-        android.content.Context themedContext = new ContextThemeWrapper(this, R.style.Theme_LyricSync);
-        aiChatContainer = new FrameLayout(themedContext) {
-            @Override
-            public boolean dispatchKeyEvent(KeyEvent event) {
-                if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-                    if (event.getAction() == KeyEvent.ACTION_UP) {
-                        minimizeAiChatToBubble();
-                        return true;
-                    }
-                    return true;
-                }
-                return super.dispatchKeyEvent(event);
-            }
-        };
-
-        aiChatView = LayoutInflater.from(themedContext).inflate(R.layout.overlay_ai_chat, aiChatContainer, false);
-        aiChatContainer.addView(aiChatView);
+    private View initAiChatView(FrameLayout container) {
+        View aiChatView = LayoutInflater.from(container.getContext())
+                .inflate(R.layout.overlay_ai_chat, container, false);
+        container.addView(aiChatView);
 
         aiChatTitle = aiChatView.findViewById(R.id.ai_chat_title);
         aiChatArtist = aiChatView.findViewById(R.id.ai_chat_artist);
-        aiMinimizeButton = aiChatView.findViewById(R.id.ai_minimize_button);
-        aiCloseButton = aiChatView.findViewById(R.id.ai_close_button);
+        ImageView aiMinimizeButton = aiChatView.findViewById(R.id.ai_minimize_button);
+        ImageView aiCloseButton = aiChatView.findViewById(R.id.ai_close_button);
         aiWebSearchChip = aiChatView.findViewById(R.id.ai_web_search_chip);
         aiChatEmptyState = aiChatView.findViewById(R.id.ai_chat_empty_state);
         aiPromptTemplatesContainer = aiChatView.findViewById(R.id.ai_prompt_templates_container);
@@ -1139,13 +1033,13 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         if (aiMinimizeButton != null) {
             aiMinimizeButton.setOnClickListener(v -> {
                 Haptics.tick(v);
-                minimizeAiChatToBubble();
+                chatWindows.minimizeToBubble();
             });
         }
         if (aiCloseButton != null) {
             aiCloseButton.setOnClickListener(v -> {
                 Haptics.tick(v);
-                dismissAiChatOverlay();
+                chatWindows.dismiss();
             });
         }
         View aiBtnNewChat = aiChatView.findViewById(R.id.ai_btn_new_chat);
@@ -1166,7 +1060,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             aiWebSearchChip.setOnClickListener(v -> {
                 Haptics.tick(v);
                 aiWebSearchEnabled = !aiWebSearchEnabled;
-                aiWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : 0.5f);
+                aiWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : config.chatWebSearchOffAlpha);
                 Toast.makeText(this,
                         getString(aiWebSearchEnabled ? R.string.ai_web_search_active : R.string.ai_web_search_inactive),
                         Toast.LENGTH_SHORT).show();
@@ -1189,201 +1083,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 return false;
             });
         }
-        setupAiChatDragging();
-    }
-
-    private void setupAiChatDragging() {
-        if (aiChatView == null) return;
-        View header = aiChatView.findViewById(R.id.ai_chat_header);
-        if (header == null) return;
-
-        final int[] touchX = new int[1];
-        final int[] touchY = new int[1];
-        final int[] paramX = new int[1];
-        final int[] paramY = new int[1];
-        final boolean[] isDragging = new boolean[1];
-        final int touchSlop = dpToPx(6);
-
-        header.setOnTouchListener((v, event) -> {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    touchX[0] = (int) event.getRawX();
-                    touchY[0] = (int) event.getRawY();
-                    paramX[0] = aiChatParams != null ? aiChatParams.x : 0;
-                    paramY[0] = aiChatParams != null ? aiChatParams.y : 0;
-                    isDragging[0] = false;
-                    return true;
-
-                case MotionEvent.ACTION_MOVE:
-                    float dx = event.getRawX() - touchX[0];
-                    float dy = event.getRawY() - touchY[0];
-                    if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
-                        isDragging[0] = true;
-                    }
-                    if (isDragging[0] && aiChatParams != null && windowManager != null) {
-                        DisplayMetrics dm = getResources().getDisplayMetrics();
-                        int maxX = Math.max(0, (dm.widthPixels - aiChatParams.width) / 2);
-                        int maxY = Math.max(0, (dm.heightPixels - aiChatParams.height) / 2);
-                        int targetX = paramX[0] + (int) dx;
-                        int targetY = paramY[0] + (int) dy;
-                        aiChatParams.x = Math.max(-maxX, Math.min(maxX, targetX));
-                        aiChatParams.y = Math.max(-maxY, Math.min(maxY, targetY));
-                        try {
-                            windowManager.updateViewLayout(aiChatContainer, aiChatParams);
-                        } catch (Exception e) {
-                            AppLog.w(TAG, "AI chat drag updateViewLayout failed: " + e.getMessage());
-                        }
-                        return true;
-                    }
-                    return true;
-
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (isDragging[0]) {
-                        Haptics.tick(v);
-                    }
-                    return isDragging[0];
-            }
-            return false;
-        });
-    }
-
-    private void minimizeAiChatToBubble() {
-        if (isDestroyed || windowManager == null) return;
-
-        if (isAiChatAttached && aiChatContainer != null) {
-            try {
-                windowManager.removeView(aiChatContainer);
-            } catch (Exception e) {
-                AppLog.w(TAG, "Error removing aiChatContainer: " + e.getMessage());
-            }
-            isAiChatAttached = false;
-        }
-
-        if (isAiBubbleAttached) {
-            return;
-        }
-
-        if (aiBubbleView == null) {
-            initAiBubbleView();
-        }
-
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int bubbleSize = dpToPx(50);
-
-        aiBubbleParams = new WindowManager.LayoutParams(
-                bubbleSize,
-                bubbleSize,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                PixelFormat.TRANSLUCENT
-        );
-        aiBubbleParams.gravity = Gravity.TOP | Gravity.START;
-        aiBubbleParams.x = sharedPrefs.getInt("ai_bubble_x", metrics.widthPixels - bubbleSize - dpToPx(16));
-        aiBubbleParams.y = sharedPrefs.getInt("ai_bubble_y", metrics.heightPixels / 2);
-
-        try {
-            windowManager.addView(aiBubbleView, aiBubbleParams);
-            isAiBubbleAttached = true;
-            Anim.bubbleIn(aiBubbleView);
-        } catch (Exception e) {
-            AppLog.e(TAG, "Failed to add bubble view", e);
-            isAiBubbleAttached = false;
-        }
-    }
-
-    private void initAiBubbleView() {
-        android.content.Context themedContext = new ContextThemeWrapper(this, R.style.Theme_LyricSync);
-        aiBubbleView = LayoutInflater.from(themedContext).inflate(R.layout.overlay_ai_bubble, null);
-
-        final int[] touchX = new int[1];
-        final int[] touchY = new int[1];
-        final int[] paramX = new int[1];
-        final int[] paramY = new int[1];
-        final boolean[] isDragging = new boolean[1];
-        final int touchSlop = dpToPx(6);
-
-        aiBubbleView.setOnTouchListener((v, event) -> {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    touchX[0] = (int) event.getRawX();
-                    touchY[0] = (int) event.getRawY();
-                    paramX[0] = aiBubbleParams != null ? aiBubbleParams.x : 0;
-                    paramY[0] = aiBubbleParams != null ? aiBubbleParams.y : 0;
-                    isDragging[0] = false;
-                    return true;
-
-                case MotionEvent.ACTION_MOVE:
-                    float dx = event.getRawX() - touchX[0];
-                    float dy = event.getRawY() - touchY[0];
-                    if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
-                        isDragging[0] = true;
-                    }
-                    if (isDragging[0] && aiBubbleParams != null && windowManager != null) {
-                        DisplayMetrics dm = getResources().getDisplayMetrics();
-                        int bubbleSize = dpToPx(50);
-                        int maxX = Math.max(0, dm.widthPixels - bubbleSize);
-                        int maxY = Math.max(0, dm.heightPixels - bubbleSize);
-
-                        aiBubbleParams.x = Math.max(0, Math.min(maxX, paramX[0] + (int) dx));
-                        aiBubbleParams.y = Math.max(0, Math.min(maxY, paramY[0] + (int) dy));
-                        try {
-                            windowManager.updateViewLayout(aiBubbleView, aiBubbleParams);
-                        } catch (Exception e) {
-                            AppLog.w(TAG, "Bubble drag updateViewLayout failed: " + e.getMessage());
-                        }
-                        return true;
-                    }
-                    return true;
-
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (isDragging[0]) {
-                        if (aiBubbleParams != null) {
-                            DisplayMetrics dm = getResources().getDisplayMetrics();
-                            int bubbleSize = dpToPx(50);
-                            int middleX = dm.widthPixels / 2;
-                            int targetX = (aiBubbleParams.x + bubbleSize / 2 < middleX)
-                                    ? dpToPx(8) : (dm.widthPixels - bubbleSize - dpToPx(8));
-                            aiBubbleParams.x = targetX;
-                            try {
-                                windowManager.updateViewLayout(aiBubbleView, aiBubbleParams);
-                            } catch (Exception ignored) {}
-
-                            sharedPrefs.edit()
-                                    .putInt("ai_bubble_x", aiBubbleParams.x)
-                                    .putInt("ai_bubble_y", aiBubbleParams.y)
-                                    .apply();
-                        }
-                        Haptics.tick(v);
-                    } else {
-                        Haptics.confirm(v);
-                        showAiChatOverlay();
-                    }
-                    return true;
-            }
-            return false;
-        });
-    }
-
-    private void dismissAiChatOverlay() {
-        if (isAiChatAttached && aiChatContainer != null && windowManager != null) {
-            try {
-                windowManager.removeView(aiChatContainer);
-            } catch (Exception e) {
-                AppLog.w(TAG, "Error removing aiChatContainer: " + e.getMessage());
-            }
-            isAiChatAttached = false;
-        }
-        if (isAiBubbleAttached && aiBubbleView != null && windowManager != null) {
-            try {
-                windowManager.removeView(aiBubbleView);
-            } catch (Exception e) {
-                AppLog.w(TAG, "Error removing aiBubbleView: " + e.getMessage());
-            }
-            isAiBubbleAttached = false;
-        }
+        return aiChatView;
     }
 
     private void fetchQuotaIfAuthenticated() {
@@ -1394,7 +1094,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 handler.post(() -> {
                     if (aiQuotaBadge != null && summary != null) {
                         int pct = Math.round(summary.geminiWeeklyFraction * 100f);
-                        aiQuotaBadge.setText("AI Quota: " + pct + "%");
+                        aiQuotaBadge.setText(getString(R.string.overlay_ai_quota, pct));
                         aiQuotaBadge.setVisibility(View.VISIBLE);
                     }
                 });
@@ -1417,10 +1117,10 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         aiWebSourcesScroll.setVisibility(View.VISIBLE);
 
         TextView label = new TextView(this);
-        label.setText(getString(R.string.ai_web_sources_label) + ": ");
-        label.setTextColor(getResources().getColor(R.color.text_dim));
-        label.setTextSize(10f);
-        label.setPadding(0, 0, dpToPx(4), 0);
+        label.setText(getString(R.string.overlay_web_sources_prefix, getString(R.string.ai_web_sources_label)));
+        label.setTextColor(ContextCompat.getColor(this, R.color.text_dim));
+        label.setTextSize(config.chatChipTextSp);
+        label.setPadding(0, 0, dpToPx(config.chatWebLabelGapDp), 0);
         aiWebSourcesContainer.addView(label);
 
         for (String source : sources) {
@@ -1441,13 +1141,14 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
             TextView chip = new TextView(this);
             chip.setText(domain);
-            chip.setTextColor(getResources().getColor(R.color.accent));
-            chip.setTextSize(10f);
+            chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
+            chip.setTextSize(config.chatChipTextSp);
             chip.setBackgroundResource(R.drawable.bg_tip_box);
-            chip.setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3));
+            chip.setPadding(dpToPx(config.chatWebChipPadHorizontalDp), dpToPx(config.chatWebChipPadVerticalDp),
+                    dpToPx(config.chatWebChipPadHorizontalDp), dpToPx(config.chatWebChipPadVerticalDp));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMarginEnd(dpToPx(6));
+            lp.setMarginEnd(dpToPx(config.chatWebChipGapDp));
             chip.setLayoutParams(lp);
             chip.setOnClickListener(v -> {
                 Haptics.tick(v);
@@ -1517,7 +1218,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             if (line != null && !line.isInterlude && line.text != null) {
                 sb.append(line.text).append(" ");
                 count++;
-                if (count >= 25) break;
+                if (count >= config.scriptSampleLines) break;
             }
         }
         return ScriptDetector.isNonLatin(sb.toString());
@@ -1560,8 +1261,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 }
             }
             sharedPrefs.edit()
-                    .putBoolean("pref_romaji_enabled", true)
-                    .putBoolean("pref_original_script_enabled", showOriginalScript)
+                    .putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true)
+                    .putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, showOriginalScript)
                     .apply();
             if (overlayRomajiSwitch != null) {
                 isProgrammaticRomajiUpdate = true;
@@ -1596,8 +1297,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                         }
                         currentLyrics = enrichedData;
                         sharedPrefs.edit()
-                                .putBoolean("pref_romaji_enabled", true)
-                                .putBoolean("pref_original_script_enabled", showOriginalScript)
+                                .putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true)
+                                .putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, showOriginalScript)
                                 .apply();
                         if (includeTranslation) {
                             translationEnabled = true;
@@ -1647,7 +1348,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         if (!isNonLatin) return;
 
         boolean enabled = highlighter != null ? highlighter.isTransliterationEnabled()
-                : sharedPrefs.getBoolean("pref_romaji_enabled", true);
+                : romajiPref();
         isProgrammaticRomajiUpdate = true;
         overlayRomajiSwitch.setChecked(enabled);
         isProgrammaticRomajiUpdate = false;
@@ -1745,8 +1446,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     }
 
     public void setSyncOffset(int offsetMs, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        int clamped = clamp(offsetMs, -SYNC_LIMIT_MS, SYNC_LIMIT_MS);
-        sharedPrefs.edit().putLong("sync_offset_ms", clamped).apply();
+        int clamped = OverlayGeometry.syncOffset(config, offsetMs);
+        sharedPrefs.edit().putLong(OverlayPrefKeys.SYNC_OFFSET_MS, clamped).apply();
         if (sessionTracker != null) {
             sessionTracker.setSyncOffsetMs(clamped);
         }
@@ -1779,7 +1480,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
         if (romanji != null && !romanji.trim().isEmpty()) {
             line.romanji = romanji.trim();
-            sharedPrefs.edit().putBoolean("pref_romaji_enabled", true).apply();
+            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true).apply();
             if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(true);
             if (highlighter != null) highlighter.setTransliterationEnabled(true);
         }
@@ -1823,7 +1524,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             if (highlighter != null) highlighter.setTranslationEnabled(true);
         }
         if (hasAnyRomaji) {
-            sharedPrefs.edit().putBoolean("pref_romaji_enabled", true).apply();
+            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true).apply();
             if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(true);
             if (highlighter != null) highlighter.setTransliterationEnabled(true);
         }
@@ -1841,12 +1542,12 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             if (highlighter != null) highlighter.setTranslationEnabled(enabled);
             if (callback != null) callback.onSuccess("Terjemahan " + (enabled ? "ditampilkan" : "disembunyikan"));
         } else if ("romaji".equalsIgnoreCase(feature)) {
-            sharedPrefs.edit().putBoolean("pref_romaji_enabled", enabled).apply();
+            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, enabled).apply();
             if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(enabled);
             if (highlighter != null) highlighter.setTransliterationEnabled(enabled);
             if (callback != null) callback.onSuccess("Transliterasi Latin " + (enabled ? "ditampilkan" : "disembunyikan"));
         } else if ("original_script".equalsIgnoreCase(feature)) {
-            sharedPrefs.edit().putBoolean("pref_original_script_enabled", enabled).apply();
+            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, enabled).apply();
             if (highlighter != null) highlighter.setOriginalScriptEnabled(enabled);
             if (callback != null) callback.onSuccess("Aksara asli " + (enabled ? "ditampilkan" : "disembunyikan"));
         } else {
@@ -1903,20 +1604,19 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         android.content.SharedPreferences.Editor ed = sharedPrefs.edit();
         boolean changed = false;
         if (fontScale != null && fontScale > 0) {
-            float clampedScale = Math.max(0.5f, Math.min(2.0f, fontScale));
-            ed.putFloat("font_scale", clampedScale);
+            ed.putFloat(OverlayPrefKeys.FONT_SCALE, OverlayGeometry.fontScale(config, fontScale));
             changed = true;
         }
         if (animStyle != null && !animStyle.trim().isEmpty()) {
-            ed.putString("anim_style", animStyle.trim().toLowerCase(java.util.Locale.ROOT));
+            ed.putString(OverlayPrefKeys.LEGACY_ANIM_STYLE, animStyle.trim().toLowerCase(java.util.Locale.ROOT));
             changed = true;
         }
         if (widthPercent != null && widthPercent > 0) {
-            ed.putInt("overlay_width_percent", Math.max(45, Math.min(100, widthPercent)));
+            ed.putInt(OverlayPrefKeys.WIDTH_PERCENT, OverlayGeometry.widthPercent(config, widthPercent));
             changed = true;
         }
         if (heightPercent != null && heightPercent > 0) {
-            ed.putInt("overlay_height_percent", Math.max(20, Math.min(70, heightPercent)));
+            ed.putInt(OverlayPrefKeys.HEIGHT_PERCENT, OverlayGeometry.heightPercent(config, heightPercent));
             changed = true;
         }
         if (changed) {
@@ -1958,7 +1658,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             }
             int insertPos = Math.max(0, Math.min(currentLyrics.lines.size(), lineIndex));
             long start = startMs > 0 ? startMs : (insertPos > 0 ? currentLyrics.lines.get(insertPos - 1).endTime : 0);
-            long end = endMs > start ? endMs : start + 3000;
+            long end = endMs > start ? endMs : start + config.editInsertLineDurationMs;
             LyricsData.LyricsLine newLine = new LyricsData.LyricsLine(start, end, text.trim());
             if (translation != null && !translation.trim().isEmpty()) newLine.translation = translation.trim();
             if (romanji != null && !romanji.trim().isEmpty()) newLine.romanji = romanji.trim();
@@ -1972,11 +1672,11 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             }
             LyricsData.LyricsLine target = currentLyrics.lines.get(lineIndex);
             target.startTime = Math.max(0, target.startTime + shiftMs);
-            target.endTime = Math.max(target.startTime + 500, target.endTime + shiftMs);
+            target.endTime = Math.max(target.startTime + config.editMinLineDurationMs, target.endTime + shiftMs);
             if (target.words != null) {
                 for (LyricsData.Word w : target.words) {
                     w.startTime = Math.max(0, w.startTime + shiftMs);
-                    w.endTime = Math.max(w.startTime + 100, w.endTime + shiftMs);
+                    w.endTime = Math.max(w.startTime + config.editMinWordDurationMs, w.endTime + shiftMs);
                 }
             }
             renderLyricsEdit();
@@ -2017,7 +1717,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         if (activeAiBubbleAnimator != null) {
             activeAiBubbleAnimator.stopAll();
         }
-        activeAiBubbleAnimator = new AiStreamingAnimator(aiBubble, getResources().getColor(R.color.accent));
+        activeAiBubbleAnimator = new AiStreamingAnimator(aiBubble, ContextCompat.getColor(this, R.color.accent));
         activeAiBubbleAnimator.startThinking(getString(R.string.ai_thinking));
 
         if (activeChatCall != null) {
@@ -2044,13 +1744,13 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 if (highlighter != null) {
                     highlighter.setOriginalScriptEnabled(true);
                 }
-                sharedPrefs.edit().putBoolean("pref_original_script_enabled", true).apply();
+                sharedPrefs.edit().putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, true).apply();
                 showInlineToolStatus("toggle_display", "original_script (on)");
                 completeInlineToolStatus("toggle_display", 1);
             }
         }
 
-        String currentModel = sharedPrefs.getString("pref_ai_model", SongChatManager.DEFAULT_MODEL);
+        String currentModel = sharedPrefs.getString(OverlayPrefKeys.AI_MODEL, SongChatManager.DEFAULT_MODEL);
         songChatManager.setModelId(currentModel);
 
         final StringBuilder responseAcc = new StringBuilder();
@@ -2069,7 +1769,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                                 if (aiToolStatusText != null) aiToolStatusText.setText(info.runningText);
                                 aiToolStatusContainer.setAlpha(0f);
                                 aiToolStatusContainer.setVisibility(View.VISIBLE);
-                                aiToolStatusContainer.animate().alpha(1f).setDuration(220).start();
+                                aiToolStatusContainer.animate().alpha(1f).setDuration(config.toolStatusFadeMs).start();
                             }
                         });
                     }
@@ -2151,7 +1851,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             pendingToolStatusHide = null;
             hideToolStatusNow();
         };
-        handler.postDelayed(pendingToolStatusHide, 1200);
+        handler.postDelayed(pendingToolStatusHide, config.toolStatusHideDelayMs);
     }
 
     void hideToolStatusNow() {
@@ -2167,7 +1867,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         int added = 0;
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String source : webSources) {
-            if (added >= 5) break;
+            if (added >= config.chatSourceChipMax) break;
             CleanMarkdownFormatter.SourceChipData chipData = CleanMarkdownFormatter.resolveSourceChip(source, this);
             if (chipData == null) continue;
             String key = chipData.displayLabel.toLowerCase(java.util.Locale.ROOT);
@@ -2178,16 +1878,18 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
             TextView chip = new TextView(this);
             chip.setText(chipData.displayLabel);
-            chip.setTextColor(getResources().getColor(R.color.accent));
-            chip.setTextSize(10f);
+            chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
+            chip.setTextSize(config.chatChipTextSp);
             chip.setBackgroundResource(R.drawable.bg_prompt_card);
-            chip.setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4));
+            chip.setPadding(dpToPx(config.chatSourceChipPadHorizontalDp), dpToPx(config.chatSourceChipPadVerticalDp),
+                    dpToPx(config.chatSourceChipPadHorizontalDp), dpToPx(config.chatSourceChipPadVerticalDp));
             chip.setMaxLines(1);
             chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             lp.gravity = Gravity.START;
-            lp.setMargins(0, dpToPx(2), dpToPx(32), dpToPx(2));
+            lp.setMargins(0, dpToPx(config.chatSourceChipGapDp), dpToPx(config.chatBubbleInsetDp),
+                    dpToPx(config.chatSourceChipGapDp));
             chip.setLayoutParams(lp);
             chip.setOnClickListener(v -> {
                 Haptics.tick(v);
@@ -2211,24 +1913,19 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         CleanMarkdownFormatter.ToolDisplayInfo info =
                 CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
 
+        int accent = ContextCompat.getColor(this, R.color.accent);
         TextView card = new TextView(this);
         card.setText(info.runningText);
-        card.setTextSize(11f);
-        card.setTextColor(getResources().getColor(R.color.accent));
+        card.setTextSize(config.chatToolTextSp);
+        card.setTextColor(accent);
         card.setBackgroundResource(R.drawable.bg_tool_status_pill);
-        card.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
-        android.graphics.drawable.Drawable runningIcon = androidx.core.content.ContextCompat.getDrawable(this, info.iconRes != 0 ? info.iconRes : R.drawable.ic_bolt);
-        if (runningIcon != null) {
-            runningIcon = runningIcon.mutate();
-            runningIcon.setBounds(0, 0, dpToPx(13), dpToPx(13));
-            runningIcon.setTint(getResources().getColor(R.color.accent));
-            card.setCompoundDrawables(runningIcon, null, null, null);
-            card.setCompoundDrawablePadding(dpToPx(6));
-        }
+        card.setPadding(dpToPx(config.chatToolPadHorizontalDp), dpToPx(config.chatToolPadVerticalDp),
+                dpToPx(config.chatToolPadHorizontalDp), dpToPx(config.chatToolPadVerticalDp));
+        setToolCardIcon(card, info.iconRes != 0 ? info.iconRes : R.drawable.ic_bolt, accent);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.START;
-        lp.setMargins(0, dpToPx(3), dpToPx(32), dpToPx(3));
+        lp.setMargins(0, dpToPx(config.chatToolGapDp), dpToPx(config.chatBubbleInsetDp), dpToPx(config.chatToolGapDp));
         card.setLayoutParams(lp);
 
         int count = aiChatMessages.getChildCount();
@@ -2243,33 +1940,39 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         if (activeOverlayToolCard != null) {
             CleanMarkdownFormatter.ToolDisplayInfo info =
                     CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
-            android.graphics.drawable.Drawable checkIcon = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_check);
-            if (checkIcon != null) {
-                checkIcon = checkIcon.mutate();
-                checkIcon.setBounds(0, 0, dpToPx(13), dpToPx(13));
-                checkIcon.setTint(0xFF81C784);
-                activeOverlayToolCard.setCompoundDrawables(checkIcon, null, null, null);
-                activeOverlayToolCard.setCompoundDrawablePadding(dpToPx(6));
-            }
+            setToolCardIcon(activeOverlayToolCard, R.drawable.ic_check, config.chatToolDoneColor);
             activeOverlayToolCard.setText(info.doneText);
-            activeOverlayToolCard.setTextColor(0xFF81C784);
+            activeOverlayToolCard.setTextColor(config.chatToolDoneColor);
             activeOverlayToolCard = null;
         }
+    }
+
+    private void setToolCardIcon(TextView card, int iconRes, int tint) {
+        android.graphics.drawable.Drawable icon = ContextCompat.getDrawable(this, iconRes);
+        if (icon == null) return;
+        icon = icon.mutate();
+        int size = dpToPx(config.chatToolIconDp);
+        icon.setBounds(0, 0, size, size);
+        icon.setTint(tint);
+        card.setCompoundDrawables(icon, null, null, null);
+        card.setCompoundDrawablePadding(dpToPx(config.chatToolIconGapDp));
     }
 
     void addUserChatBubble(String text) {
         if (aiChatMessages == null) return;
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, text, false);
-        bubble.setTextColor(getResources().getColor(R.color.text_primary));
-        bubble.setTextSize(12f);
+        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        bubble.setTextSize(config.chatTextSp);
         bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
-        bubble.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+        bubble.setPadding(dpToPx(config.chatUserPadHorizontalDp), dpToPx(config.chatUserPadVerticalDp),
+                dpToPx(config.chatUserPadHorizontalDp), dpToPx(config.chatUserPadVerticalDp));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.END;
-        lp.setMargins(dpToPx(32), dpToPx(4), 0, dpToPx(4));
+        lp.setMargins(dpToPx(config.chatBubbleInsetDp), dpToPx(config.chatMessageGapDp), 0,
+                dpToPx(config.chatMessageGapDp));
         bubble.setLayoutParams(lp);
 
         aiChatMessages.addView(bubble);
@@ -2280,15 +1983,15 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         if (aiChatMessages == null) return null;
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, initialText, false);
-        bubble.setTextColor(getResources().getColor(R.color.text_secondary));
-        bubble.setTextSize(12f);
-        bubble.setLineSpacing(0f, 1.35f);
-        bubble.setPadding(dpToPx(2), 0, dpToPx(2), 0);
+        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        bubble.setTextSize(config.chatTextSp);
+        bubble.setLineSpacing(0f, config.chatAiLineSpacing);
+        bubble.setPadding(dpToPx(config.chatAiPadHorizontalDp), 0, dpToPx(config.chatAiPadHorizontalDp), 0);
         bubble.setMovementMethod(io.noties.markwon.ext.tables.TableAwareMovementMethod.create());
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dpToPx(2), 0, dpToPx(12));
+        lp.setMargins(0, dpToPx(config.chatAiTopGapDp), 0, dpToPx(config.chatAiBottomGapDp));
         bubble.setLayoutParams(lp);
 
         aiChatMessages.addView(bubble);
@@ -2302,6 +2005,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
     }
 
+    @SuppressLint("InflateParams") // AlertDialog supplies the parent via setView
     public void showEditSyllablesDialog(int lineIndex, LyricsData.LyricsLine line) {
         if (line == null) return;
 
@@ -2476,99 +2180,13 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     }
 
     private void updateSyncOffsetLabel(int ms) {
-        if (ms == 0) {
-            overlaySyncOffsetLabel.setText("0 ms");
-            return;
-        }
-        overlaySyncOffsetLabel.setText((ms > 0 ? "+" : "") + ms + " ms");
+        overlaySyncOffsetLabel.setText(ms > 0
+                ? getString(R.string.overlay_sync_offset_positive, ms)
+                : getString(R.string.overlay_sync_offset_value, ms));
     }
 
-    // ── Dragging ───────────────────────────────────────────────────────────
-
-    private void setupDragging(WindowManager.LayoutParams params) {
-        final int[] touchX = new int[1];
-        final int[] touchY = new int[1];
-        final int[] paramX = new int[1];
-        final int[] paramY = new int[1];
-        final boolean[] isDragging = new boolean[1];
-        final boolean[] wasClamped = new boolean[1];
-        final int touchSlop = dpToPx(10);
-
-        overlayView.setOnTouchListener((v, event) -> {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    touchX[0] = (int) event.getRawX();
-                    touchY[0] = (int) event.getRawY();
-                    paramX[0] = params.x;
-                    paramY[0] = params.y;
-                    isDragging[0] = false;
-                    wasClamped[0] = false;
-                    return false;
-                case MotionEvent.ACTION_MOVE:
-                    float dx = event.getRawX() - touchX[0];
-                    float dy = event.getRawY() - touchY[0];
-                    if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
-                        isDragging[0] = true;
-                    }
-                    if (isDragging[0]) {
-                        params.x = paramX[0] + (int) dx;
-                        params.y = paramY[0] + (int) dy;
-                        // Without this the overlay can be flung off-screen and never recovered.
-                        boolean clamped = clampOverlayPosition(params);
-                        if (clamped && !wasClamped[0]) {
-                            Haptics.snap(v);
-                        }
-                        wasClamped[0] = clamped;
-                        try {
-                            windowManager.updateViewLayout(overlayView, params);
-                        } catch (Exception e) {
-                            // View may have been detached mid-drag during teardown.
-                            AppLog.w(TAG, "Drag updateViewLayout failed: " + e.getMessage());
-                        }
-                        return true;
-                    }
-                    return false;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (isDragging[0]) {
-                        persistOverlayPosition(params);
-                        // Let the bubble "land" after a drag instead of stopping dead.
-                        Anim.bubbleSettle(overlayView);
-                    }
-                    return isDragging[0];
-            }
-            return false;
-        });
-    }
-
-    /** Keeps the whole overlay on screen. Returns true if a bound had to be applied. */
-    private boolean clampOverlayPosition(WindowManager.LayoutParams params) {
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int viewWidth = overlayView != null && overlayView.getWidth() > 0
-                ? overlayView.getWidth() : params.width;
-        int viewHeight = overlayView != null && overlayView.getHeight() > 0
-                ? overlayView.getHeight() : dpToPx(200);
-
-        // Gravity is TOP|CENTER_HORIZONTAL, so x is an offset from the horizontal centre.
-        int maxX = Math.max(0, (metrics.widthPixels - viewWidth) / 2);
-        int maxY = Math.max(0, metrics.heightPixels - viewHeight);
-
-        int newX = Math.max(-maxX, Math.min(maxX, params.x));
-        int newY = Math.max(0, Math.min(maxY, params.y));
-        boolean clamped = newX != params.x || newY != params.y;
-        params.x = newX;
-        params.y = newY;
-        return clamped;
-    }
-
-    private void persistOverlayPosition(WindowManager.LayoutParams params) {
-        sharedPrefs.edit()
-                .putInt("overlay_x", params.x)
-                .putInt("overlay_y", params.y)
-                .apply();
-    }
-
-    // ── Resizing ───────────────────────────────────────────────────────────
+    // ── Resize handle ──────────────────────────────────────────────────────
+    // Drag / resize gestures live in OverlayWindowController.
 
     private void updateResizeHandleVisibility() {
         boolean settingsOpen = overlaySettingsPanel != null && overlaySettingsPanel.getVisibility() == View.VISIBLE;
@@ -2581,105 +2199,13 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         overlayResizeContainer.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
     }
 
-    private void setupResizeHandling() {
-        if (overlayResizeHandle == null) return;
-
-        final DisplayMetrics metrics = getResources().getDisplayMetrics();
-        final float[] initialRawX = new float[1];
-        final float[] initialRawY = new float[1];
-        final int[] initialWidth = new int[1];
-        final int[] initialHeight = new int[1];
-        final int[] initialParamX = new int[1];
-        final boolean[] isResizing = new boolean[1];
-        final int touchSlop = dpToPx(6);
-
-        overlayResizeHandle.setOnTouchListener((v, event) -> {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    initialRawX[0] = event.getRawX();
-                    initialRawY[0] = event.getRawY();
-                    initialWidth[0] = overlayParams != null ? overlayParams.width : overlayView.getWidth();
-                    initialHeight[0] = overlayBody != null && overlayBody.getHeight() > 0
-                            ? overlayBody.getHeight() : lyricsHeightPx;
-                    initialParamX[0] = overlayParams != null ? overlayParams.x : 0;
-                    isResizing[0] = false;
-                    Haptics.tick(v);
-                    return true;
-
-                case MotionEvent.ACTION_MOVE:
-                    float dx = event.getRawX() - initialRawX[0];
-                    float dy = event.getRawY() - initialRawY[0];
-                    if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
-                        isResizing[0] = true;
-                    }
-                    if (isResizing[0] && overlayParams != null && windowManager != null) {
-                        int minWidth = dpToPx(220);
-                        int maxWidth = Math.max(minWidth, (int) (metrics.widthPixels * 0.96f));
-                        int targetWidth = (int) (initialWidth[0] + dx);
-                        int clampedWidth = Math.max(minWidth, Math.min(maxWidth, targetWidth));
-
-                        int widthDelta = clampedWidth - initialWidth[0];
-                        overlayParams.width = clampedWidth;
-                        overlayParams.x = initialParamX[0] + (widthDelta / 2);
-                        clampOverlayPosition(overlayParams);
-
-                        if (overlayBody != null && lyricsVisible) {
-                            int minHeight = dpToPx(140);
-                            int maxHeight = Math.max(minHeight, (int) (metrics.heightPixels * 0.70f));
-                            int targetHeight = (int) (initialHeight[0] + dy);
-                            int clampedHeight = Math.max(minHeight, Math.min(maxHeight, targetHeight));
-
-                            ViewGroup.LayoutParams bodyParams = overlayBody.getLayoutParams();
-                            bodyParams.height = clampedHeight;
-                            overlayBody.setLayoutParams(bodyParams);
-                            lyricsHeightPx = clampedHeight;
-                        }
-
-                        try {
-                            windowManager.updateViewLayout(overlayView, overlayParams);
-                        } catch (Exception e) {
-                            AppLog.w(TAG, "Resize updateViewLayout failed: " + e.getMessage());
-                        }
-                        return true;
-                    }
-                    return false;
-
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (isResizing[0] && overlayParams != null) {
-                        int widthPct = Math.round((float) overlayParams.width * 100f / metrics.widthPixels);
-                        int heightPct = Math.round((float) lyricsHeightPx * 100f / metrics.heightPixels);
-                        widthPct = clamp(widthPct, 45, 96);
-                        heightPct = clamp(heightPct, 20, 70);
-
-                        overlayWidthPercent = widthPct;
-                        sharedPrefs.edit()
-                                .putInt("overlay_width_percent", widthPct)
-                                .putInt("overlay_height_percent", heightPct)
-                                .apply();
-
-                        persistOverlayPosition(overlayParams);
-                        applyResponsiveHeaderSizing();
-                        applyResponsiveLyricsSpacing();
-                        if (springScroller != null) {
-                            springScroller.setScrollPositionRatio(calculateScrollPositionRatio());
-                        }
-                        applyRuntimeSettings(true);
-                        Haptics.snap(v);
-                    }
-                    return isResizing[0];
-            }
-            return false;
-        });
-    }
-
     // ── Tracking ───────────────────────────────────────────────────────────
 
     private void startTracker() {
         lyricsManager = new LyricsProviderManager(this);
         sessionTracker = new MediaSessionTracker(this);
         sessionTracker.setSyncOffsetMs(
-                clamp((int) sharedPrefs.getLong("sync_offset_ms", 0), -SYNC_LIMIT_MS, SYNC_LIMIT_MS));
+                OverlayGeometry.syncOffset(config, sharedPrefs.getLong(OverlayPrefKeys.SYNC_OFFSET_MS, 0)));
 
         sessionTracker.start(
                 new MediaSessionTracker.TrackCallback() {
@@ -2722,11 +2248,10 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                     }
                 },
                 (state, position) -> {
-                    // Position/state come from the tracker; we only need this signal to
-                    // wake the render loop if it had gone idle. Values are re-read per frame.
-                    if (renderRunning && !renderActive) {
-                        startFrameCallback();
-                    }
+                    // Position/state come from the tracker; this signal only wakes the
+                    // render loop if it had gone idle. Values are re-read per frame.
+                    if (isDestroyed) return;
+                    renderLoop.wake();
                     updatePlayPauseIcon();
                     publishNowPlaying();
                 }
@@ -2744,55 +2269,39 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 track.title, track.artist, lyricsStatusText, track.albumArtBitmap, playing, true));
     }
 
-    private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
+    /** One render-loop frame: highlight + scroll + interlude dots. */
+    private final OverlayRenderLoop.Frame renderFrame = new OverlayRenderLoop.Frame() {
         @Override
-        public void doFrame(long frameTimeNanos) {
-            if (!renderActive) return;
+        public boolean isPlaying() {
+            return sessionTracker != null && sessionTracker.isPlaying()
+                    && currentLyrics != null && !lineViews.isEmpty();
+        }
 
-            boolean playing = sessionTracker != null
-                    && sessionTracker.isPlaying()
-                    && currentLyrics != null
-                    && !lineViews.isEmpty();
-            boolean settled = springScroller == null || springScroller.isSettled();
+        @Override
+        public boolean isSettled() {
+            return springScroller == null || springScroller.isSettled();
+        }
 
-            if (!playing && settled) {
-                renderActive = false;
-                lastFrameNanos = 0;
-                return;
-            }
-
-            double dt;
-            if (lastFrameNanos > 0) {
-                dt = Math.min((frameTimeNanos - lastFrameNanos) / 1_000_000_000.0, 0.1);
-            } else {
-                dt = 1.0 / 60.0;
-            }
-            lastFrameNanos = frameTimeNanos;
-
+        @Override
+        public void step(double dtSec) {
+            if (isDestroyed) return;
             long position = sessionTracker != null ? sessionTracker.getCurrentPosition() : 0;
-            updateHighlight(position, dt);
-            highlighter.animateInterlude(position, dt);
-
-            choreographer.postFrameCallback(this);
+            updateHighlight(position, dtSec);
+            if (highlighter != null) highlighter.animateInterlude(position, dtSec);
         }
     };
 
     private void startRenderLoop() {
-        renderRunning = true;
-        startFrameCallback();
+        if (renderLoop != null) renderLoop.start();
     }
 
-    private void startFrameCallback() {
-        if (renderActive) return;
-        renderActive = true;
-        lastFrameNanos = 0;
-        choreographer.postFrameCallback(frameCallback);
+    /** Force frames even while paused (seek, edits) so the highlight follows at once. */
+    private void wakeRenderLoop() {
+        if (renderLoop != null) renderLoop.wake();
     }
 
     private void stopRenderLoop() {
-        renderRunning = false;
-        renderActive = false;
-        choreographer.removeFrameCallback(frameCallback);
+        if (renderLoop != null) renderLoop.stop();
     }
 
     private void updateTrackInfo(TrackInfo track) {
@@ -2805,13 +2314,13 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             pendingArtUri = null;
             Glide.with(this)
                     .load(track.albumArtBitmap)
-                    .transition(DrawableTransitionOptions.withCrossFade(220))
-                    .transform(new RoundedCorners(dpToPx(10)))
+                    .transition(DrawableTransitionOptions.withCrossFade(config.coverCrossfadeMs))
+                    .transform(new RoundedCorners(dpToPx(config.coverCornerDp)))
                     .into(overlayCover);
             if (track.albumArtBitmap != lastPaletteArt) {
                 lastPaletteArt = track.albumArtBitmap;
                 lastPaletteArtUri = null;
-                applyAlbumColors(track.albumArtBitmap);
+                theme.fromArt(track.albumArtBitmap);
             }
         } else if (track.albumArtUri != null && !track.albumArtUri.trim().isEmpty()) {
             // Decode through a target (not .into(ImageView)) so the same bitmap can
@@ -2828,11 +2337,11 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                             if (isDestroyed || !artUri.equals(pendingArtUri)) return;
                             overlayCover.setAlpha(0f);
                             overlayCover.setImageBitmap(resource);
-                            overlayCover.animate().alpha(1f).setDuration(220).start();
+                            overlayCover.animate().alpha(1f).setDuration(config.coverCrossfadeMs).start();
                             if (!artUri.equals(lastPaletteArtUri)) {
                                 lastPaletteArtUri = artUri;
                                 lastPaletteArt = null;
-                                applyAlbumColors(resource);
+                                theme.fromArt(resource);
                             }
                         }
 
@@ -2843,7 +2352,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             glideRequestManager
                     .asBitmap()
                     .load(artUri)
-                    .transform(new RoundedCorners(dpToPx(10)))
+                    .transform(new RoundedCorners(dpToPx(config.coverCornerDp)))
                     .into(target);
             coverArtTarget = target;
         } else {
@@ -2926,8 +2435,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
     private void startSkeletonShimmer() {
         if (skeletonAnimator != null) return;
-        skeletonAnimator = ObjectAnimator.ofFloat(overlaySkeleton, View.ALPHA, 0.35f, 0.9f);
-        skeletonAnimator.setDuration(760);
+        skeletonAnimator = ObjectAnimator.ofFloat(overlaySkeleton, View.ALPHA,
+                config.skeletonAlphaLow, config.skeletonAlphaHigh);
+        skeletonAnimator.setDuration(config.skeletonPulseMs);
         skeletonAnimator.setRepeatMode(ValueAnimator.REVERSE);
         skeletonAnimator.setRepeatCount(ValueAnimator.INFINITE);
         skeletonAnimator.setInterpolator(Anim.STANDARD);
@@ -3019,7 +2529,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             aiChatTitle.setText(R.string.ai_insights_title);
         }
         if (aiChatArtist != null && track != null) {
-            aiChatArtist.setText(track.title + " • " + track.artist);
+            aiChatArtist.setText(getString(R.string.overlay_track_line, track.title, track.artist));
         }
         if (aiChatEmptyState != null) {
             aiChatEmptyState.setVisibility(View.VISIBLE);
@@ -3117,10 +2627,11 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
         highlighter.setSyllableMode(lyrics.type == LyricsData.Type.SYLLABLE);
         highlighter.setTranslationEnabled(translationEnabled);
-        boolean romajiPref = sharedPrefs.getBoolean("pref_romaji_enabled", true);
+        boolean romajiPref = romajiPref();
         highlighter.setTransliterationEnabled(romajiPref);
-        boolean origPref = sharedPrefs.getBoolean("pref_original_script_enabled", true);
-        highlighter.setOriginalScriptEnabled(origPref);
+        highlighter.setOriginalScriptEnabled(originalScriptPref());
+        int lineGapPx = OverlayGeometry.lineGapPx(config, overlayFontSizeSp,
+                screen.density(), screen.scaledDensity());
 
         for (int i = 0; i < lyrics.lines.size(); i++) {
             LyricsData.LyricsLine line = lyrics.lines.get(i);
@@ -3130,9 +2641,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            // Line gap scales with the font (min 3dp): at small sizes a hairline
-            // margin plus the active line's out-of-bounds glow read as overlap.
-            lp.bottomMargin = Math.max(dpToPx(3), Math.round(spToPx(overlayFontSizeSp) * 0.30f));
+            // Line gap scales with the font: at small sizes a hairline margin plus
+            // the active line's out-of-bounds glow read as overlap.
+            lp.bottomMargin = lineGapPx;
 
             SyllableHighlighter.LineView lv = highlighter.createLineView(line, lp);
             lineViews.add(lv);
@@ -3284,11 +2795,14 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
         lastActiveLineIndex = index;
         // Force a frame even while paused so the highlight follows the seek immediately.
-        startFrameCallback();
+        wakeRenderLoop();
         if (springScroller != null && lineView != null) {
             springScroller.scrollToView(lineView, true);
         }
     }
+
+    /** Start time of lyric line i; one shared instance so the per-frame pass allocates nothing. */
+    private final java.util.function.IntToLongFunction lineStartMs = i -> currentLyrics.lines.get(i).startTime;
 
     private void updateHighlight(long position, double deltaTime) {
         if (isDestroyed || currentLyrics == null || lineViews.isEmpty()) return;
@@ -3296,20 +2810,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         int activeIndex = findActiveLine(position);
         if (activeIndex < 0) return;
 
-        int n = lineViews.size();
-        boolean seeked = Math.abs(activeIndex - lastActiveLineIndex) > 1;
-        int start = seeked ? 0 : Math.max(0, activeIndex - 2);
-        int end;
-        if (seeked) {
-            end = n;
-        } else {
-            List<LyricsData.LyricsLine> lines = currentLyrics.lines;
-            end = activeIndex;
-            while (end < n && end < lines.size() && lines.get(end).startTime - position < 3000) {
-                end++;
-            }
-            end = Math.min(n, end + 2);
-        }
+        int start = OverlayGeometry.highlightStart(config, activeIndex, lastActiveLineIndex);
+        int end = OverlayGeometry.highlightEnd(config, activeIndex, lastActiveLineIndex, lineViews.size(),
+                currentLyrics.lines.size(), lineStartMs, position);
         if (highlighter != null) {
             highlighter.updateHighlight(position, deltaTime, start, end);
         }
@@ -3365,7 +2868,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         Glide.with(this).clear(overlayCover);
         overlayCover.setImageDrawable(null);
         showIdleState();
-        animateOverlayColors(AlbumPalette.DEFAULT_ACCENT, AlbumPalette.DEFAULT_DEEP);
+        theme.reset();
         NowPlaying.clear();
         updateNotification();
     }
@@ -3443,7 +2946,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         }
         stopRenderLoop();
         stopSkeletonShimmer();
-        if (colorAnimator != null) colorAnimator.cancel();
+        stopToolStatusAnimation();
+        if (bodyAnimator != null) bodyAnimator.cancel();
+        if (theme != null) theme.release();
         handler.removeCallbacksAndMessages(null);
         if (sharedPrefs != null) {
             sharedPrefs.unregisterOnSharedPreferenceChangeListener(settingsListener);
@@ -3452,13 +2957,19 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         if (lyricsManager != null) lyricsManager.shutdown();
         if (springScroller != null) springScroller.destroy();
         NowPlaying.clear();
-        dismissAiChatOverlay();
-        if (overlayView != null && windowManager != null) {
-            try {
-                windowManager.removeView(overlayView);
-            } catch (Exception e) {
-                AppLog.e(TAG, "Error removing overlay", e);
-            }
+        if (chatWindows != null) chatWindows.release();
+        if (overlayView != null) {
+            // Running view animations (bubble pulse, cross-fades) hold the view; stop them.
+            overlayView.animate().cancel();
+            if (overlayCover != null) overlayCover.animate().cancel();
+            if (overlayTitle != null) overlayTitle.animate().cancel();
+            if (overlayArtist != null) overlayArtist.animate().cancel();
+            if (overlayBody != null) overlayBody.animate().cancel();
         }
+        if (window != null) window.detach();
+    }
+
+    private void stopToolStatusAnimation() {
+        if (aiToolStatusContainer != null) aiToolStatusContainer.animate().cancel();
     }
 }
