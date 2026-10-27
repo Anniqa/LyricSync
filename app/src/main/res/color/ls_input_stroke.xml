@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Outlined field stroke. A plain colour for boxStrokeColor makes Material fall back to a
+     42%-black default stroke, invisible on this dark surface, so the default state is explicit. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/ls_primary" android:state_focused="true" />
+    <item android:color="@color/ls_on_surface_variant" android:state_hovered="true" />
+    <item android:color="@color/ls_outline_variant" android:state_enabled="false" />
+    <item android:color="@color/ls_outline" />
+</selector>

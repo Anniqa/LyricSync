@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar protection: window colour, opaque enough that scrolled text never fights the icons. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="270" android:startColor="#FA07080C" android:centerColor="#F207080C" android:endColor="#D907080C" />
+</shape>

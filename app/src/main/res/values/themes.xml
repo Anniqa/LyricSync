@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.LyricSync" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">@color/accent</item>
         <item name="colorPrimaryVariant">@color/accent_dark</item>
@@ -10,15 +10,6 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
-    <!-- Cards -->
-    <style name="Widget.LyricSync.Card" parent="Widget.MaterialComponents.CardView">
-        <item name="cardBackgroundColor">@color/card_bg</item>
-        <item name="cardCornerRadius">@dimen/card_radius</item>
-        <item name="cardElevation">0dp</item>
-        <item name="strokeWidth">1dp</item>
-        <item name="strokeColor">@color/card_stroke</item>
-        <item name="android:layout_marginBottom">@dimen/card_gap</item>
-    </style>
     <!-- Sliders: custom-drawn track + thumb so they match the rest of the UI. -->
     <style name="Widget.LyricSync.SeekBar" parent="Widget.AppCompat.SeekBar">
         <item name="android:progressDrawable">@drawable/seekbar_track</item>
@@ -28,22 +19,272 @@
         <item name="android:paddingEnd">2dp</item>
         <item name="android:layout_height">28dp</item>
     </style>
-    <!-- Text -->
-    <style name="TextAppearance.LyricSync.SectionTitle" parent="TextAppearance.MaterialComponents.Subtitle1">
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">16sp</item>
+    <!-- ══ Main screen (MainActivity only) — Material 3 dark. Theme.LyricSync above stays
+         as-is because the floating overlay wraps it. Spec: LyricSync-docs/design/main-ui-spec.md ══ -->
+    <style name="Theme.LyricSync.Main" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/ls_primary</item>
+        <item name="colorOnPrimary">@color/ls_on_primary</item>
+        <item name="colorPrimaryContainer">@color/ls_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/ls_primary</item>
+        <item name="colorSecondary">@color/ls_primary</item>
+        <item name="colorOnSecondary">@color/ls_on_primary</item>
+        <item name="colorSecondaryContainer">@color/ls_primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/ls_primary</item>
+        <item name="colorTertiary">@color/ls_primary</item>
+        <item name="colorError">@color/ls_error</item>
+        <item name="colorOnError">@color/ls_on_error</item>
+        <item name="colorErrorContainer">@color/ls_error_container</item>
+        <item name="colorOnErrorContainer">@color/ls_error</item>
+        <item name="colorSurface">@color/ls_surface_container</item>
+        <item name="colorOnSurface">@color/ls_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/ls_on_surface_variant</item>
+        <item name="colorSurfaceContainerLowest">@color/ls_bg</item>
+        <item name="colorSurfaceContainerLow">@color/ls_surface_container</item>
+        <item name="colorSurfaceContainer">@color/ls_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/ls_surface_high</item>
+        <item name="colorSurfaceContainerHighest">@color/ls_surface_highest</item>
+        <item name="colorOutline">@color/ls_outline</item>
+        <item name="colorOutlineVariant">@color/ls_outline_variant</item>
+        <item name="android:colorBackground">@color/ls_bg</item>
+        <item name="android:windowBackground">@color/ls_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:colorControlHighlight">@color/ls_ripple</item>
+        <!-- M3 tints raised surfaces with colorPrimary; on this palette that turns dialogs green. -->
+        <item name="elevationOverlayEnabled">false</item>
+        <!-- Subtle overscroll instead of a bright accent dome at the list ends. -->
+        <item name="android:colorEdgeEffect">@color/ls_surface_highest</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.LyricSync.Main.Dialog</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.LyricSync.Main.BottomSheet</item>
+        <item name="textInputStyle">@style/Widget.LyricSync.Main.TextInput</item>
+        <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
+    </style>
+
+    <style name="ThemeOverlay.LyricSync.Main.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/ls_surface_high</item>
+        <item name="elevationOverlayEnabled">false</item>
+        <item name="backgroundTint">@color/ls_surface_high</item>
+        <item name="colorSurfaceContainerHigh">@color/ls_surface_high</item>
+        <item name="materialAlertDialogTitleTextStyle">@style/MaterialAlertDialog.LyricSync.Main.Title</item>
+    </style>
+
+    <style name="MaterialAlertDialog.LyricSync.Main.Title" parent="MaterialAlertDialog.Material3.Title.Text">
+        <item name="android:textAppearance">@style/TextAppearance.LyricSync.Main.Headline</item>
+    </style>
+
+    <style name="ThemeOverlay.LyricSync.Main.BottomSheet" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.LyricSync.Main.BottomSheet</item>
+        <item name="android:navigationBarColor">@color/ls_surface_high</item>
+        <item name="elevationOverlayEnabled">false</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">@color/ls_surface_high</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.LyricSync.Main.SheetTop</item>
+    </style>
+
+    <style name="ShapeAppearance.LyricSync.Main.Art" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">@dimen/ls_radius_m</item>
+    </style>
+
+    <style name="ShapeAppearance.LyricSync.Main.SheetTop" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/ls_radius_xl</item>
+        <item name="cornerSizeTopRight">@dimen/ls_radius_xl</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <!-- Typography scale -->
+    <style name="TextAppearance.LyricSync.Main.Display" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:textSize">30sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">-0.02</item>
+        <item name="android:textColor">@color/ls_on_surface</item>
+    </style>
+    <style name="TextAppearance.LyricSync.Main.Headline" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">20sp</item>
+        <item name="android:fontFamily">sans-serif</item>
         <item name="android:textStyle">bold</item>
         <item name="android:letterSpacing">-0.01</item>
+        <item name="android:textColor">@color/ls_on_surface</item>
     </style>
-    <style name="TextAppearance.LyricSync.Value" parent="TextAppearance.MaterialComponents.Body2">
-        <item name="android:textColor">@color/accent</item>
+    <style name="TextAppearance.LyricSync.Main.Title" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">-0.01</item>
+        <item name="android:textColor">@color/ls_on_surface</item>
+    </style>
+    <style name="TextAppearance.LyricSync.Main.Label" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textColor">@color/ls_on_surface</item>
+    </style>
+    <style name="TextAppearance.LyricSync.Main.Body" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textColor">@color/ls_on_surface_variant</item>
+    </style>
+    <style name="TextAppearance.LyricSync.Main.Caption" parent="TextAppearance.Material3.BodySmall">
         <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:lineSpacingExtra">2dp</item>
+        <item name="android:textColor">@color/ls_text_tertiary</item>
+    </style>
+    <style name="TextAppearance.LyricSync.Main.Overline" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">@color/ls_on_surface_variant</item>
+    </style>
+    <style name="TextAppearance.LyricSync.Main.Value" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif</item>
         <item name="android:textStyle">bold</item>
         <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:textColor">@color/ls_primary</item>
     </style>
-    <style name="TextAppearance.LyricSync.Hint" parent="TextAppearance.MaterialComponents.Caption">
-        <item name="android:textColor">@color/text_dim</item>
-        <item name="android:textSize">12sp</item>
+    <style name="TextAppearance.LyricSync.Main.ValueLarge" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:textSize">28sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+        <item name="android:letterSpacing">-0.02</item>
+        <item name="android:textColor">@color/ls_on_surface</item>
+    </style>
+    <style name="TextAppearance.LyricSync.Main.Mono" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">monospace</item>
         <item name="android:lineSpacingExtra">2dp</item>
+        <item name="android:textColor">@color/ls_on_surface_variant</item>
+    </style>
+
+    <!-- Components -->
+    <style name="Widget.LyricSync.Main.Card" parent="Widget.Material3.CardView.Filled">
+        <item name="cardBackgroundColor">@color/ls_surface_container</item>
+        <item name="cardCornerRadius">@dimen/ls_radius_l</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">@color/ls_outline_variant</item>
+        <item name="android:layout_marginBottom">@dimen/ls_space_3</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Slider" parent="Widget.Material3.Slider">
+        <item name="labelBehavior">gone</item>
+        <item name="tickVisible">false</item>
+        <item name="trackHeight">6dp</item>
+        <item name="thumbWidth">4dp</item>
+        <item name="thumbHeight">24dp</item>
+        <item name="thumbTrackGapSize">4dp</item>
+        <item name="trackStopIndicatorSize">0dp</item>
+        <item name="trackColorActive">@color/ls_primary</item>
+        <item name="trackColorInactive">@color/ls_surface_highest</item>
+        <item name="thumbColor">@color/ls_primary</item>
+        <item name="haloColor">@android:color/transparent</item>
+        <item name="android:minHeight">@dimen/ls_touch</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Progress" parent="Widget.Material3.LinearProgressIndicator">
+        <item name="trackThickness">6dp</item>
+        <item name="trackCornerRadius">3dp</item>
+        <item name="indicatorTrackGapSize">0dp</item>
+        <item name="trackStopIndicatorSize">0dp</item>
+        <item name="indicatorColor">@color/ls_primary</item>
+        <item name="trackColor">@color/ls_surface_highest</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.TextInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">@dimen/ls_radius_s</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/ls_radius_s</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/ls_radius_s</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/ls_radius_s</item>
+        <item name="boxStrokeColor">@color/ls_input_stroke</item>
+        <item name="hintTextColor">@color/ls_primary</item>
+        <item name="hintTextAppearance">@style/TextAppearance.LyricSync.Main.InputHint</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Dropdown" parent="Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+        <item name="boxCornerRadiusTopStart">@dimen/ls_radius_s</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/ls_radius_s</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/ls_radius_s</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/ls_radius_s</item>
+        <item name="boxStrokeColor">@color/ls_input_stroke</item>
+        <item name="hintTextColor">@color/ls_primary</item>
+        <item name="endIconTint">@color/ls_on_surface_variant</item>
+        <item name="hintTextAppearance">@style/TextAppearance.LyricSync.Main.InputHint</item>
+    </style>
+
+    <!-- Floating label of outlined fields: M3 BodySmall without its wide 0.4 tracking. -->
+    <style name="TextAppearance.LyricSync.Main.InputHint" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Button.Primary" parent="Widget.Material3.Button">
+        <item name="android:minHeight">56dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.LyricSync.Main.Label</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="cornerRadius">@dimen/ls_radius_xl</item>
+        <item name="backgroundTint">@color/ls_primary</item>
+        <item name="android:textColor">@color/ls_on_primary</item>
+        <item name="iconTint">@color/ls_on_primary</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconPadding">10dp</item>
+        <item name="rippleColor">@color/ls_ripple</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Button.Tonal" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:minHeight">@dimen/ls_touch</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.LyricSync.Main.Label</item>
+        <item name="cornerRadius">@dimen/ls_radius_m</item>
+        <item name="backgroundTint">@color/ls_surface_highest</item>
+        <item name="android:textColor">@color/ls_on_surface</item>
+        <item name="iconTint">@color/ls_primary</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="android:minHeight">@dimen/ls_touch</item>
+        <item name="android:textAppearance">@style/TextAppearance.LyricSync.Main.Label</item>
+        <item name="android:textColor">@color/ls_primary</item>
+        <item name="cornerRadius">@dimen/ls_radius_s</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Button.Icon" parent="Widget.Material3.Button.IconButton.Filled.Tonal">
+        <item name="android:minWidth">@dimen/ls_touch</item>
+        <item name="android:minHeight">@dimen/ls_touch</item>
+        <item name="backgroundTint">@color/ls_surface_highest</item>
+        <item name="iconTint">@color/ls_on_surface_variant</item>
+        <item name="iconSize">18dp</item>
+    </style>
+
+    <style name="Widget.LyricSync.Main.Button.Toggle" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">@dimen/ls_touch</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.LyricSync.Main.Label</item>
+        <item name="backgroundTint">@color/ls_toggle_bg</item>
+        <item name="android:textColor">@color/ls_toggle_fg</item>
+        <item name="strokeColor">@color/ls_toggle_stroke</item>
+        <item name="cornerRadius">@dimen/ls_radius_s</item>
+        <!-- Default M3 24dp side padding truncates "Bahasa Indonesia" on 360dp phones. -->
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:maxLines">1</item>
     </style>
 </resources>

@@ -47,7 +47,6 @@
     <!-- Translation -->
     <string name="lyrics_translation_title">Lyrics Translation</string>
     <string name="lyrics_translation_desc">Display translated subtitles under synced lyrics</string>
-    <string name="lyrics_translation_target">Target Language</string>
     <!-- Syllable lyrics official API -->
     <string name="lyrics_api_title">Syllable Lyrics API</string>
     <string name="lyrics_api_desc">Word-by-word lyrics come from the Spicy Lyrics official API. The built-in key works out of the box; paste your own from developers.spicylyrics.org for higher rate limits.</string>
@@ -96,7 +95,6 @@
     <string name="ai_manual_token_title">Enter Refresh Token</string>
     <string name="ai_manual_token_hint">Paste your Antigravity refresh token here</string>
     <string name="ai_disconnect">Logout</string>
-    <string name="ai_model_change">Change</string>
     <string name="ai_quota_weekly">Weekly Quota</string>
     <string name="ai_quota_5h">5-Hour Quota</string>
     <string name="ai_search_model_label">Search Grounding Model</string>
@@ -180,4 +178,30 @@
     <string name="overlay_web_sources_prefix">%1$s:\u0020</string>
     <string name="overlay_sync_offset_value">%1$d ms</string>
     <string name="overlay_sync_offset_positive">+%1$d ms</string>
+    <!-- ── Main screen (redesign) ── -->
+    <string name="main_status_live">Live</string>
+    <string name="main_section_appearance">Appearance</string>
+    <string name="main_section_lyrics">Lyrics &amp; sync</string>
+    <string name="main_section_ai">AI</string>
+    <string name="main_section_more">More</string>
+    <string name="main_percent">%1$d%%</string>
+    <string name="main_offset_value">%1$s ms</string>
+    <string name="main_offset_minus">10 ms earlier</string>
+    <string name="main_offset_plus">10 ms later</string>
+    <string name="main_step_one">1</string>
+    <string name="main_step_two">2</string>
+    <string name="main_ai_connected_fallback">Google Antigravity connected</string>
+    <string name="main_version">LyricSync %1$s</string>
+    <string name="main_target_lang_hint">Target language</string>
+    <string-array name="main_target_lang_names">
+        <item>Auto (system language)</item>
+        <item>Bahasa Indonesia (id)</item>
+        <item>English (en)</item>
+        <item>日本語 (ja)</item>
+        <item>한국어 (ko)</item>
+        <item>Español (es)</item>
+        <item>简体中文 (zh-CN)</item>
+        <item>Français (fr)</item>
+        <item>Deutsch (de)</item>
+    </string-array>
 </resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ambient wash behind the header. White alpha ramp; MainActivity tints it (SRC_IN) with the album accent. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:type="radial" android:centerX="0.5" android:centerY="0.0" android:gradientRadius="75%p" android:startColor="#47FFFFFF" android:centerColor="#14FFFFFF" android:endColor="#00FFFFFF" />
+</shape>

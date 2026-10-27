@@ -4,9 +4,6 @@
     <color name="white">#FFFFFFFF</color>
     <!-- Base surfaces: near-black with a faint cool tint for depth. -->
     <color name="background_primary">#FF07070B</color>
-    <color name="surface">#FF12131A</color>
-    <color name="card_bg">#FF181A22</color>
-    <color name="card_bg_elevated">#FF1F212B</color>
     <color name="card_stroke">#0DFFFFFF</color>
     <color name="divider">#1AFFFFFF</color>
     <!-- Text -->
@@ -18,18 +15,32 @@
     <color name="accent">#FF1ED760</color>
     <color name="accent_dark">#FF17B34E</color>
     <!-- Semantic state colours (were hardcoded ints in MainActivity). -->
-    <color name="state_ok">#FF1ED760</color>
     <color name="state_ok_soft">#241ED760</color>
-    <color name="state_warn">#FFFFB020</color>
-    <color name="state_warn_soft">#26FFB020</color>
     <color name="state_error">#FFFF5D5D</color>
     <!-- Gradient header accents -->
     <color name="header_gradient_start">#FF1ED760</color>
     <color name="header_gradient_end">#FF0FA98C</color>
-    <color name="hero_glow_start">#3D1ED760</color>
-    <color name="hero_glow_mid">#140FA98C</color>
-    <color name="hero_glow_end">#0007070B</color>
     <!-- Track controls -->
     <color name="track_inactive">#1FFFFFFF</color>
     <color name="thumb_halo">#331ED760</color>
+    <!-- ── Main screen (Material 3) palette — ls_ tokens, see LyricSync-docs/design/main-ui-spec.md.
+         Every text pairing is >= 4.5:1 on ls_surface_container. Overlay colours above are untouched. -->
+    <color name="ls_bg">#FF07080C</color>
+    <color name="ls_surface_container">#FF15161D</color>
+    <color name="ls_surface_high">#FF1C1D26</color>
+    <color name="ls_surface_highest">#FF24252F</color>
+    <color name="ls_outline_variant">#FF262833</color>
+    <color name="ls_outline">#FF6B6E7A</color>
+    <color name="ls_on_surface">#FFF2F3F7</color>
+    <color name="ls_on_surface_variant">#FFA9ACB8</color>
+    <color name="ls_text_tertiary">#FF8E919D</color>
+    <color name="ls_primary">#FF1ED760</color>
+    <color name="ls_on_primary">#FF04210F</color>
+    <color name="ls_primary_container">#FF163528</color>
+    <color name="ls_warn">#FFFFB547</color>
+    <color name="ls_warn_container">#FF382E23</color>
+    <color name="ls_error">#FFFF6B6B</color>
+    <color name="ls_on_error">#FF2D0505</color>
+    <color name="ls_error_container">#FF362228</color>
+    <color name="ls_ripple">#1FFFFFFF</color>
 </resources>

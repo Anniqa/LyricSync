@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/bg_bottom_sheet" android:paddingStart="20dp" android:paddingEnd="20dp" android:paddingTop="16dp" android:paddingBottom="24dp">
-    <View android:layout_width="36dp" android:layout_height="4dp" android:background="@drawable/bg_sheet_handle" android:layout_gravity="center_horizontal" android:layout_marginBottom="16dp" />
-    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_select_model" android:textColor="@color/text_primary" android:textSize="18sp" android:textStyle="bold" />
-    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:layout_marginBottom="16dp" android:text="@string/ai_model_selector_desc" android:textColor="@color/text_secondary" android:textSize="12sp" />
-    <ScrollView android:id="@+id/model_scroll_view" android:layout_width="match_parent" android:layout_height="380dp" android:scrollbars="vertical" android:fadeScrollbars="false">
-        <LinearLayout android:id="@+id/model_options_container" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-    </ScrollView>
-    <LinearLayout android:id="@+id/btn_add_custom_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center" android:background="@drawable/bg_prompt_card" android:paddingTop="12dp" android:paddingBottom="12dp" android:layout_marginTop="12dp" android:clickable="true" android:focusable="true">
-        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_code" app:tint="@color/accent" android:contentDescription="@null" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="@string/ai_custom_model" android:textColor="@color/accent" android:textSize="13sp" android:textStyle="bold" />
-    </LinearLayout>
-    <LinearLayout android:id="@+id/btn_select_search_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/bg_prompt_card" android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingTop="10dp" android:paddingBottom="10dp" android:layout_marginTop="8dp" android:clickable="true" android:focusable="true">
-        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_search_globe" app:tint="@color/accent" android:contentDescription="@null" />
-        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:orientation="vertical">
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_search_model_label" android:textColor="@color/text_primary" android:textSize="12sp" android:textStyle="bold" />
-            <TextView android:id="@+id/tv_dialog_search_model_sub" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="gemini-3.8-flash-high" android:textColor="@color/text_secondary" android:textSize="11sp" />
+<!-- Model picker bottom sheet (main screen). The sheet supplies the surface; content scrolls under the handle. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+    <com.google.android.material.bottomsheet.BottomSheetDragHandleView android:layout_width="match_parent" android:layout_height="wrap_content" />
+    <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:clipToPadding="false" android:scrollbars="none">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_5" android:paddingBottom="@dimen/ls_space_6">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_select_model" android:textAppearance="@style/TextAppearance.LyricSync.Main.Headline" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_1" android:layout_marginBottom="@dimen/ls_space_4" android:text="@string/ai_model_selector_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+            <LinearLayout android:id="@+id/btn_select_search_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/ls_row_min" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/ls_bg_option" android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingTop="10dp" android:paddingBottom="10dp" android:clickable="true" android:focusable="true">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_search_globe" app:tint="@color/ls_primary" android:contentDescription="@null" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="@dimen/ls_space_3" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_search_model_label" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+                    <TextView android:id="@+id/tv_dialog_search_model_sub" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="gemini-3.8-flash-high" android:maxLines="1" android:ellipsize="end" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                </LinearLayout>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/action_change" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" android:textColor="@color/ls_primary" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/model_options_container" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_4" android:orientation="vertical" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/btn_add_custom_model" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:text="@string/ai_custom_model" app:icon="@drawable/ic_code" app:iconGravity="textStart" />
         </LinearLayout>
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/action_change" android:textColor="@color/accent" android:textSize="12sp" android:textStyle="bold" />
-    </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 </LinearLayout>

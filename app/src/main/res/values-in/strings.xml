@@ -47,7 +47,6 @@
     <!-- Translation -->
     <string name="lyrics_translation_title">Terjemahan Lirik</string>
     <string name="lyrics_translation_desc">Tampilkan teks terjemahan di bawah lirik sinkron</string>
-    <string name="lyrics_translation_target">Bahasa Tujuan</string>
     <!-- Syllable lyrics official API -->
     <string name="lyrics_api_title">API Lirik Suku Kata</string>
     <string name="lyrics_api_desc">Lirik per suku kata berasal dari API resmi Spicy Lyrics. Kunci bawaan langsung berfungsi; tempel kunci milikmu dari developers.spicylyrics.org untuk batas akses lebih tinggi.</string>
@@ -96,7 +95,6 @@
     <string name="ai_manual_token_title">Masukkan Refresh Token</string>
     <string name="ai_manual_token_hint">Tempel refresh token Antigravity Anda di sini</string>
     <string name="ai_disconnect">Keluar</string>
-    <string name="ai_model_change">Ubah</string>
     <string name="ai_quota_weekly">Kuota Mingguan</string>
     <string name="ai_quota_5h">Kuota 5-Jam</string>
     <string name="ai_search_model_label">Model Grounding Pencarian</string>
@@ -179,4 +177,30 @@
     <string name="overlay_web_sources_prefix">%1$s:\u0020</string>
     <string name="overlay_sync_offset_value">%1$d ms</string>
     <string name="overlay_sync_offset_positive">+%1$d ms</string>
+    <!-- ── Main screen (redesign) ── -->
+    <string name="main_status_live">Aktif</string>
+    <string name="main_section_appearance">Tampilan</string>
+    <string name="main_section_lyrics">Lirik &amp; sinkronisasi</string>
+    <string name="main_section_ai">AI</string>
+    <string name="main_section_more">Lainnya</string>
+    <string name="main_percent">%1$d%%</string>
+    <string name="main_offset_value">%1$s ms</string>
+    <string name="main_offset_minus">10 ms lebih awal</string>
+    <string name="main_offset_plus">10 ms lebih lambat</string>
+    <string name="main_step_one">1</string>
+    <string name="main_step_two">2</string>
+    <string name="main_ai_connected_fallback">Google Antigravity terhubung</string>
+    <string name="main_version">LyricSync %1$s</string>
+    <string name="main_target_lang_hint">Bahasa tujuan</string>
+    <string-array name="main_target_lang_names">
+        <item>Otomatis (bahasa sistem)</item>
+        <item>Bahasa Indonesia (id)</item>
+        <item>English (en)</item>
+        <item>日本語 (ja)</item>
+        <item>한국어 (ko)</item>
+        <item>Español (es)</item>
+        <item>简体中文 (zh-CN)</item>
+        <item>Français (fr)</item>
+        <item>Deutsch (de)</item>
+    </string-array>
 </resources>

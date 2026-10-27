@@ -1,9 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="screen_padding">20dp</dimen>
-    <dimen name="card_radius">24dp</dimen>
-    <dimen name="card_padding">22dp</dimen>
-    <dimen name="card_gap">16dp</dimen>
-    <dimen name="row_padding">14dp</dimen>
     <dimen name="pill_radius">100dp</dimen>
+    <!-- ── Main screen tokens (4dp grid) ── -->
+    <dimen name="ls_space_1">4dp</dimen>
+    <dimen name="ls_space_2">8dp</dimen>
+    <dimen name="ls_space_3">12dp</dimen>
+    <dimen name="ls_space_4">16dp</dimen>
+    <dimen name="ls_space_5">20dp</dimen>
+    <dimen name="ls_space_6">24dp</dimen>
+    <dimen name="ls_space_8">32dp</dimen>
+    <dimen name="ls_radius_s">12dp</dimen>
+    <dimen name="ls_radius_m">16dp</dimen>
+    <dimen name="ls_radius_l">24dp</dimen>
+    <dimen name="ls_radius_xl">28dp</dimen>
+    <dimen name="ls_touch">48dp</dimen>
+    <!-- Negative card padding: lets carousels run edge to edge inside a card. -->
+    <dimen name="ls_bleed">-20dp</dimen>
+    <!-- Material Slider pads its track ~14dp inside its bounds; pull it out so the track lines up with the labels. -->
+    <dimen name="ls_slider_inset">-14dp</dimen>
+    <dimen name="ls_row_min">64dp</dimen>
 </resources>

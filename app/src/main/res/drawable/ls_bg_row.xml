@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Raised row inside a card (model picker row, unselected options). -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/ls_ripple">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="@dimen/ls_radius_m" />
+            <solid android:color="@color/ls_surface_high" />
+        </shape>
+    </item>
+</ripple>

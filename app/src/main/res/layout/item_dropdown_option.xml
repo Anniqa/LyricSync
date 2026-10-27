@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Row of the target-language exposed dropdown. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android" android:id="@android:id/text1" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/ls_touch" android:gravity="center_vertical" android:ellipsize="end" android:maxLines="1" android:paddingStart="@dimen/ls_space_4" android:paddingEnd="@dimen/ls_space_4" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
