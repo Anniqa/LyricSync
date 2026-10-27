@@ -595,6 +595,7 @@ public class AntigravityApiClientTest {
     @Test
     public void testCancellableHandleCancelBeforeToken() throws InterruptedException {
         fakeAuthManager.mockToken = "ya29.valid-token";
+        fakeAuthManager.holdToken = true;
 
         final AtomicBoolean deltaTriggered = new AtomicBoolean(false);
         final AtomicBoolean completeTriggered = new AtomicBoolean(false);
@@ -621,8 +622,10 @@ public class AntigravityApiClientTest {
         assertFalse(handle.isCancelled());
         handle.cancel();
         assertTrue(handle.isCancelled());
+        fakeAuthManager.releaseToken(); // the token arrives after the cancel
 
         Thread.sleep(100);
+        assertEquals("a cancelled request is never sent", 0, mockInterceptor.requestCount);
         assertFalse("onComplete must NOT be called when cancelled", completeTriggered.get());
         assertFalse("onError must NOT be called when cancelled", errorTriggered.get());
     }
@@ -674,6 +677,9 @@ public class AntigravityApiClientTest {
         volatile String mockToken;
         volatile String mockError;
         volatile boolean throwSynchronously = false;
+        /** When set, the token is held until {@link #releaseToken()} (to cancel "before the token"). */
+        volatile boolean holdToken = false;
+        volatile TokenCallback heldCallback;
 
         FakeAuthManager() {
             super((android.content.SharedPreferences) null, null);
@@ -685,11 +691,20 @@ public class AntigravityApiClientTest {
                 throw new IllegalStateException("Synchronous auth error");
             }
             if (callback == null) return;
+            if (holdToken) {
+                heldCallback = callback;
+                return;
+            }
             if (mockToken != null) {
                 callback.onTokenReady(mockToken);
             } else {
                 callback.onError(mockError != null ? mockError : "Not authenticated");
             }
+        }
+
+        void releaseToken() {
+            holdToken = false;
+            if (heldCallback != null) getValidAccessToken(heldCallback);
         }
     }
 
