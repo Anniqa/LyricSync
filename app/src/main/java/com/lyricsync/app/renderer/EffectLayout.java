@@ -39,12 +39,26 @@ final class EffectLayout {
     }
 
     /**
-     * Shimmer band centre as a fraction of the word width. The band trails the fill
-     * edge so its whole width stays inside the sung region that the renderer clips to;
-     * any band position ahead of the edge is cut away and renders as nothing.
+     * Shimmer band centre as a fraction of the word width.
+     *
+     * @param progress word progress (0..1) — in CLASSIC mode, sweeps the band across
+     *                 the word over progress (0.05..0.98)
+     * @param edge     visible fill edge (0..1)
+     * @param classic  true if CLASSIC motion is active
+     */
+    static float shimmerCenter(float progress, float edge, boolean classic) {
+        if (classic) {
+            float band = (progress - 0.05f) / 0.93f;
+            return clamp01(band);
+        }
+        return Math.max(0f, clamp01(edge) - SHIMMER_HALF_WIDTH);
+    }
+
+    /**
+     * Backward-compatible overload for sweep / binary modes trailing the fill edge.
      */
     static float shimmerCenter(float edge) {
-        return Math.max(0f, clamp01(edge) - SHIMMER_HALF_WIDTH);
+        return shimmerCenter(0f, edge, false);
     }
 
     static float clamp01(float v) {

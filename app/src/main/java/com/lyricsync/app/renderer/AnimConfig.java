@@ -38,6 +38,8 @@ public final class AnimConfig {
     public final boolean aurora;
     public final boolean meteor;
     public final boolean ringPulse;
+    public final boolean neon;
+    public final AnimStyleDef.Signature signature;
 
     public final float glowBoost;
     public final double scaleFreq;
@@ -65,6 +67,7 @@ public final class AnimConfig {
         scaleFreq = motion.scaleFreq;
         scaleDamp = motion.scaleDamp;
         letterMinDuration = motion.letterMinDuration;
+        signature = motion.signature;
 
         // Effect-sourced: the visual overlay.
         echo = effect.echo;
@@ -80,6 +83,7 @@ public final class AnimConfig {
         aurora = effect.aurora;
         meteor = effect.meteor;
         ringPulse = effect.ringPulse;
+        neon = effect.neon;
         glowBoost = effect.glowBoost;
 
         // Glow: the effect's signature spline wins when it defines one

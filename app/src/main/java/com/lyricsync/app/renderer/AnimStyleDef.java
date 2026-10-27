@@ -26,6 +26,42 @@ public final class AnimStyleDef {
 
     public enum Category { MOTION, EFFECT }
 
+    /**
+     * Each motion's signature move, layered over its splines/springs so no two
+     * motions read alike (math in {@link MotionFx}). Flags such as wave/swing/
+     * spin/squash keep driving their own mechanics; the signature only names the
+     * extra flourish a motion owns.
+     */
+    public enum Signature {
+        NONE,
+        /** Spring: velocity squash-and-stretch from the scale spring. */
+        STRETCH,
+        /** Bubble: words float on the active line and shed rising bubbles. */
+        FLOAT,
+        /** Pulse: RGB-split bass thump while the word is scaled up. */
+        CHROMA,
+        /** Rise: the word rises out of its own water reflection. */
+        REFLECT,
+        /** Typewriter: glowing caret riding the typed run. */
+        CARET,
+        /** Drop: impact squash + water splash on landing. */
+        SPLASH,
+        /** Zoom: radial zoom-blur ghosts while zoomed in. */
+        ZOOM_BLUR,
+        /** Scatter: every popping letter tilts its own way. */
+        TILT,
+        /** Classic: bouncing karaoke ball over the sung word. */
+        BALL,
+        /** Bounce Drop: impact squash + dust puffs on landing. */
+        DUST,
+        /** Elastic Pop: volume-preserving rubber stretch per letter. */
+        RUBBER,
+        /** Heartbeat: looping lub-dub beat + glow throb while sung. */
+        HEARTBEAT,
+        /** Scatter Pop: letters explode outward then fly home. */
+        EXPLODE
+    }
+
     public final String key;
     public final String displayName;
     public final Category category;
@@ -47,6 +83,7 @@ public final class AnimStyleDef {
     public final double scaleFreq;
     public final double scaleDamp;
     public final long letterMinDuration;
+    public final Signature signature;
 
     // Glow/effect parameters.
     /** Null means "inherit the motion style's glow spline" (shimmer, none). */
@@ -66,6 +103,8 @@ public final class AnimStyleDef {
     public final boolean aurora;
     public final boolean meteor;
     public final boolean ringPulse;
+    /** Neon Glow: coloured neon tube halo + outline instead of a white bloom. */
+    public final boolean neon;
 
     private AnimStyleDef(Builder b) {
         key = b.key;
@@ -87,6 +126,7 @@ public final class AnimStyleDef {
         scaleFreq = b.scaleFreq;
         scaleDamp = b.scaleDamp;
         letterMinDuration = b.letterMinDuration;
+        signature = b.signature;
         glowSpline = b.glowSpline;
         glowEnabled = b.glowEnabled;
         glowBoost = b.glowBoost;
@@ -103,6 +143,7 @@ public final class AnimStyleDef {
         aurora = b.aurora;
         meteor = b.meteor;
         ringPulse = b.ringPulse;
+        neon = b.neon;
     }
 
     private static Spline spline(double[] times, double[] values) {
@@ -135,6 +176,7 @@ public final class AnimStyleDef {
         double scaleFreq = 0.95;
         double scaleDamp = 0.58;
         long letterMinDuration = 1000;
+        Signature signature = Signature.NONE;
 
         Spline glowSpline = null;
         boolean glowEnabled = false;
@@ -152,6 +194,7 @@ public final class AnimStyleDef {
         boolean aurora = false;
         boolean meteor = false;
         boolean ringPulse = false;
+        boolean neon = false;
 
         Builder(String key, String displayName, Category category) {
             this.key = key;
@@ -191,6 +234,8 @@ public final class AnimStyleDef {
         Builder aurora() { aurora = true; return this; }
         Builder meteor() { meteor = true; return this; }
         Builder ringPulse() { ringPulse = true; return this; }
+        Builder neon() { neon = true; return this; }
+        Builder sig(Signature s) { signature = s; return this; }
 
         AnimStyleDef build() { return new AnimStyleDef(this); }
     }
@@ -214,6 +259,7 @@ public final class AnimStyleDef {
                     .yOff(new double[]{0.0, 0.85, 1.0}, new double[]{0.012, -0.026, 0.0})
                     .glow(GLOW_STD_T, GLOW_STD_V)
                     .springs().glowOn().letters()
+                    .sig(Signature.STRETCH)
                     .build());
             m.add(new Builder("bubble", "Bubble", Category.MOTION)
                     .scale(new double[]{0.0, 0.62, 1.0}, new double[]{0.94, 1.14, 1.0})
@@ -223,6 +269,7 @@ public final class AnimStyleDef {
                     .lYOff(new double[]{0.0, 0.75, 1.0}, new double[]{0.0, -0.04, 0.0})
                     .springs().glowOn().letters()
                     .freq(0.85).damp(0.52)
+                    .sig(Signature.FLOAT)
                     .build());
             m.add(new Builder("wave", "Wave", Category.MOTION)
                     .glow(new double[]{0.0, 0.15, 0.6, 1.0}, new double[]{0.0, 0.8, 0.8, 0.0})
@@ -235,6 +282,7 @@ public final class AnimStyleDef {
                     .glow(new double[]{0.0, 0.10, 0.5, 1.0}, new double[]{0.0, 1.0, 1.0, 0.0})
                     .springs().glowOn()
                     .freq(1.15).damp(0.50)
+                    .sig(Signature.CHROMA)
                     .build());
             m.add(new Builder("rise", "Rise", Category.MOTION)
                     .scale(new double[]{0.0, 0.5, 1.0}, new double[]{0.98, 1.02, 1.0})
@@ -242,6 +290,7 @@ public final class AnimStyleDef {
                     .glow(new double[]{0.0, 0.15, 0.6, 1.0}, new double[]{0.0, 0.8, 0.8, 0.0})
                     .springs().glowOn()
                     .freq(1.20).damp(0.50)
+                    .sig(Signature.REFLECT)
                     .build());
             m.add(new Builder("typewriter", "Typewriter", Category.MOTION)
                     .glow(new double[]{0.0, 1.0}, new double[]{0.0, 0.0})
@@ -250,6 +299,7 @@ public final class AnimStyleDef {
                     .springs().letters().binary()
                     .minDur(0)
                     .freq(1.30).damp(0.55)
+                    .sig(Signature.CARET)
                     .build());
             m.add(new Builder("drop", "Drop", Category.MOTION)
                     .scale(new double[]{0.0, 0.55, 1.0}, new double[]{0.92, 1.06, 1.0})
@@ -257,6 +307,7 @@ public final class AnimStyleDef {
                     .glow(GLOW_SOFT_T, GLOW_SOFT_V)
                     .springs().glowOn()
                     .freq(1.00).damp(0.42)
+                    .sig(Signature.SPLASH)
                     .build());
             m.add(new Builder("zoom", "Zoom", Category.MOTION)
                     .scale(new double[]{0.0, 0.28, 1.0}, new double[]{1.0, 1.16, 1.0})
@@ -264,6 +315,7 @@ public final class AnimStyleDef {
                     .glow(GLOW_SOFT_T, GLOW_SOFT_V)
                     .springs().glowOn()
                     .freq(1.10).damp(0.55)
+                    .sig(Signature.ZOOM_BLUR)
                     .build());
             m.add(new Builder("swing", "Swing", Category.MOTION)
                     .scale(new double[]{0.0, 0.55, 1.0}, new double[]{0.97, 1.06, 1.0})
@@ -278,6 +330,7 @@ public final class AnimStyleDef {
                     .springs().glowOn().letters().scatter()
                     .minDur(0)
                     .freq(1.10).damp(0.48)
+                    .sig(Signature.TILT)
                     .build());
             m.add(new Builder("calm", "Calm", Category.MOTION)
                     .glow(new double[]{0.0, 1.0}, new double[]{0.0, 0.0})
@@ -285,6 +338,7 @@ public final class AnimStyleDef {
             m.add(new Builder("classic", "Classic", Category.MOTION)
                     .glow(new double[]{0.0, 1.0}, new double[]{0.0, 0.0})
                     .classic()
+                    .sig(Signature.BALL)
                     .build());
             m.add(new Builder("bounce", "Bounce Drop", Category.MOTION)
                     .scale(new double[]{0.0, 0.55, 1.0}, new double[]{0.94, 1.05, 1.0})
@@ -292,6 +346,7 @@ public final class AnimStyleDef {
                     .glow(GLOW_STD_T, GLOW_STD_V)
                     .springs().glowOn()
                     .freq(1.00).damp(0.40)
+                    .sig(Signature.DUST)
                     .build());
             m.add(new Builder("elastic", "Elastic Pop", Category.MOTION)
                     .scale(new double[]{0.0, 0.5, 1.0}, new double[]{0.90, 1.06, 1.0})
@@ -300,6 +355,7 @@ public final class AnimStyleDef {
                     .lYOff(new double[]{0.0, 0.50, 1.0}, new double[]{0.01, -0.02, 0.0})
                     .springs().glowOn().letters()
                     .freq(1.15).damp(0.38)
+                    .sig(Signature.RUBBER)
                     .build());
             m.add(new Builder("heartbeat", "Heartbeat", Category.MOTION)
                     .scale(new double[]{0.0, 0.12, 0.24, 0.36, 0.50, 1.0},
@@ -307,6 +363,7 @@ public final class AnimStyleDef {
                     .glow(GLOW_SOFT_T, GLOW_SOFT_V)
                     .springs().glowOn()
                     .freq(1.30).damp(0.50)
+                    .sig(Signature.HEARTBEAT)
                     .build());
             m.add(new Builder("spin", "Spin Settle", Category.MOTION)
                     .glow(GLOW_SOFT_T, GLOW_SOFT_V)
@@ -328,6 +385,7 @@ public final class AnimStyleDef {
                     .springs().glowOn().letters().scatter()
                     .minDur(0)
                     .freq(1.10).damp(0.48)
+                    .sig(Signature.EXPLODE)
                     .build());
             MOTION = Collections.unmodifiableList(m);
 
@@ -336,7 +394,7 @@ public final class AnimStyleDef {
             e.add(NONE);
             e.add(new Builder("glow", "Neon Glow", Category.EFFECT)
                     .glow(new double[]{0.0, 0.10, 0.6, 1.0}, new double[]{0.0, 1.0, 0.9, 0.0})
-                    .glowOn().boost(1.8f)
+                    .glowOn().boost(1.8f).neon()
                     .build());
             e.add(new Builder("echo", "Echo", Category.EFFECT)
                     .glow(new double[]{0.0, 0.12, 0.55, 1.0}, new double[]{0.0, 0.7, 0.7, 0.0})

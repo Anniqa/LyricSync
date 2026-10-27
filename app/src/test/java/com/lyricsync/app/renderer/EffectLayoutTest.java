@@ -73,6 +73,34 @@ public class EffectLayoutTest {
         assertTrue("an all-word shimmer must be drawable in full", fullyVisible >= 78);
     }
 
+    /**
+     * Under CLASSIC, the fill edge flips to 1.0f immediately, but the Shimmer band must
+     * sweep continuously across the word from 0 to 1 over progress (0.05..0.98), rather than
+     * freezing at a fixed position.
+     */
+    @Test
+    public void classicShimmerBandSweepsContinuouslyAcrossWord() {
+        float lastCenter = -1f;
+        // Progress between 0.05 and 0.98 where shimmer is active
+        for (int i = 5; i <= 98; i++) {
+            float progress = i / 100f;
+            float p = -0.20f + 1.20f * progress;
+            float edge = EffectLayout.fillEdge(progress, p, true, false, 0f);
+            assertEquals("classic fill edge must remain 1.0 during singing", 1.0f, edge, EPS);
+
+            float center = EffectLayout.shimmerCenter(progress, edge, true);
+            assertTrue("center must be within [0, 1] at progress " + progress, center >= 0f && center <= 1f);
+            if (lastCenter >= 0f) {
+                assertTrue("center must increase monotonically across progress at " + progress,
+                        center >= lastCenter);
+            }
+            lastCenter = center;
+        }
+        // Check endpoints: near 0.05 center is ~0, near 0.98 center is 1.0
+        assertEquals(0f, EffectLayout.shimmerCenter(0.05f, 1.0f, true), EPS);
+        assertEquals(1f, EffectLayout.shimmerCenter(0.98f, 1.0f, true), EPS);
+    }
+
     /** Any edge the renderer can produce keeps the band inside the word. */
     @Test
     public void bandStaysInsideTheWordForEveryCombination() {
@@ -87,7 +115,7 @@ public class EffectLayoutTest {
                     String what = motion.key + " x " + effect.key + " @" + progress;
                     assertTrue("edge below word start: " + what, edge >= 0f);
                     assertTrue("edge past word end: " + what, edge <= 1f);
-                    float center = EffectLayout.shimmerCenter(edge);
+                    float center = EffectLayout.shimmerCenter(progress, edge, config.classic);
                     assertTrue("band leads the fill edge: " + what, center <= edge + EPS);
                     assertTrue("band leaves the word: " + what, center <= 1f);
                 }
