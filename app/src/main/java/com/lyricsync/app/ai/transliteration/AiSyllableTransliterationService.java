@@ -3,70 +3,255 @@ package com.lyricsync.app.ai.transliteration;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.lyricsync.app.ai.util.JsonResponse;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.model.AiChatMessage;
-import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
+import com.lyricsync.app.ai.util.JsonResponse;
 import com.lyricsync.app.lyrics.model.LyricsData;
-import com.lyricsync.app.lyrics.model.TrackInfo;
+import com.lyricsync.app.lyrics.util.JapaneseRomanizer;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+/**
+ * Adds a Latin reading (Hepburn romaji, pinyin, Revised Romanization ...) to every syllable
+ * of a lyric, in batches of {@link #BATCH_SIZE} lines. The model is asked for one reading
+ * per syllable; when its split differs, {@link #alignTokens} maps its words back onto the
+ * syllables. Translation is optional and only used by the single-line editor; whole songs
+ * are translated by {@code AiTranslationService}, which sees the full context.
+ */
 public class AiSyllableTransliterationService {
-    private static final String TAG = "AiTranslitService";
-    private static final int BATCH_SIZE = 12;
-    private static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
+    static final int BATCH_SIZE = 20;
+    private static final String MODEL = "gemini-3.8-flash-high";
 
     private final AntigravityApiClient apiClient;
-    private final LyricsCacheManager cacheManager;
     private final Handler mainHandler;
 
     public interface Callback {
         void onSuccess(LyricsData enrichedData);
         void onError(String message);
-        default void onProgress(int processedLines, int totalLines) {}
-    }
-
-    public static class LineTransliterationResult {
-        public int index;
-        public String romanji;
-        public String translation;
-        public List<String> wordsRomanji = new ArrayList<>();
     }
 
     public AiSyllableTransliterationService(Context context, AntigravityApiClient apiClient) {
-        this(context, apiClient, context != null ? new LyricsCacheManager(context) : null, createSafeMainHandler());
+        this(apiClient, new Handler(Looper.getMainLooper()));
     }
 
-    public AiSyllableTransliterationService(Context context, AntigravityApiClient apiClient, LyricsCacheManager cacheManager) {
-        this(context, apiClient, cacheManager, createSafeMainHandler());
-    }
-
-    public AiSyllableTransliterationService(Context context, AntigravityApiClient apiClient, LyricsCacheManager cacheManager, Handler mainHandler) {
+    /** {@code mainHandler} null runs everything inline (tests). */
+    AiSyllableTransliterationService(AntigravityApiClient apiClient, Handler mainHandler) {
         this.apiClient = apiClient;
-        this.cacheManager = cacheManager;
         this.mainHandler = mainHandler;
     }
 
-    private static Handler createSafeMainHandler() {
-        try {
-            Looper mainLooper = Looper.getMainLooper();
-            if (mainLooper != null) {
-                return new Handler(mainLooper);
+    /**
+     * Fills {@code word.romanji} and {@code line.romanji} of {@code data} in place, and
+     * {@code line.translation} when {@code translateTo} is set. Results are applied on the
+     * main thread, where the renderer reads them; a failed batch is retried once.
+     */
+    public AntigravityApiClient.Cancellable transliterateSyllablesAsync(LyricsData data, String title, String artist,
+                                                                     String translateTo, Callback callback) {
+        Job job = new Job(data, title, artist, translateTo, callback);
+        if (data == null || data.lines == null || data.lines.isEmpty() || apiClient == null) {
+            post(() -> callback.onError("Lirik tidak tersedia untuk transliterasi"));
+            return job;
+        }
+        for (LyricsData.LyricsLine line : data.lines) {
+            if (line != null && !line.isInterlude && line.text != null && !line.text.trim().isEmpty()) {
+                job.lines.add(line);
             }
-        } catch (Throwable ignored) {}
-        return null;
+        }
+        job.next();
+        return job;
     }
 
-    private static final java.util.regex.Pattern MORA_PATTERN = java.util.regex.Pattern.compile(
+    private final class Job implements AntigravityApiClient.Cancellable {
+        final LyricsData data;
+        final String title;
+        final String artist;
+        final String translateTo;
+        final Callback callback;
+        final List<LyricsData.LyricsLine> lines = new ArrayList<>();
+        int start;
+        boolean retried;
+        volatile boolean cancelled;
+        private AntigravityApiClient.Cancellable call;
+
+        Job(LyricsData data, String title, String artist, String translateTo, Callback callback) {
+            this.data = data;
+            this.title = title;
+            this.artist = artist;
+            this.translateTo = translateTo;
+            this.callback = callback;
+        }
+
+        void next() {
+            if (cancelled) return;
+            if (start >= lines.size()) {
+                data.hasTransliteration = true;
+                data.sourceScript = ScriptDetector.detectScript(allText(data)).name();
+                post(() -> { if (!cancelled) callback.onSuccess(data); });
+                return;
+            }
+            final List<LyricsData.LyricsLine> batch = lines.subList(start, Math.min(start + BATCH_SIZE, lines.size()));
+            String prompt = buildPrompt(title, artist, batch, translateTo);
+            AntigravityApiClient.Cancellable c = apiClient.generateContent(MODEL,
+                    Collections.singletonList(AiChatMessage.user(prompt)), false, "low",
+                    new AntigravityApiClient.CompletionCallback() {
+                        @Override
+                        public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                            post(() -> {
+                                if (cancelled) return;
+                                if (apply(fullText, batch, translateTo != null) == 0) {
+                                    retryOrFail("AI tidak mengembalikan transliterasi yang valid");
+                                    return;
+                                }
+                                start += batch.size();
+                                retried = false;
+                                next();
+                            });
+                        }
+
+                        @Override
+                        public void onError(Exception error) {
+                            String msg = error != null && error.getMessage() != null ? error.getMessage() : "unknown error";
+                            post(() -> { if (!cancelled) retryOrFail("Transliterasi AI gagal: " + msg); });
+                        }
+                    });
+            synchronized (this) {
+                call = c;
+                if (cancelled && c != null) c.cancel();
+            }
+        }
+
+        void retryOrFail(String message) {
+            if (!retried) {
+                retried = true;
+                next();
+            } else {
+                callback.onError(message);
+            }
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+            synchronized (this) {
+                if (call != null) call.cancel();
+            }
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled;
+        }
+    }
+
+    private void post(Runnable action) {
+        if (mainHandler == null) action.run();
+        else mainHandler.post(action);
+    }
+
+    static String buildPrompt(String title, String artist, List<LyricsData.LyricsLine> batch, String translateTo) {
+        JsonArray input = new JsonArray();
+        for (int i = 0; i < batch.size(); i++) {
+            LyricsData.LyricsLine line = batch.get(i);
+            JsonObject o = new JsonObject();
+            o.addProperty("index", i);
+            o.addProperty("text", line.text.trim());
+            JsonArray syllables = new JsonArray();
+            for (LyricsData.Word w : line.words) syllables.add(w != null && w.text != null ? w.text : "");
+            o.add("syllables", syllables);
+            input.add(o);
+        }
+        String song = (title == null || title.isEmpty() ? "unknown" : title)
+                + (artist == null || artist.isEmpty() ? "" : " by " + artist);
+        String translation = translateTo == null ? ""
+                : "- \"translation\": a natural, fluent " + translateTo
+                  + " translation of the line's meaning, written like a professional subtitle.\n";
+        return "You romanize song lyrics for a karaoke display. Song: " + song + ".\n\n"
+                + "For each input line return:\n"
+                + "- \"romanized\": the whole line in Latin letters, words separated by spaces as a native reader would.\n"
+                + "- \"syllables\": one reading per entry of the input \"syllables\" array, same order, EXACTLY the same length. "
+                + "Never merge or split entries; a kanji compound spread over several entries is divided by its reading "
+                + "(前前前世 as [前,前,前,世] -> [\"zen\",\"zen\",\"zen\",\"se\"]). Entries already in Latin, digits and "
+                + "punctuation are copied unchanged; an entry with no sound gets \"\".\n"
+                + translation + "\n"
+                + "Readings:\n"
+                + "- Japanese: modified Hepburn, lowercase ASCII without macrons; long vowels as written (ou, uu, ee); "
+                + "particles は=wa, を=o, へ=e; っ doubles the next consonant; use the reading that fits the song's context.\n"
+                + "- Chinese: Hanyu Pinyin with tone marks, one syllable per character.\n"
+                + "- Korean: Revised Romanization, one block per syllable, applying sound changes across blocks.\n"
+                + "- Other scripts: their standard romanization.\n"
+                + "Output Latin characters only in romanized and syllables.\n\n"
+                + "Answer with JSON only, no code fence:\n"
+                + "{\"lines\":[{\"index\":0,\"romanized\":\"...\",\"syllables\":[\"...\"]"
+                + (translateTo == null ? "" : ",\"translation\":\"...\"") + "}]}\n\n"
+                + "Input:\n" + input;
+    }
+
+    /** Writes the model's answer into {@code batch}; returns how many lines got a reading. */
+    static int apply(String answer, List<LyricsData.LyricsLine> batch, boolean withTranslation) {
+        JsonArray items;
+        try {
+            JsonElement root = JsonParser.parseString(JsonResponse.extract(answer));
+            items = root.isJsonArray() ? root.getAsJsonArray() : root.getAsJsonObject().getAsJsonArray("lines");
+        } catch (RuntimeException e) {
+            return 0;
+        }
+        if (items == null) return 0;
+        int applied = 0;
+        for (int i = 0; i < items.size(); i++) {
+            if (!items.get(i).isJsonObject()) continue;
+            JsonObject item = items.get(i).getAsJsonObject();
+            int index = item.has("index") ? asInt(item.get("index")) : i;
+            if (index < 0 || index >= batch.size()) continue;
+            List<String> syllables = new ArrayList<>();
+            JsonElement arr = item.get("syllables");
+            if (arr != null && arr.isJsonArray()) {
+                for (JsonElement e : arr.getAsJsonArray()) syllables.add(e.isJsonPrimitive() ? e.getAsString() : "");
+            }
+            String romanized = string(item, "romanized");
+            if (syllables.isEmpty() && (romanized == null || romanized.trim().isEmpty())) continue;
+            LyricsData.LyricsLine line = batch.get(index);
+            alignSyllables(line, syllables, romanized);
+            String translation = string(item, "translation");
+            if (withTranslation && translation != null && !translation.trim().isEmpty()) {
+                line.translation = translation.trim();
+            }
+            applied++;
+        }
+        return applied;
+    }
+
+    private static String allText(LyricsData data) {
+        StringBuilder sb = new StringBuilder();
+        for (LyricsData.LyricsLine line : data.lines) {
+            if (line != null && line.text != null) sb.append(line.text).append(' ');
+        }
+        return sb.toString();
+    }
+
+    private static String string(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonPrimitive() ? e.getAsString() : null;
+    }
+
+    private static int asInt(JsonElement e) {
+        try {
+            return e.getAsInt();
+        } catch (RuntimeException ex) {
+            return -1;
+        }
+    }
+
+    private static final Pattern MORA_PATTERN = Pattern.compile(
         "(?i)" +
         "(?:(?:t?ch|s?sh|ts|[kscnhmrgzdbptfvwj]y)[aiueoāīūēō](?:n(?![aiueoāīūēōy]))?)|" +
         "(?:[bcdfghjklmnprstvwxyz][aiueoāīūēō](?:n(?![aiueoāīūēōy]))?)|" +
@@ -76,10 +261,10 @@ public class AiSyllableTransliterationService {
         "(?:[a-zA-Z0-9]+)"
     );
 
-    public static List<String> splitRomajiIntoMoras(String text) {
+    static List<String> splitRomajiIntoMoras(String text) {
         List<String> moras = new ArrayList<>();
         if (text == null || text.trim().isEmpty()) return moras;
-        java.util.regex.Matcher m = MORA_PATTERN.matcher(text.trim());
+        Matcher m = MORA_PATTERN.matcher(text.trim());
         while (m.find()) {
             String mora = m.group().trim();
             if (!mora.isEmpty()) {
@@ -100,149 +285,26 @@ public class AiSyllableTransliterationService {
         }
     }
 
-    private static String getKanaRomaji(char c) {
-        switch (c) {
-            case 'あ': case 'ア': return "a";
-            case 'い': case 'イ': return "i";
-            case 'う': case 'ウ': return "u";
-            case 'え': case 'エ': return "e";
-            case 'お': case 'オ': return "o";
-            case 'か': case 'カ': return "ka";
-            case 'き': case 'キ': return "ki";
-            case 'く': case 'ク': return "ku";
-            case 'け': case 'ケ': return "ke";
-            case 'こ': case 'コ': return "ko";
-            case 'さ': case 'サ': return "sa";
-            case 'し': case 'シ': return "shi";
-            case 'す': case 'ス': return "su";
-            case 'せ': case 'セ': return "se";
-            case 'そ': case 'ソ': return "so";
-            case 'た': case 'タ': return "ta";
-            case 'ち': case 'チ': return "chi";
-            case 'つ': case 'ツ': return "tsu";
-            case 'て': case 'テ': return "te";
-            case 'と': case 'ト': return "to";
-            case 'な': case 'ナ': return "na";
-            case 'に': case 'ニ': return "ni";
-            case 'ぬ': case 'ヌ': return "nu";
-            case 'ね': case 'ネ': return "ne";
-            case 'の': case 'ノ': return "no";
-            case 'は': case 'ハ': return "ha";
-            case 'ひ': case 'ヒ': return "hi";
-            case 'ふ': case 'フ': return "fu";
-            case 'へ': case 'ヘ': return "he";
-            case 'ほ': case 'ホ': return "ho";
-            case 'ま': case 'マ': return "ma";
-            case 'み': case 'ミ': return "mi";
-            case 'む': case 'ム': return "mu";
-            case 'め': case 'メ': return "me";
-            case 'も': case 'モ': return "mo";
-            case 'や': case 'ヤ': return "ya";
-            case 'ゆ': case 'ユ': return "yu";
-            case 'よ': case 'ヨ': return "yo";
-            case 'ら': case 'ラ': return "ra";
-            case 'り': case 'リ': return "ri";
-            case 'る': case 'ル': return "ru";
-            case 'れ': case 'レ': return "re";
-            case 'ろ': case 'ロ': return "ro";
-            case 'わ': case 'ワ': return "wa";
-            case 'を': case 'ヲ': return "wo";
-            case 'ん': case 'ン': return "n";
-            case 'が': case 'ガ': return "ga";
-            case 'ぎ': case 'ギ': return "gi";
-            case 'ぐ': case 'グ': return "gu";
-            case 'げ': case 'ゲ': return "ge";
-            case 'ご': case 'ゴ': return "go";
-            case 'ざ': case 'ザ': return "za";
-            case 'じ': case 'ジ': return "ji";
-            case 'ず': case 'ズ': return "zu";
-            case 'ぜ': case 'ゼ': return "ze";
-            case 'ぞ': case 'ゾ': return "zo";
-            case 'だ': case 'ダ': return "da";
-            case 'ぢ': case 'ヂ': return "ji";
-            case 'づ': case 'ヅ': return "zu";
-            case 'で': case 'デ': return "de";
-            case 'ど': case 'ド': return "do";
-            case 'ば': case 'バ': return "ba";
-            case 'び': case 'ビ': return "bi";
-            case 'ぶ': case 'ブ': return "bu";
-            case 'べ': case 'ベ': return "be";
-            case 'ぼ': case 'ボ': return "bo";
-            case 'ぱ': case 'パ': return "pa";
-            case 'ぴ': case 'ピ': return "pi";
-            case 'ぷ': case 'プ': return "pu";
-            case 'ぺ': case 'ペ': return "pe";
-            case 'ぽ': case 'ポ': return "po";
-            case 'ぁ': case 'ァ': return "a";
-            case 'ぃ': case 'ィ': return "i";
-            case 'ぅ': case 'ゥ': return "u";
-            case 'ぇ': case 'ェ': return "e";
-            case 'ぉ': case 'ォ': return "o";
-            case 'ゃ': case 'ャ': return "ya";
-            case 'ゅ': case 'ュ': return "yu";
-            case 'ょ': case 'ョ': return "yo";
-            case 'っ': case 'ッ': return "";
-            default: return null;
-        }
-    }
-
+    /**
+     * True when {@code token} reads syllables {@code start..end}: the same Latin text, or the
+     * kana's Hepburn reading (particles は/へ also read "wa"/"e"). Kanji never match here.
+     */
     private static boolean matchKanaOrText(String token, List<LyricsData.Word> syllables, int start, int end) {
-        if (token == null || token.isEmpty()) return false;
-        String cleanTok = token.replaceAll("[^a-zA-Z0-9]", "").toLowerCase(java.util.Locale.ROOT);
-        if (cleanTok.isEmpty()) return false;
-
-        // 1. Check direct Latin text concatenation
-        StringBuilder textSb = new StringBuilder();
+        String tok = token.replaceAll("[^a-zA-Z0-9]", "").toLowerCase(Locale.ROOT);
+        if (tok.isEmpty()) return false;
+        StringBuilder sb = new StringBuilder();
         for (int i = start; i <= end; i++) {
             LyricsData.Word w = syllables.get(i);
-            if (w != null && w.text != null) {
-                textSb.append(w.text.replaceAll("[^a-zA-Z0-9]", ""));
-            }
+            if (w == null || w.text == null) return false;
+            sb.append(w.text.trim());
         }
-        if (cleanTok.equalsIgnoreCase(textSb.toString())) {
-            return true;
-        }
-
-        // 2. Check Kana phonetic concatenation
-        StringBuilder kanaSb = new StringBuilder();
-        boolean allKana = true;
-        for (int i = start; i <= end; i++) {
-            LyricsData.Word w = syllables.get(i);
-            if (w == null || w.text == null) {
-                allKana = false;
-                break;
-            }
-            String t = w.text.trim();
-            for (int k = 0; k < t.length(); k++) {
-                char c = t.charAt(k);
-                String r = getKanaRomaji(c);
-                if (r != null) {
-                    kanaSb.append(r);
-                } else if (!Character.isWhitespace(c)) {
-                    allKana = false;
-                    break;
-                }
-            }
-            if (!allKana) break;
-        }
-
-        if (allKana && kanaSb.length() > 0) {
-            String kanaStr = kanaSb.toString();
-            if (cleanTok.equals(kanaStr)) return true;
-            // Common particle readings: "は" -> "wa", "を" -> "o", "へ" -> "e"
-            if (start == end && syllables.get(start).text != null) {
-                String single = syllables.get(start).text.trim();
-                if ((single.equals("は") || single.equals("ハ")) && cleanTok.equals("wa")) return true;
-                if ((single.equals("を") || single.equals("ヲ")) && cleanTok.equals("o")) return true;
-                if ((single.equals("へ") || single.equals("ヘ")) && cleanTok.equals("e")) return true;
-            }
-        }
-
-        return false;
-    }
-
-    public static List<String> alignTokens(List<String> rawTokens, int expectedCount) {
-        return alignTokens(rawTokens, expectedCount, null);
+        String text = sb.toString();
+        if (tok.equalsIgnoreCase(text.replaceAll("[^a-zA-Z0-9]", ""))) return true;
+        if (!JapaneseRomanizer.containsKana(text)) return false;
+        String reading = JapaneseRomanizer.romanize(text).toLowerCase(Locale.ROOT);
+        if (!reading.matches("[a-z]+")) return false;
+        if (tok.equals(reading)) return true;
+        return start == end && (("ha".equals(reading) && "wa".equals(tok)) || ("he".equals(reading) && "e".equals(tok)));
     }
 
     /** Aligns {@code tokens} into {@code count} slots and writes them into {@code out} at {@code start}. */
@@ -253,7 +315,7 @@ public class AiSyllableTransliterationService {
         }
     }
 
-    public static List<String> alignTokens(List<String> rawTokens, int expectedCount, List<LyricsData.Word> syllables) {
+    static List<String> alignTokens(List<String> rawTokens, int expectedCount, List<LyricsData.Word> syllables) {
         if (expectedCount <= 0) return Collections.emptyList();
         if (rawTokens == null || rawTokens.isEmpty()) {
             List<String> res = new ArrayList<>();
@@ -471,6 +533,10 @@ public class AiSyllableTransliterationService {
         return result;
     }
 
+    /**
+     * Writes a Latin reading onto {@code line}: the line text, and per-word labels aligned to
+     * its words (given per word, or split from the line text when absent).
+     */
     public static void alignSyllables(LyricsData.LyricsLine line, List<String> aiWordsRomanji, String fallbackRomanjiLine) {
         if (line == null) return;
         if (fallbackRomanjiLine != null && !fallbackRomanjiLine.trim().isEmpty()) {
@@ -623,333 +689,6 @@ public class AiSyllableTransliterationService {
             } else {
                 w.isPartOfWord = false;
             }
-        }
-    }
-
-    public static List<LineTransliterationResult> parseJsonResponse(String jsonText) {
-        List<LineTransliterationResult> list = new ArrayList<>();
-        if (jsonText == null || jsonText.trim().isEmpty()) return list;
-
-        try {
-            String clean = JsonResponse.extract(jsonText);
-
-            JsonElement parsed = JsonParser.parseString(clean);
-            JsonArray arr = null;
-            if (parsed.isJsonObject()) {
-                JsonObject root = parsed.getAsJsonObject();
-                if (root.has("lines") && root.get("lines").isJsonArray()) {
-                    arr = root.getAsJsonArray("lines");
-                }
-            } else if (parsed.isJsonArray()) {
-                arr = parsed.getAsJsonArray();
-            }
-
-            if (arr != null) {
-                for (JsonElement el : arr) {
-                    if (!el.isJsonObject()) continue;
-                    JsonObject obj = el.getAsJsonObject();
-                    LineTransliterationResult item = new LineTransliterationResult();
-                    item.index = (obj.has("index") && !obj.get("index").isJsonNull()) ? obj.get("index").getAsInt() : -1;
-                    item.romanji = (obj.has("romanji") && !obj.get("romanji").isJsonNull())
-                            ? ScriptDetector.stripNonLatinCharacters(obj.get("romanji").getAsString()) : "";
-                    item.translation = (obj.has("translation") && !obj.get("translation").isJsonNull())
-                            ? obj.get("translation").getAsString() : "";
-
-                    if (obj.has("wordsRomanji") && !obj.get("wordsRomanji").isJsonNull() && obj.get("wordsRomanji").isJsonArray()) {
-                        JsonArray wr = obj.getAsJsonArray("wordsRomanji");
-                        for (JsonElement elWord : wr) {
-                            String rawToken = elWord != null && !elWord.isJsonNull() ? elWord.getAsString() : "";
-                            item.wordsRomanji.add(ScriptDetector.stripNonLatinCharacters(rawToken));
-                        }
-                    }
-                    list.add(item);
-                }
-            }
-        } catch (Exception e) {
-            try {
-                Log.e(TAG, "Error parsing AI transliteration JSON", e);
-            } catch (Throwable ignored) {}
-        }
-        return list;
-    }
-
-    public static String buildPromptPayload(String title, String artist, List<LyricsData.LyricsLine> batchLines, String targetLang) {
-        return buildPromptPayload(title, artist, batchLines, targetLang, true);
-    }
-
-    public static String buildPromptPayload(String title, String artist, List<LyricsData.LyricsLine> batchLines, String targetLang, boolean includeTranslation) {
-        String safeTargetLang = (targetLang != null && !targetLang.trim().isEmpty()) ? targetLang.trim() : "id";
-        JsonObject promptObj = new JsonObject();
-        promptObj.addProperty("title", title != null ? title : "");
-        promptObj.addProperty("artist", artist != null ? artist : "");
-        promptObj.addProperty("targetLanguage", safeTargetLang);
-        promptObj.addProperty("includeTranslation", includeTranslation);
-
-        JsonArray linesArr = new JsonArray();
-        if (batchLines != null) {
-            for (int i = 0; i < batchLines.size(); i++) {
-                LyricsData.LyricsLine line = batchLines.get(i);
-                JsonObject lineObj = new JsonObject();
-                lineObj.addProperty("index", i);
-                lineObj.addProperty("text", line != null && line.text != null ? line.text : "");
-
-                JsonArray syllArr = new JsonArray();
-                if (line != null && line.words != null) {
-                    for (LyricsData.Word w : line.words) {
-                        syllArr.add(w != null && w.text != null ? w.text : "");
-                    }
-                }
-                lineObj.addProperty("syllableCount", syllArr.size());
-                lineObj.add("syllables", syllArr);
-                linesArr.add(lineObj);
-            }
-        }
-        promptObj.add("lines", linesArr);
-
-        String translationRule = includeTranslation
-                ? "2. For each line, translate the meaning accurately into targetLanguage (" + safeTargetLang + ").\n"
-                : "2. The user requested transliteration ONLY. Leave \"translation\" as empty string \"\" for all lines.\n";
-
-        return "You are an expert multilingual song lyrics transliteration and translation engine.\n" +
-                "Given song lines with syllable segmentation, output a strict JSON object with a \"lines\" array.\n" +
-                "Rules:\n" +
-                "1. Transliterate non-Latin scripts (Japanese Kanji/Kana to Hepburn Romaji, Chinese Hanzi to Pinyin, Korean to Revised Romanization, Russian to Latin). Output 'romanji' and 'wordsRomanji' in STRICT LATIN CHARACTERS ONLY. Under no circumstances should original Japanese Kanji/Kana or Chinese characters appear in transliteration fields.\n" +
-                translationRule +
-                "3. CRITICAL: For \"wordsRomanji\", you MUST provide an array of strings of EXACTLY THE SAME LENGTH as the input \"syllables\" array (wordsRomanji.length == syllableCount).\n" +
-                "   - Each element in \"wordsRomanji\" corresponds 1:1 to the syllable or character at the exact same index in \"syllables\".\n" +
-                "   - For Japanese: decompose Kanji words and compounds into individual character/mora readings. For example, if \"syllables\" is [\"君\", \"の\", \"前\", \"前\", \"前\", \"世\", \"か\", \"ら\", \"僕\", \"は\"] (length 10), \"wordsRomanji\" MUST be [\"kimi\", \"no\", \"zen\", \"zen\", \"zen\", \"se\", \"ka\", \"ra\", \"boku\", \"wa\"] (length 10). If \"syllables\" is [\"あ\", \"な\", \"た\", \"の\"] (length 4), \"wordsRomanji\" MUST be [\"a\", \"na\", \"ta\", \"no\"] (length 4). NEVER combine multiple syllables into one token.\n" +
-                "   - For Chinese: each Hanzi character gets its Pinyin syllable.\n" +
-                "   - For Korean: each Hangul syllable block gets its Romanized syllable.\n" +
-                "   - If input syllable is already Latin, keep it as is.\n" +
-                "Output ONLY valid JSON with schema:\n" +
-                "{\n" +
-                "  \"lines\": [\n" +
-                "    {\n" +
-                "      \"index\": 0,\n" +
-                "      \"romanji\": \"full line transliteration\",\n" +
-                "      \"translation\": \"full line translation\",\n" +
-                "      \"wordsRomanji\": [\"syllable1\", \"syllable2\"]\n" +
-                "    }\n" +
-                "  ]\n" +
-                "}\n\n" +
-                "Payload:\n" +
-                promptObj.toString();
-    }
-
-    public AntigravityApiClient.Cancellable transliterateSyllablesAsync(
-            final LyricsData data,
-            final String trackTitle,
-            final String artist,
-            final String targetLang,
-            final Callback callback) {
-        return transliterateSyllablesAsync(data, trackTitle, artist, targetLang, true, callback);
-    }
-
-    public AntigravityApiClient.Cancellable transliterateSyllablesAsync(
-            final LyricsData data,
-            final String trackTitle,
-            final String artist,
-            final String targetLang,
-            final boolean includeTranslation,
-            final Callback callback) {
-        final BatchCancellable compositeCancellable = new BatchCancellable();
-
-        if (data == null || data.lines == null || data.lines.isEmpty()) {
-            dispatchError("Lyrics data is empty", callback);
-            return compositeCancellable;
-        }
-
-        if (apiClient == null) {
-            dispatchError("AntigravityApiClient is null", callback);
-            return compositeCancellable;
-        }
-
-        final List<LyricsData.LyricsLine> targetLines = new ArrayList<>();
-        for (LyricsData.LyricsLine line : data.lines) {
-            if (line != null && !line.isInterlude && line.text != null && !line.text.trim().isEmpty()) {
-                targetLines.add(line);
-            }
-        }
-
-        if (targetLines.isEmpty()) {
-            data.hasTransliteration = true;
-            data.sourceScript = ScriptDetector.detectScript(collectAllLinesText(data)).name();
-            dispatchSuccess(data, callback);
-            return compositeCancellable;
-        }
-
-        final int totalLines = targetLines.size();
-        final List<List<LyricsData.LyricsLine>> batches = new ArrayList<>();
-        for (int i = 0; i < totalLines; i += BATCH_SIZE) {
-            int end = Math.min(i + BATCH_SIZE, totalLines);
-            batches.add(new ArrayList<>(targetLines.subList(i, end)));
-        }
-
-        processBatch(0, batches, 0, totalLines, data, trackTitle, artist, targetLang, includeTranslation, callback, compositeCancellable);
-        return compositeCancellable;
-    }
-
-    private void processBatch(
-            final int batchIndex,
-            final List<List<LyricsData.LyricsLine>> batches,
-            final int processedSoFar,
-            final int totalLines,
-            final LyricsData data,
-            final String trackTitle,
-            final String artist,
-            final String targetLang,
-            final boolean includeTranslation,
-            final Callback callback,
-            final BatchCancellable cancellable) {
-        if (cancellable.isCancelled()) {
-            return;
-        }
-
-        if (batchIndex >= batches.size()) {
-            data.sourceScript = ScriptDetector.detectScript(collectAllLinesText(data)).name();
-            data.hasTransliteration = true;
-
-            if (cacheManager != null) {
-                try {
-                    TrackInfo trackInfo = new TrackInfo();
-                    trackInfo.title = trackTitle != null ? trackTitle : "";
-                    trackInfo.artist = artist != null ? artist : "";
-                    cacheManager.cache(trackInfo, data);
-                } catch (Exception e) {
-                    try {
-                        Log.e(TAG, "Failed to cache transliterated lyrics", e);
-                    } catch (Throwable ignored) {}
-                }
-            }
-
-            dispatchSuccess(data, callback);
-            return;
-        }
-
-        final List<LyricsData.LyricsLine> currentBatch = batches.get(batchIndex);
-        String prompt = buildPromptPayload(trackTitle, artist, currentBatch, targetLang, includeTranslation);
-        List<AiChatMessage> messages = Collections.singletonList(AiChatMessage.user(prompt));
-
-        AntigravityApiClient.Cancellable call = apiClient.generateContent(
-                DEFAULT_MODEL,
-                messages,
-                false,
-                "low",
-                new AntigravityApiClient.CompletionCallback() {
-                    @Override
-                    public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
-                        if (cancellable.isCancelled()) {
-                            return;
-                        }
-
-                        List<LineTransliterationResult> results = parseJsonResponse(fullText);
-                        for (int i = 0; i < currentBatch.size(); i++) {
-                            LyricsData.LyricsLine line = currentBatch.get(i);
-                            LineTransliterationResult match = findResultForIndex(results, i);
-                            if (match != null) {
-                                if (includeTranslation && match.translation != null && !match.translation.trim().isEmpty()) {
-                                    line.translation = match.translation.trim();
-                                }
-                                alignSyllables(line, match.wordsRomanji, match.romanji);
-                            }
-                        }
-
-                        int updatedProcessed = processedSoFar + currentBatch.size();
-                        dispatchProgress(updatedProcessed, totalLines, callback);
-
-                        processBatch(batchIndex + 1, batches, updatedProcessed, totalLines,
-                                data, trackTitle, artist, targetLang, includeTranslation, callback, cancellable);
-                    }
-
-                    @Override
-                    public void onError(Exception error) {
-                        if (cancellable.isCancelled()) {
-                            return;
-                        }
-                        String msg = error != null && error.getMessage() != null ? error.getMessage() : "Unknown error";
-                        dispatchError("AI Transliteration failed: " + msg, callback);
-                    }
-                });
-
-        cancellable.setCurrentCall(call);
-    }
-
-    private static String collectAllLinesText(LyricsData data) {
-        if (data == null || data.lines == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (LyricsData.LyricsLine line : data.lines) {
-            if (line != null && line.text != null) {
-                sb.append(line.text).append(" ");
-            }
-        }
-        return sb.toString();
-    }
-
-    private static LineTransliterationResult findResultForIndex(List<LineTransliterationResult> results, int index) {
-        if (results == null || results.isEmpty()) return null;
-        for (LineTransliterationResult r : results) {
-            if (r.index == index) {
-                return r;
-            }
-        }
-        boolean hasValidIndices = false;
-        for (LineTransliterationResult r : results) {
-            if (r.index >= 0) {
-                hasValidIndices = true;
-                break;
-            }
-        }
-        if (!hasValidIndices && index >= 0 && index < results.size()) {
-            return results.get(index);
-        }
-        return null;
-    }
-
-    private void postToMain(Runnable action) {
-        if (mainHandler != null) {
-            mainHandler.post(action);
-        } else {
-            action.run();
-        }
-    }
-
-    private void dispatchSuccess(final LyricsData data, final Callback callback) {
-        if (callback == null) return;
-        postToMain(() -> callback.onSuccess(data));
-    }
-
-    private void dispatchError(final String message, final Callback callback) {
-        if (callback == null) return;
-        postToMain(() -> callback.onError(message));
-    }
-
-    private void dispatchProgress(final int processed, final int total, final Callback callback) {
-        if (callback == null) return;
-        postToMain(() -> callback.onProgress(processed, total));
-    }
-
-    private static class BatchCancellable implements AntigravityApiClient.Cancellable {
-        private volatile boolean cancelled = false;
-        private AntigravityApiClient.Cancellable currentCall;
-
-        public synchronized void setCurrentCall(AntigravityApiClient.Cancellable call) {
-            this.currentCall = call;
-            if (cancelled && call != null) {
-                call.cancel();
-            }
-        }
-
-        @Override
-        public synchronized void cancel() {
-            cancelled = true;
-            if (currentCall != null) {
-                currentCall.cancel();
-            }
-        }
-
-        @Override
-        public boolean isCancelled() {
-            return cancelled;
         }
     }
 }

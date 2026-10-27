@@ -5,6 +5,8 @@ import android.text.Html;
 import android.text.Spanned;
 import android.widget.TextView;
 
+import com.lyricsync.app.R;
+
 import io.noties.markwon.Markwon;
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin;
 import io.noties.markwon.ext.tables.TableAwareMovementMethod;
@@ -368,66 +370,83 @@ public final class CleanMarkdownFormatter {
         }
     }
 
-    public static ToolDisplayInfo formatTool(String toolName, String queryOrUrl, int resultsCount, Context context) {
-        int icon = com.lyricsync.app.R.drawable.ic_search;
-        String running = "";
-        String done = "Selesai";
-
-        if ("web_fetch".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_search_globe;
-            String host = queryOrUrl;
-            try {
-                android.net.Uri uri = android.net.Uri.parse(queryOrUrl);
-                if (uri.getHost() != null) host = uri.getHost();
-            } catch (Exception ignored) {}
-            running = (context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_fetching) : "Mengambil isi halaman") + (host != null ? " (" + host + ")" : "");
-            done = context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_fetch_done) : "Halaman berhasil dibaca";
-        } else if ("translate_lyrics".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_sparkles;
-            running = "Menerjemahkan lirik (" + queryOrUrl + ")…";
-            done = "Lirik berhasil diterjemahkan!";
-        } else if ("transliterate_lyrics".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_sparkles;
-            running = "Menerapkan transliterasi Romaji/Latin…";
-            done = "Transliterasi berhasil diterapkan!";
-        } else if ("set_sync_offset".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_settings;
-            running = "Menyesuaikan timing lirik (" + queryOrUrl + " ms)…";
-            done = "Sinkronisasi berhasil disesuaikan!";
-        } else if ("modify_lyric_line".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_sparkles;
-            running = "Memperbarui " + queryOrUrl + " di overlay…";
-            done = "Baris lirik berhasil diperbarui!";
-        } else if ("batch_edit_lyrics".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_sparkles;
-            running = "Memperbarui " + queryOrUrl + " di overlay…";
-            done = "Lirik berhasil diperbarui!";
-        } else if ("toggle_display".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_sparkles;
-            running = "Mengubah tampilan: " + queryOrUrl + "…";
-            done = "Pengaturan tampilan diperbarui!";
-        } else if ("control_playback".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_play;
-            running = "Mengontrol pemutaran musik (" + queryOrUrl + ")…";
-            done = "Pemutaran musik diperbarui!";
-        } else if ("adjust_overlay_appearance".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_settings;
-            running = "Menyesuaikan tampilan overlay…";
-            done = "Tampilan overlay diperbarui!";
-        } else if ("manage_lyric_lines".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_lyrics_lines;
-            running = "Mengatur baris lirik (" + queryOrUrl + ")…";
-            done = "Baris lirik berhasil diperbarui!";
-        } else if ("get_current_playing_track".equals(toolName)) {
-            icon = com.lyricsync.app.R.drawable.ic_music_note;
-            running = "Memeriksa lagu yang sedang diputar…";
-            done = "Info lagu aktif berhasil didapatkan!";
-        } else {
-            String query = queryOrUrl != null ? queryOrUrl : "";
-            if (query.length() > 50) query = query.substring(0, 50) + "…";
-            running = (context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_searching) : "Mencari") + " \"" + query + "\"";
-            done = context != null ? context.getString(com.lyricsync.app.R.string.ai_tool_search_done, resultsCount) : "Ditemukan " + resultsCount + " sumber";
+    /**
+     * Icon, running and done labels for a tool card. {@code detail} is the short argument
+     * summary from the tool layer (query, URL, line range, op count...).
+     */
+    public static ToolDisplayInfo formatTool(String toolName, String detail, int resultsCount, Context context) {
+        String d = detail != null ? detail.trim() : "";
+        if (d.length() > 48) d = d.substring(0, 47) + "…";
+        int icon;
+        int running;
+        int done;
+        switch (toolName != null ? toolName : "") {
+            case "web_search":
+                if (context == null) return new ToolDisplayInfo(R.drawable.ic_search_globe, d, "");
+                return new ToolDisplayInfo(R.drawable.ic_search_globe, label(context, R.string.ai_tool_searching, d),
+                        context.getString(R.string.ai_tool_search_done, resultsCount));
+            case "edit_lyrics":
+                if (context == null) return new ToolDisplayInfo(R.drawable.ic_ai_sparkle, d, "");
+                return new ToolDisplayInfo(R.drawable.ic_ai_sparkle, context.getString(R.string.ai_tool_edit),
+                        context.getString(R.string.ai_tool_edit_done, d.isEmpty() ? "…" : d));
+            case "web_fetch":
+                icon = R.drawable.ic_search_globe;
+                running = R.string.ai_tool_fetching;
+                done = R.string.ai_tool_fetch_done;
+                try {
+                    String host = android.net.Uri.parse(d).getHost();
+                    if (host != null) d = host.startsWith("www.") ? host.substring(4) : host;
+                } catch (Exception ignored) {
+                }
+                break;
+            case "get_app_state":
+                icon = R.drawable.ic_music_note;
+                running = R.string.ai_tool_state;
+                done = R.string.ai_tool_state_done;
+                break;
+            case "read_lyrics":
+                icon = R.drawable.ic_lyrics_lines;
+                running = R.string.ai_tool_read;
+                done = R.string.ai_tool_read_done;
+                break;
+            case "undo_edit":
+                icon = R.drawable.ic_history;
+                running = R.string.ai_tool_undo;
+                done = R.string.ai_tool_undo_done;
+                break;
+            case "translate_lyrics":
+                icon = R.drawable.ic_sparkles;
+                running = R.string.ai_tool_translate;
+                done = R.string.ai_tool_translate_done;
+                break;
+            case "transliterate_lyrics":
+                icon = R.drawable.ic_sparkles;
+                running = R.string.ai_tool_transliterate;
+                done = R.string.ai_tool_transliterate_done;
+                break;
+            case "set_display":
+                icon = R.drawable.ic_settings;
+                running = R.string.ai_tool_display;
+                done = R.string.ai_tool_display_done;
+                break;
+            case "control_playback":
+                icon = R.drawable.ic_play;
+                running = R.string.ai_tool_playback;
+                done = R.string.ai_tool_playback_done;
+                break;
+            default:
+                icon = R.drawable.ic_bolt;
+                running = R.string.ai_tool_generic;
+                done = R.string.ai_tool_generic_done;
+                d = toolName != null ? toolName.replace('_', ' ') : "";
         }
-        return new ToolDisplayInfo(icon, running, done);
+        if (context == null) return new ToolDisplayInfo(icon, d, "");
+        return new ToolDisplayInfo(icon, label(context, running, d), context.getString(done));
+    }
+
+    /** "Reading lyrics · 1–20": the action, then the short detail when there is one. */
+    private static String label(Context context, int action, String detail) {
+        String a = context.getString(action);
+        return detail.isEmpty() ? a : a + " · " + detail;
     }
 }

@@ -2,19 +2,11 @@ package com.lyricsync.app.ai.client;
 
 import android.os.Handler;
 
-import com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate;
-import com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.ActionCallback;
-import com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.LineEdit;
-import com.lyricsync.app.ai.client.AntigravityApiClient.LyricActionDelegate.TrackInfoCallback;
-
-import java.util.List;
+import com.google.gson.JsonArray;
 
 /**
- * Forwards {@link LyricActionDelegate} calls to a host on the main thread.
- *
- * <p>The overlay service and the settings screen serve the same action set, and both must
- * touch their views on the main thread, so each implements {@link LyricActionDelegate} and
- * wraps itself in this — rather than hand-rolling the hop again.
+ * Forwards {@link LyricActionDelegate} calls to a host on the main thread: tool calls
+ * arrive on network threads, but the host touches its views and lyrics there.
  */
 public final class MainThreadLyricActionRouter implements LyricActionDelegate {
 
@@ -26,63 +18,43 @@ public final class MainThreadLyricActionRouter implements LyricActionDelegate {
         this.target = target;
     }
 
-    private void onMain(Runnable action) {
-        mainHandler.post(action);
+    @Override
+    public void getState(ActionCallback cb) {
+        mainHandler.post(() -> target.getState(cb));
     }
 
     @Override
-    public void translateLyrics(String targetLang, ActionCallback callback) {
-        onMain(() -> target.translateLyrics(targetLang, callback));
+    public void readLyrics(int from, int to, boolean words, ActionCallback cb) {
+        mainHandler.post(() -> target.readLyrics(from, to, words, cb));
     }
 
     @Override
-    public void transliterateLyrics(String mode, ActionCallback callback) {
-        onMain(() -> target.transliterateLyrics(mode, true, callback));
+    public void editLyrics(JsonArray ops, ActionCallback cb) {
+        mainHandler.post(() -> target.editLyrics(ops, cb));
     }
 
     @Override
-    public void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
-        onMain(() -> target.transliterateLyrics(mode, showOriginalScript, callback));
+    public void undoEdit(boolean all, ActionCallback cb) {
+        mainHandler.post(() -> target.undoEdit(all, cb));
     }
 
     @Override
-    public void setSyncOffset(int offsetMs, ActionCallback callback) {
-        onMain(() -> target.setSyncOffset(offsetMs, callback));
+    public void translateLyrics(String targetLang, ActionCallback cb) {
+        mainHandler.post(() -> target.translateLyrics(targetLang, cb));
     }
 
     @Override
-    public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) {
-        onMain(() -> target.modifyLine(lineIndex, text, translation, romanji, callback));
+    public void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback cb) {
+        mainHandler.post(() -> target.transliterateLyrics(mode, showOriginalScript, cb));
     }
 
     @Override
-    public void batchEditLyrics(List<LineEdit> edits, ActionCallback callback) {
-        onMain(() -> target.batchEditLyrics(edits, callback));
+    public void setDisplay(Display display, ActionCallback cb) {
+        mainHandler.post(() -> target.setDisplay(display, cb));
     }
 
     @Override
-    public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {
-        onMain(() -> target.toggleDisplay(feature, enabled, callback));
-    }
-
-    @Override
-    public void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback) {
-        onMain(() -> target.controlPlayback(action, lineIndex, positionMs, callback));
-    }
-
-    @Override
-    public void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent,
-                                 ActionCallback callback) {
-        onMain(() -> target.adjustAppearance(fontScale, animStyle, widthPercent, heightPercent, callback));
-    }
-
-    @Override
-    public void manageLines(LineOp op, ActionCallback callback) {
-        onMain(() -> target.manageLines(op, callback));
-    }
-
-    @Override
-    public void getCurrentPlayingTrack(TrackInfoCallback callback) {
-        onMain(() -> target.getCurrentPlayingTrack(callback));
+    public void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback cb) {
+        mainHandler.post(() -> target.controlPlayback(action, lineIndex, positionMs, cb));
     }
 }

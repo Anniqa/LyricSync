@@ -37,22 +37,13 @@ public class SongChatManager {
 
     public static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
 
-    public static final List<String> QUICK_PROMPTS = Collections.unmodifiableList(Arrays.asList(
-            "Song Meaning & Story",
-            "Line-by-Line Breakdown",
-            "Songwriter's Intent",
-            "Emotional Tone & Mood",
-            "Trivia & Context",
-            "Musical Composition"
-    ));
-
     public static List<PromptTemplate> getPromptTemplates(String langCode) {
         boolean isIndo = "id".equalsIgnoreCase(langCode) || "in".equalsIgnoreCase(langCode);
         if (isIndo) {
             return Collections.unmodifiableList(Arrays.asList(
-                    new PromptTemplate("search_and_apply", "Cari & Terapkan Lirik", "Cari lirik lengkap lagu ini dan terapkan langsung ke overlay", "Tolong carikan lirik lengkap yang akurat untuk lagu ini dan langsung terapkan ke overlay pemutar musik.", "ic_sparkles"),
                     new PromptTemplate("what_can_you_do", "Apa yang Bisa Kamu Lakukan?", "Lihat kemampuan kontrol penuh: terjemahan, edit teks, romaji, timing", "Apa saja yang bisa kamu lakukan untuk mengontrol dan mengedit lirik lagu ini? Berikan daftar fitur dan contoh perintahnya.", "ic_sparkles"),
-                    new PromptTemplate("translate_all", "Terjemahkan Lirik Lengkap", "Terjemahkan seluruh lirik secara puitis dan terapkan ke overlay", "Terjemahkan seluruh baris lirik lagu ini ke Bahasa Indonesia dengan gaya puitis dan langsung terapkan ke overlay.", "ic_lyrics_lines"),
+                    new PromptTemplate("translate_all", "Terjemahkan Lirik Lengkap", "Terjemahkan seluruh lirik dan tampilkan di overlay", "Terjemahkan seluruh lirik lagu ini ke Bahasa Indonesia dan tampilkan di overlay.", "ic_lyrics_lines"),
+                    new PromptTemplate("word_gloss", "Arti Kata per Kata", "Arti bahasa Indonesia di atas setiap kata, ikut sinkron", "Tampilkan arti bahasa Indonesia kata per kata di atas setiap kata lirik (word_romaji), dan terjemahan baris lengkapnya di bawah.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Makna & Kisah Lagu", "Eksplorasi cerita, tema utama, dan narasi lagu", "Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.", "ic_sparkles"),
                     new PromptTemplate("breakdown", "Bedah Lirik & Metafora", "Analisis baris lirik penting dan bahasa kiasan", "Bedah baris-baris lirik penting dan metafora yang digunakan dalam lagu ini.", "ic_lyrics_lines"),
                     new PromptTemplate("intent", "Tujuan & Inspirasi Penulis", "Inspirasi artis dan pesan yang ingin disampaikan", "Apa yang menginspirasi pencipta lagu ini dan apa pesan yang ingin disampaikan?", "ic_person_artist"),
@@ -62,9 +53,9 @@ public class SongChatManager {
             ));
         } else {
             return Collections.unmodifiableList(Arrays.asList(
-                    new PromptTemplate("search_and_apply", "Find & Apply Lyrics", "Find full lyrics for this song and apply directly to overlay", "Please find the accurate full lyrics for this song and apply them directly to my overlay player.", "ic_sparkles"),
                     new PromptTemplate("what_can_you_do", "What Can You Do?", "See full control capabilities: translation, text editing, romaji, timing", "What can you do to control and edit the lyrics of this song? List your features and example prompts.", "ic_sparkles"),
-                    new PromptTemplate("translate_all", "Translate All Lyrics", "Translate all lines poetically and apply directly to overlay", "Translate all lyric lines of this song poetically and apply the translation directly to the overlay.", "ic_lyrics_lines"),
+                    new PromptTemplate("translate_all", "Translate All Lyrics", "Translate the whole song and show it in the overlay", "Translate the lyrics of this song into English and show the translation in the overlay.", "ic_lyrics_lines"),
+                    new PromptTemplate("word_gloss", "Word-by-Word Meaning", "An English gloss above every word, in sync", "Show the English meaning of each word above that word (word_romaji), and the full line translation below.", "ic_lyrics_lines"),
                     new PromptTemplate("meaning", "Song Meaning & Story", "Deep dive into themes and narrative", "Explain the story, themes, and deeper meaning behind this song.", "ic_sparkles"),
                     new PromptTemplate("breakdown", "Line-by-Line Breakdown", "Analyze metaphors and poetic lyrics", "Break down the key lines and metaphors in these lyrics.", "ic_lyrics_lines"),
                     new PromptTemplate("intent", "Songwriter's Intent", "Artist inspiration and backstory", "What inspired the artist to write this song and what was their intent?", "ic_person_artist"),
@@ -80,6 +71,7 @@ public class SongChatManager {
     private volatile String title;
     private volatile String artist;
     private volatile String fullLyrics;
+    private volatile String appState;
     private volatile long currentSessionId = 0;
     private volatile AntigravityApiClient.Cancellable activeCall;
 
@@ -230,6 +222,11 @@ public class SongChatManager {
         this.fullLyrics = fullLyrics;
     }
 
+    /** App state JSON (track, playback, display) for the next message's context. */
+    public void setAppState(String appStateJson) {
+        this.appState = appStateJson;
+    }
+
     public String getModelId() {
         return modelId;
     }
@@ -240,92 +237,77 @@ public class SongChatManager {
         }
     }
 
-    /**
-     * Constructs the contextual system information summarizing the active song.
-     */
-    public String buildSongContext() {
-        return buildSongContext(false);
-    }
-
-
     public void setAppLanguage(String lang) {
         this.appLanguage = (lang != null && (lang.equalsIgnoreCase("id") || lang.equalsIgnoreCase("in"))) ? "id" : "en";
     }
 
-    /**
-     * Constructs the contextual system information summarizing the active song,
-     * adding factual Google Search directives when enableWebSearch is true.
-     */
+    /** System instructions plus the active song: one English prompt, answered in the app language. */
     public String buildSongContext(boolean enableWebSearch) {
         StringBuilder sb = new StringBuilder();
-        boolean isIndo = "id".equalsIgnoreCase(appLanguage);
+        sb.append("You are the AI built into LyricSync, a floating synced-lyrics overlay for Android. "
+                + "You can see and change everything the overlay shows: the lyric lines, their Latin reading "
+                + "(romaji/pinyin/romaja), per-word labels, translations, timing and display settings, and you "
+                + "can control the music player. Act like a capable agent: understand the intent, use the tools "
+                + "to do it fully, check the result, then reply briefly.\n");
+        sb.append("id".equals(appLanguage)
+                ? "Reply in natural, fluent Indonesian unless the user writes in another language.\n"
+                : "Reply in the user's language.\n");
 
-        if (isIndo) {
-            sb.append("Anda adalah asisten analis musik yang berwawasan luas dan membantu di aplikasi LyricSync.\n");
-            sb.append("Anda sedang berdiskusi interaktif dengan pengguna mengenai lagu yang sedang diputar:\n");
-        } else {
-            sb.append("You are an insightful and helpful music analyst assistant in the LyricSync app.\n");
-            sb.append("You are in an interactive conversation with the user about the currently playing song:\n");
-        }
-
-        if (title != null && !title.trim().isEmpty()) {
-            sb.append(isIndo ? "Judul: " : "Title: ").append(title.trim()).append("\n");
-        }
-        if (artist != null && !artist.trim().isEmpty()) {
-            sb.append(isIndo ? "Artis: " : "Artist: ").append(artist.trim()).append("\n");
+        sb.append("\n[Now playing]\n");
+        sb.append("Title: ").append(blankTo(title, "unknown")).append("\n");
+        sb.append("Artist: ").append(blankTo(artist, "unknown")).append("\n");
+        if (appState != null && !appState.trim().isEmpty()) {
+            sb.append("App state (JSON, taken when the user sent the message): ").append(appState.trim()).append("\n");
         }
         if (fullLyrics != null && !fullLyrics.trim().isEmpty()) {
-            sb.append(isIndo ? "Lirik:\n" : "Lyrics:\n").append(fullLyrics.trim()).append("\n");
-        }
-        if (enableWebSearch) {
-            if (isIndo) {
-                sb.append("\n[PENTING] Lakukan penelusuran Google Search secara aktif untuk menemukan fakta riil, latar belakang resmi, wawancara pencipta lagu/musisi, dan konteks album. Berikan jawaban yang akurat dan berbasis fakta, bukan spekulasi atau asumsi.\n");
-            } else {
-                sb.append("\n[IMPORTANT] Actively perform Google Search queries to discover verified facts, official background stories, artist interviews, and album context. Ground your answers in real facts rather than speculation.\n");
-            }
-        }
-        if (isIndo) {
-            sb.append("\n[PANDUAN ALAT LIRIK]\n");
-            sb.append("Anda memiliki alat fungsi (tools) untuk mengontrol dan memodifikasi tampilan lirik secara langsung di layar overlay pengguna:\n");
-            sb.append("- 'translate_lyrics': Gunakan jika pengguna meminta menerjemahkan lirik lagu ke bahasa lain (misal: Indonesia, Inggris, Jepang, Spanyol).\n");
-            sb.append("- 'transliterate_lyrics': Gunakan jika pengguna meminta transliterasi (Romaji/Pinyin/Romaja). Parameter 'mode': 'romaji_with_translation' (dengan arti), 'romaji_only' (hanya romaji), atau 'pure_romaji' (hanya romaji). Parameter 'show_original_script': false jika pengguna meminta membuang/menyembunyikan huruf asli (misal: 'Jepang buang').\n");
-            sb.append("- 'set_sync_offset': Gunakan jika pengguna mengeluh lirik terlalu cepat/lambat atau meminta memajukan/menunda lirik.\n");
-            sb.append("- 'modify_lyric_line': Gunakan jika pengguna meminta mengoreksi teks, arti, atau bacaan baris lirik tertentu.\n");
-            sb.append("- 'batch_edit_lyrics': Gunakan jika ingin membuat terjemahan lengkap/sebagian, mengedit teks, atau pelafalan romaji untuk banyak baris lirik sekaligus dalam satu pemanggilan (parameter: 'lines' berisi daftar objek baris dengan 'line_index', serta opsional 'translation', 'text', 'romanji').\n");
-            sb.append("- 'toggle_display': Gunakan jika pengguna meminta mematikan/menyalakan tampilan terjemahan, romaji, atau aksara asli.\n");
-            sb.append("- 'control_playback': Gunakan jika pengguna meminta melompat ke baris tertentu ('seek_to_line'), lompat ke waktu tertentu ('seek_to_position'), atau mengontrol pemutaran ('play', 'pause', 'skip_next', 'skip_previous').\n");
-            sb.append("- 'adjust_overlay_appearance': Gunakan jika pengguna meminta mengubah ukuran font lirik ('font_scale': misal 0.8 kecil, 1.2 besar), gaya animasi teks ('anim_style': glow/scale/pop/fade), atau ukuran overlay ('width_percent', 'height_percent').\n");
-            sb.append("- 'manage_lyric_lines': Gunakan jika pengguna meminta menghapus baris tertentu ('delete'), menyisipkan baris baru ('insert'), atau menggeser timing baris ('shift_timing').\n");
-            sb.append("- 'get_current_playing_track': Gunakan jika ingin mengetahui lagu apa yang saat ini sedang diputar di pemutar musik pengguna secara real-time (judul, artis, lirik aktif, status pemutaran). Panggil alat ini untuk memastikan lagu yang aktif jika pengguna bertanya tentang lagu saat ini!\n");
-            sb.append("\n[PENCARIAN LIRIK]\n");
-            sb.append("Pencarian dan pemuatan lirik ditangani otomatis oleh aplikasi lewat rantai penyedia lirik (SpicyLyrics, Kugou, Netease, LRCLIB) setiap kali lagu berganti. Anda TIDAK memiliki alat untuk mencari lirik, dan jangan menawarkan diri untuk mencarinya.\n");
-            sb.append("Jika pengguna meminta mencari lirik, jelaskan bahwa aplikasi sudah mencarinya otomatis untuk lagu yang sedang diputar, lalu tawarkan yang memang bisa Anda lakukan: menerjemahkan, transliterasi, membetulkan baris, mengubah tampilan, atau menjelaskan lagunya.\n");
-            sb.append("\n[ATURAN PENTING PENGGUNAAN ALAT]\n");
-            sb.append("- HANYA panggil alat jika pengguna secara EKSPLISIT meminta tindakan tersebut (misal: mencari lirik baru, menerjemahkan, transliterasi, mengedit lirik, atau mengubah tampilan/player).\n");
-            sb.append("- JANGAN PERNAH memanggil alat jika pengguna tidak memintanya secara jelas!\n");
-            sb.append("- Jika pengguna bertanya hal umum, mengobrol santai, atau bertanya di luar lagu, jawablah pertanyaannya secara langsung tanpa memanggil alat dan tanpa memaksakan topik lagu.\n");
-            sb.append("- Setelah memanggil alat, berikan konfirmasi ringkas mengenai perubahan yang telah berhasil diterapkan.");
+            sb.append("Lyrics (\"[n]\" = line index; \"r:\" romaji line, \"t:\" translation):\n")
+                    .append(fullLyrics.trim()).append("\n");
         } else {
-            sb.append("\n[LYRICS TOOLS GUIDELINE]\n");
-            sb.append("You have tool functions to control and modify the overlay lyrics in real-time:\n");
-            sb.append("- 'translate_lyrics': Translate lyrics to target language.\n");
-            sb.append("- 'transliterate_lyrics': Add Romaji/Pinyin/Romaja.\n");
-            sb.append("- 'batch_edit_lyrics': Batch update lines.\n");
-            sb.append("- 'control_playback': Control seek/play/pause.\n");
-            sb.append("- 'adjust_overlay_appearance': Modify font scale or animation.\n");
-            sb.append("\n[LYRIC SEARCHING]\n");
-            sb.append("Finding and loading lyrics is handled automatically by the app through its provider chain (SpicyLyrics, Kugou, Netease, LRCLIB) whenever the track changes. You have no tool for searching lyrics and should not offer to find them.\n");
-            sb.append("If the user asks you to find lyrics, explain that the app already looks them up for the current track, then offer what you can do: translate, transliterate, correct lines, change the display, or explain the song.\n");
+            sb.append("Lyrics: not loaded yet. The app finds lyrics by itself (SpicyLyrics, Kugou, Netease, LRCLIB); "
+                    + "you cannot download them.\n");
+        }
+
+        sb.append("\n[How the overlay draws a line]\n");
+        sb.append("- text: the lyric (original script).\n");
+        sb.append("- romaji: a Latin line drawn with it. word_romaji: one Latin label per timed word, drawn above "
+                + "that word and highlighted in sync. Both accept ANY Latin text, so they also carry word-by-word "
+                + "glosses, phonetic spellings or notes.\n");
+        sb.append("- translation: a line under it.\n");
+        sb.append("- Display switches (set_display): translation, romaji (the Latin layer), original_script "
+                + "(off = Latin layer only).\n");
+
+        sb.append("\n[Working with tools]\n");
+        sb.append("- Only act when the user asks for a change; questions get answers, not edits.\n");
+        sb.append("- Read before you write: use read_lyrics (include_words for word_romaji) to get exact text, word "
+                + "counts and timing. Never guess indexes or word counts.\n");
+        sb.append("- Put every change in ONE edit_lyrics call with many ops. Long songs: work in chunks of about "
+                + "20-30 lines per call.\n");
+        sb.append("- If a tool returns an error, read it, fix the arguments and try again.\n");
+        sb.append("- Prefer the app pipelines for whole-song jobs: translate_lyrics (full-context translation) and "
+                + "transliterate_lyrics (accurate syllable-aligned romaji). Use edit_lyrics for custom, partial or "
+                + "creative changes.\n");
+        sb.append("- Examples: \"romaji → Indonesian word by word\": read_lyrics with include_words, then set ops with "
+                + "word_romaji = the Indonesian meaning of each word (same count; '' for particles), and romaji = "
+                + "the full literal gloss if useful. \"Latin only\": set_display original_script=false, romaji=true. "
+                + "\"Fix line 5\": set op on line 5. \"Lyrics are late\": set_display sync_offset_ms. "
+                + "\"Undo that\": undo_edit.\n");
+        sb.append("- After acting, confirm in one or two short sentences what changed. Do not paste the edited lyrics "
+                + "back unless asked.\n");
+
+        sb.append("\n[Answers]\n");
+        sb.append("- Be concise and specific; quote the exact lines you discuss.\n");
+        sb.append("- Separate what the lyrics say from interpretation. Never invent facts about the song, artist or "
+                + "release; if unsure, say so.\n");
+        sb.append("- Translate meaning and tone naturally, like professional subtitles.\n");
+        if (enableWebSearch) {
+            sb.append("- For facts (release, credits, interviews, background) use web_search first, web_fetch to read "
+                    + "a promising source, and base the answer on what you found.\n");
         }
         return sb.toString();
     }
 
-    /**
-     * Prepares the full sequence of messages (context + multi-turn history) to send to the API,
-     * guaranteeing strictly alternating roles (user, model, user, model...).
-     */
-    public List<AiChatMessage> buildMessagesToSend() {
-        return buildMessagesToSend(false);
+    private static String blankTo(String value, String fallback) {
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
     }
 
     /**
@@ -337,7 +319,7 @@ public class SongChatManager {
         String context = buildSongContext(enableWebSearch);
         if (!context.trim().isEmpty()) {
             messages.add(AiChatMessage.user("[System Song Context & Instructions]\n" + context));
-            messages.add(AiChatMessage.model("Understood! I have full context on \"" + (title != null ? title : "the song") + "\" and am ready to discuss it with you."));
+            messages.add(AiChatMessage.model("OK."));
         }
 
         // Sanitize history to ensure strict alternating role structure
@@ -421,9 +403,9 @@ public class SongChatManager {
             }
 
             @Override
-            public void onToolCompleted(String toolName, int resultsCount) {
+            public void onToolCompleted(String toolName, int resultsCount, boolean isError) {
                 if (stale(sessionHandle, sessionId)) return;
-                safeForward(listener, l -> l.onToolCompleted(toolName, resultsCount));
+                safeForward(listener, l -> l.onToolCompleted(toolName, resultsCount, isError));
             }
 
             @Override

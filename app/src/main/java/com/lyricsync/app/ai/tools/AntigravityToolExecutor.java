@@ -14,7 +14,9 @@ import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -736,7 +738,7 @@ public class AntigravityToolExecutor {
 
         JsonArray parts = new JsonArray();
         JsonObject part = new JsonObject();
-        part.addProperty("text", query != null ? query : "");
+        part.addProperty("text", searchPrompt(query));
         parts.add(part);
 
         turn.add("parts", parts);
@@ -751,6 +753,18 @@ public class AntigravityToolExecutor {
 
         root.add("request", request);
         return root.toString();
+    }
+
+    /**
+     * The grounded search turn: the query plus how to answer it. Without the instruction the
+     * search model answers vaguely or from memory; the date lets "latest"/"new" queries work.
+     */
+    static String searchPrompt(String query) {
+        String date = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(new java.util.Date());
+        return "Search the web for: " + (query != null ? query.trim() : "") + "\n\n"
+                + "Today is " + date + ". Answer from the search results only, in the language of the query: "
+                + "a short factual summary with the specific details found (names, dates, numbers, quotes). "
+                + "If sources disagree, say so; if nothing relevant is found, say that plainly.";
     }
 
     /**
@@ -849,18 +863,11 @@ public class AntigravityToolExecutor {
             } catch (Exception ignored) {}
         }
 
-        if (sources.isEmpty() && !citations.isEmpty()) {
+        if (sources.isEmpty()) {
+            // No chunk list: fall back to the cited pages, once each.
+            Set<String> seen = new HashSet<>();
             for (SourceItem c : citations) {
-                boolean found = false;
-                for (SourceItem s : sources) {
-                    if (s.url.equals(c.url)) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found && !c.url.isEmpty()) {
-                    sources.add(new SourceItem(c.title, c.url));
-                }
+                if (!c.url.isEmpty() && seen.add(c.url)) sources.add(new SourceItem(c.title, c.url));
             }
         }
 
@@ -1147,21 +1154,6 @@ public class AntigravityToolExecutor {
                             }
                         }
 
-                        if (maxResults > 0 && result.sources.size() > maxResults) {
-                            result.sources = new ArrayList<>(result.sources.subList(0, maxResults));
-                            try {
-                                JsonObject json = JsonParser.parseString(result.content).getAsJsonObject();
-                                JsonArray newSourcesArr = new JsonArray();
-                                for (SourceItem s : result.sources) {
-                                    JsonObject sObj = new JsonObject();
-                                    sObj.addProperty("title", s.title);
-                                    sObj.addProperty("url", s.url);
-                                    newSourcesArr.add(sObj);
-                                }
-                                json.add("sources", newSourcesArr);
-                                result.content = json.toString();
-                            } catch (Exception ignored) {}
-                        }
                     }
 
                     if (callback != null) {

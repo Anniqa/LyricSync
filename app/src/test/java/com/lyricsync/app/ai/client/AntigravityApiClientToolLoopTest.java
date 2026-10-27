@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.lyricsync.app.lyrics.model.SyllableLyricsParser;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
@@ -58,75 +57,31 @@ public class AntigravityApiClientToolLoopTest {
         apiClient = new AntigravityApiClient(fakeAuthManager, mockHttpClient, fakeToolExecutor);
     }
 
-    // -------------------------------------------------------------
-    // Test 1: buildToolDeclarations structure (Section 3.1)
-    // -------------------------------------------------------------
     @Test
-    public void testBuildToolDeclarationsStructure() {
-        JsonArray declarations = AntigravityApiClient.buildToolDeclarations();
-        assertNotNull("Tool declarations array should not be null", declarations);
-        assertEquals("Must declare exactly 12 tools with web search", 12, declarations.size());
-
-        JsonArray declarationsNoWeb = AntigravityApiClient.buildToolDeclarations(false);
-        assertEquals("Must declare 10 lyric tools without web search", 10, declarationsNoWeb.size());
-
-        // 1. web_search
-        JsonObject searchTool = declarations.get(0).getAsJsonObject();
-        assertEquals("web_search", searchTool.get("name").getAsString());
-        assertTrue("Description must be meaningful", searchTool.get("description").getAsString().contains("Google"));
-
-        JsonObject searchParams = searchTool.getAsJsonObject("parameters");
-        assertEquals("OBJECT", searchParams.get("type").getAsString());
-        JsonObject searchProps = searchParams.getAsJsonObject("properties");
-        assertTrue(searchProps.has("query"));
-        assertEquals("STRING", searchProps.getAsJsonObject("query").get("type").getAsString());
-        assertTrue(searchProps.has("num_search_results"));
-        assertEquals("INTEGER", searchProps.getAsJsonObject("num_search_results").get("type").getAsString());
-
-        JsonArray searchRequired = searchParams.getAsJsonArray("required");
-        assertEquals(1, searchRequired.size());
-        assertEquals("query", searchRequired.get(0).getAsString());
-
-        // 2. web_fetch
-        JsonObject fetchTool = declarations.get(1).getAsJsonObject();
-        assertEquals("web_fetch", fetchTool.get("name").getAsString());
-        assertTrue("Description must be meaningful", fetchTool.get("description").getAsString().contains("URL")
-                || fetchTool.get("description").getAsString().contains("artikel"));
-
-        JsonObject fetchParams = fetchTool.getAsJsonObject("parameters");
-        assertEquals("OBJECT", fetchParams.get("type").getAsString());
-        JsonObject fetchProps = fetchParams.getAsJsonObject("properties");
-        assertTrue(fetchProps.has("url"));
-        assertEquals("STRING", fetchProps.getAsJsonObject("url").get("type").getAsString());
-
-        JsonArray fetchRequired = fetchParams.getAsJsonArray("required");
-        assertEquals(1, fetchRequired.size());
-        assertEquals("url", fetchRequired.get(0).getAsString());
-        // Check the 3 full control tools
-        boolean foundControlPlayback = false;
-        boolean foundAdjustAppearance = false;
-        boolean foundManageLines = false;
-        for (JsonElement el : declarations) {
-            JsonObject obj = el.getAsJsonObject();
-            String name = obj.get("name").getAsString();
-            if ("control_playback".equals(name)) {
-                foundControlPlayback = true;
-                JsonObject p = obj.getAsJsonObject("parameters");
-                assertTrue(p.getAsJsonObject("properties").has("action"));
-            } else if ("adjust_overlay_appearance".equals(name)) {
-                foundAdjustAppearance = true;
-                JsonObject p = obj.getAsJsonObject("parameters");
-                assertTrue(p.getAsJsonObject("properties").has("font_scale"));
-            } else if ("manage_lyric_lines".equals(name)) {
-                foundManageLines = true;
-                JsonObject p = obj.getAsJsonObject("parameters");
-                assertTrue(p.getAsJsonObject("properties").has("action"));
-            }
+    public void toolSetIsSmallAndGeneral() {
+        List<String> names = new ArrayList<>();
+        for (JsonElement el : AntigravityApiClient.buildToolDeclarations(true)) {
+            names.add(el.getAsJsonObject().get("name").getAsString());
         }
-        assertTrue("control_playback must be declared", foundControlPlayback);
-        // 12. get_current_playing_track
-        JsonObject currentTrackTool = declarations.get(11).getAsJsonObject();
-        assertEquals("get_current_playing_track", currentTrackTool.get("name").getAsString());
+        assertEquals(Arrays.asList("web_search", "web_fetch", "get_app_state", "read_lyrics", "edit_lyrics",
+                "undo_edit", "translate_lyrics", "transliterate_lyrics", "set_display", "control_playback"), names);
+        assertEquals(names.size() - 2, AntigravityApiClient.buildToolDeclarations(false).size());
+
+        // edit_lyrics takes an array of typed ops, and the animation keys are real registry keys.
+        JsonObject edit = declaration("edit_lyrics");
+        JsonObject ops = edit.getAsJsonObject("parameters").getAsJsonObject("properties").getAsJsonObject("ops");
+        assertEquals("ARRAY", ops.get("type").getAsString());
+        assertTrue(ops.getAsJsonObject("items").getAsJsonObject("properties").has("word_romaji"));
+        JsonObject display = declaration("set_display").getAsJsonObject("parameters").getAsJsonObject("properties");
+        assertTrue(display.getAsJsonObject("motion").getAsJsonArray("enum").contains(new JsonPrimitive("spring")));
+        assertTrue(display.getAsJsonObject("effect").getAsJsonArray("enum").contains(new JsonPrimitive("aurora")));
+    }
+
+    private static JsonObject declaration(String name) {
+        for (JsonElement el : AntigravityApiClient.buildToolDeclarations(true)) {
+            if (name.equals(el.getAsJsonObject().get("name").getAsString())) return el.getAsJsonObject();
+        }
+        throw new AssertionError(name + " not declared");
     }
 
     @Test
@@ -145,7 +100,7 @@ public class AntigravityApiClientToolLoopTest {
         assertFalse("tool object must NOT have built-in googleSearch", tool0.has("googleSearch"));
 
         JsonArray decls = tool0.getAsJsonArray("functionDeclarations");
-        assertEquals(12, decls.size());
+        assertEquals(10, decls.size());
         assertEquals("web_search", decls.get(0).getAsJsonObject().get("name").getAsString());
         assertEquals("web_fetch", decls.get(1).getAsJsonObject().get("name").getAsString());
     }
@@ -354,16 +309,13 @@ public class AntigravityApiClientToolLoopTest {
     }
 
     // -------------------------------------------------------------
-    // Test 5: Hard loop guard (max 3 tool iterations)
+    // Test 5: Hard loop guard (MAX_TOOL_ITERATIONS)
     // -------------------------------------------------------------
     @Test
-    public void testMaxThreeToolIterationsGuard() throws InterruptedException {
-        // Enqueue 5 turns of functionCall to simulate runaway model loop
+    public void testToolLoopGuard() throws InterruptedException {
+        // A runaway model that never stops calling tools.
         String loopChunk = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"functionCall\": {\"name\": \"web_search\",\"args\": {\"query\": \"loop test\"}}}]}}]}}\n\n";
-        mockInterceptor.enqueueSseResponse(loopChunk); // iteration 1
-        mockInterceptor.enqueueSseResponse(loopChunk); // iteration 2
-        mockInterceptor.enqueueSseResponse(loopChunk); // iteration 3
-        mockInterceptor.enqueueSseResponse(loopChunk); // iteration 4 (should NOT execute tool)
+        for (int i = 0; i <= AntigravityApiClient.MAX_TOOL_ITERATIONS; i++) mockInterceptor.enqueueSseResponse(loopChunk);
 
         fakeToolExecutor.searchResultToReturn = new ToolResult(false, "{\"status\":\"ok\"}", Collections.<SourceItem>emptyList());
 
@@ -385,7 +337,7 @@ public class AntigravityApiClientToolLoopTest {
 
         assertTrue("Loop guard must terminate within 5 seconds", latch.await(5, TimeUnit.SECONDS));
         assertTrue("onComplete must be called when max iterations reached", completeCalled.get());
-        assertEquals("Tool must be executed exactly 3 times max", 3, fakeToolExecutor.searchCallsCount);
+        assertEquals(AntigravityApiClient.MAX_TOOL_ITERATIONS, fakeToolExecutor.searchCallsCount);
     }
 
     // -------------------------------------------------------------
@@ -569,195 +521,142 @@ public class AntigravityApiClientToolLoopTest {
         }
     }
 
-    // -------------------------------------------------------------
-    // Test: Simulation of "tampilkan romanji dan translate nya Jepang buang"
-    // -------------------------------------------------------------
+    /**
+     * "romaji → Indonesian word by word": the model reads, then edits in one turn with two
+     * parallel calls. Both run in order, and the next request replays both calls followed by
+     * both results in one user turn.
+     */
     @Test
-    public void testSimulationTransliterateLyricsAndTranslation() throws InterruptedException {
-        final AtomicReference<String> executedMode = new AtomicReference<>();
-        final AtomicBoolean executedShowOriginal = new AtomicBoolean(true);
-        final AtomicBoolean delegateInvoked = new AtomicBoolean(false);
+    public void parallelCallsRunInOrderAndReplayTogether() throws InterruptedException {
+        final List<String> calls = Collections.synchronizedList(new ArrayList<String>());
+        apiClient.setLyricActionDelegate(new RecordingDelegate(calls));
 
-        apiClient.setLyricActionDelegate(new AntigravityApiClient.LyricActionDelegate() {
-            @Override
-            public void translateLyrics(String targetLang, ActionCallback callback) {
-                callback.onSuccess("Translated to " + targetLang);
-            }
-
-            @Override
-            public void transliterateLyrics(String mode, ActionCallback callback) {
-                transliterateLyrics(mode, true, callback);
-            }
-
-            @Override
-            public void transliterateLyrics(String mode, boolean showOriginalScript, ActionCallback callback) {
-                executedMode.set(mode);
-                executedShowOriginal.set(showOriginalScript);
-                delegateInvoked.set(true);
-                callback.onSuccess("Transliterasi (" + mode + ", aksara=" + showOriginalScript + ") berhasil diterapkan.");
-            }
-
-            @Override
-            public void setSyncOffset(int offsetMs, ActionCallback callback) {
-                callback.onSuccess("Sync offset: " + offsetMs);
-            }
-
-            @Override
-            public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) {
-                callback.onSuccess("Modified line " + lineIndex);
-            }
-
-            @Override
-            public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) {
-                callback.onSuccess("Toggled " + feature);
-            }
-        });
-
-        // Turn 1: Model calls transliterate_lyrics with thought_signature and show_original_script=false
-        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_crypto_gemini_3\",\"functionCall\": {\"name\": \"transliterate_lyrics\",\"id\": \"call_translit_1\",\"args\": {\"mode\": \"romaji_with_translation\",\"show_original_script\": false}}}]}}]}}\n\n";
-        // Turn 2: Model returns explanation
-        String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Aksara Jepang telah disembunyikan dan lirik ditampilkan dalam Romaji beserta terjemahannya di layar overlay.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 45,\"candidatesTokenCount\": 25}}}\n\n";
-
-        mockInterceptor.enqueueSseResponse(turn1Response);
-        mockInterceptor.enqueueSseResponse(turn2Response);
+        String turn1 = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": ["
+                + "{\"thoughtSignature\": \"sig1\",\"functionCall\": {\"name\": \"read_lyrics\",\"args\": {\"from_line\": 0,\"include_words\": true}}},"
+                + "{\"functionCall\": {\"name\": \"edit_lyrics\",\"args\": {\"ops\": [{\"op\": \"set\",\"line\": 0,\"word_romaji\": [\"aku\",\"cinta\"]}]}}}"
+                + "]}}]}}\n\n";
+        String turn2 = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Selesai.\"}]}}]}}\n\n";
+        mockInterceptor.enqueueSseResponse(turn1);
+        mockInterceptor.enqueueSseResponse(turn2);
 
         final CountDownLatch latch = new CountDownLatch(1);
-        final List<String> toolEvents = new ArrayList<>();
-        final AtomicReference<String> completedText = new AtomicReference<>();
-        final AtomicReference<Exception> errorRef = new AtomicReference<>();
-
-        // Test with webSearch=false, ensuring lyric tools still work!
-        apiClient.generateContentStream("gemini-3.8-flash-high", new ArrayList<>(),
-                "tampilkan romanji dan translate nya Jepang buang", false, new AntigravityApiClient.StreamListener() {
+        final List<String> events = Collections.synchronizedList(new ArrayList<String>());
+        final AtomicReference<String> text = new AtomicReference<>();
+        apiClient.generateContentStream("gemini-3.8-flash-high", new ArrayList<AiChatMessage>(),
+                "romaji ke indo word by word", false, new AntigravityApiClient.StreamListener() {
                     @Override
-                    public void onToolExecuting(String toolName, String queryOrUrl) {
-                        toolEvents.add("executing:" + toolName);
+                    public void onToolExecuting(String toolName, String detail) {
+                        events.add("run:" + toolName);
                     }
 
                     @Override
-                    public void onToolCompleted(String toolName, int resultsCount) {
-                        toolEvents.add("completed:" + toolName);
+                    public void onToolCompleted(String toolName, int resultsCount, boolean isError) {
+                        events.add("done:" + toolName + (isError ? ":error" : ""));
                     }
 
                     @Override
                     public void onComplete(String fullResponse, List<String> webSources) {
-                        completedText.set(fullResponse);
+                        text.set(fullResponse);
                         latch.countDown();
                     }
 
                     @Override
                     public void onError(Exception e) {
-                        errorRef.set(e);
-                        latch.countDown();
-                    }
-                });
-
-        assertTrue("Simulation should complete within 5 seconds", latch.await(5, TimeUnit.SECONDS));
-        assertNull("Should not encounter error: " + errorRef.get(), errorRef.get());
-
-        // Verify tool execution
-        assertTrue("LyricActionDelegate must be invoked", delegateInvoked.get());
-        assertEquals("romaji_with_translation", executedMode.get());
-        assertFalse("showOriginalScript must be false for 'Jepang buang'", executedShowOriginal.get());
-
-        // Verify event lifecycle
-        assertEquals(2, toolEvents.size());
-        assertEquals("executing:transliterate_lyrics", toolEvents.get(0));
-        assertEquals("completed:transliterate_lyrics", toolEvents.get(1));
-
-        // Verify completion text
-        assertNotNull(completedText.get());
-        assertTrue(completedText.get().contains("Romaji"));
-    }
-    @Test
-    public void testSimulationControlPlaybackAppearanceAndManageLines() throws InterruptedException {
-        final AtomicReference<String> lastPlaybackAction = new AtomicReference<>();
-        final AtomicInteger lastPlaybackLine = new AtomicInteger(-1);
-        final AtomicReference<Float> lastFontScale = new AtomicReference<>();
-        final AtomicReference<String> lastAnimStyle = new AtomicReference<>();
-        final AtomicReference<String> lastManageAction = new AtomicReference<>();
-        final AtomicInteger lastManageLine = new AtomicInteger(-1);
-
-        apiClient.setLyricActionDelegate(new AntigravityApiClient.LyricActionDelegate() {
-            @Override public void translateLyrics(String targetLang, ActionCallback callback) { callback.onSuccess("OK"); }
-            @Override public void transliterateLyrics(String mode, ActionCallback callback) { callback.onSuccess("OK"); }
-            @Override public void setSyncOffset(int offsetMs, ActionCallback callback) { callback.onSuccess("OK"); }
-            @Override public void modifyLine(int lineIndex, String text, String translation, String romanji, ActionCallback callback) { callback.onSuccess("OK"); }
-            @Override public void toggleDisplay(String feature, boolean enabled, ActionCallback callback) { callback.onSuccess("OK"); }
-
-            @Override
-            public void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback) {
-                lastPlaybackAction.set(action);
-                lastPlaybackLine.set(lineIndex);
-                callback.onSuccess("Seek to line " + (lineIndex + 1) + " success");
-            }
-
-            @Override
-            public void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent, ActionCallback callback) {
-                lastFontScale.set(fontScale);
-                lastAnimStyle.set(animStyle);
-                callback.onSuccess("Appearance updated");
-            }
-
-            @Override
-            public void manageLines(AntigravityApiClient.LyricActionDelegate.LineOp op, ActionCallback callback) {
-                lastManageAction.set(op.action);
-                lastManageLine.set(op.lineIndex);
-                callback.onSuccess("Line managed");
-            }
-        });
-
-        // Turn 1: Model calls control_playback
-        String turn1Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_ctrl_1\",\"functionCall\": {\"name\": \"control_playback\",\"id\": \"call_ctrl_1\",\"args\": {\"action\": \"seek_to_line\",\"line_index\": 4}}}]}}]}}\n\n";
-        // Turn 2: Model calls adjust_overlay_appearance
-        String turn2Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_adj_1\",\"functionCall\": {\"name\": \"adjust_overlay_appearance\",\"id\": \"call_adj_1\",\"args\": {\"font_scale\": 1.3,\"anim_style\": \"glow\"}}}]}}]}}\n\n";
-        // Turn 3: Model calls manage_lyric_lines
-        String turn3Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"thought_signature\": \"sig_man_1\",\"functionCall\": {\"name\": \"manage_lyric_lines\",\"id\": \"call_man_1\",\"args\": {\"action\": \"delete\",\"line_index\": 2}}}]}}]}}\n\n";
-        // Turn 4: Final user text
-        String turn4Response = "data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"Semua perintah kontrol berhasil dieksekusi.\"}]}}],\"usageMetadata\": {\"promptTokenCount\": 50,\"candidatesTokenCount\": 25}}}\n\n";
-
-        mockInterceptor.enqueueSseResponse(turn1Response);
-        mockInterceptor.enqueueSseResponse(turn2Response);
-        mockInterceptor.enqueueSseResponse(turn3Response);
-        mockInterceptor.enqueueSseResponse(turn4Response);
-
-        final CountDownLatch latch = new CountDownLatch(1);
-        final List<String> toolEvents = new ArrayList<>();
-        final AtomicReference<String> completedText = new AtomicReference<>();
-
-        apiClient.generateContentStream("gemini-3.8-flash-high", new ArrayList<>(),
-                "lompat ke baris 5, besarin font dan hapus baris 3", false, new AntigravityApiClient.StreamListener() {
-                    @Override
-                    public void onToolExecuting(String toolName, String queryOrUrl) {
-                        toolEvents.add("executing:" + toolName + ":" + queryOrUrl);
-                    }
-
-                    @Override
-                    public void onToolCompleted(String toolName, int resultsCount) {
-                        toolEvents.add("completed:" + toolName);
-                    }
-
-                    @Override
-                    public void onComplete(String fullResponse, List<String> webSources) {
-                        completedText.set(fullResponse);
-                        latch.countDown();
-                    }
-
-                    @Override
-                    public void onError(Exception error) {
                         latch.countDown();
                     }
                 });
 
         assertTrue(latch.await(5, TimeUnit.SECONDS));
-        assertEquals("seek_to_line", lastPlaybackAction.get());
-        assertEquals(4, lastPlaybackLine.get());
-        assertEquals(Float.valueOf(1.3f), lastFontScale.get());
-        assertEquals("glow", lastAnimStyle.get());
-        assertEquals("delete", lastManageAction.get());
-        assertEquals(2, lastManageLine.get());
-        assertEquals(6, toolEvents.size());
-        assertEquals("Semua perintah kontrol berhasil dieksekusi.", completedText.get());
+        assertEquals("Selesai.", text.get());
+        assertEquals(Arrays.asList("read:0:-1:true", "edit:1"), calls);
+        assertEquals(Arrays.asList("run:read_lyrics", "done:read_lyrics", "run:edit_lyrics", "done:edit_lyrics"), events);
+
+        JsonArray contents = JsonParser.parseString(mockInterceptor.recordedRequestBodies.get(1)).getAsJsonObject()
+                .getAsJsonObject("request").getAsJsonArray("contents");
+        JsonObject modelTurn = contents.get(contents.size() - 2).getAsJsonObject();
+        JsonObject resultTurn = contents.get(contents.size() - 1).getAsJsonObject();
+        assertEquals("model", modelTurn.get("role").getAsString());
+        assertEquals(2, modelTurn.getAsJsonArray("parts").size());
+        assertEquals("sig1", modelTurn.getAsJsonArray("parts").get(0).getAsJsonObject().get("thoughtSignature").getAsString());
+        assertEquals("user", resultTurn.get("role").getAsString());
+        assertEquals(2, resultTurn.getAsJsonArray("parts").size());
+        assertEquals("edit_lyrics", resultTurn.getAsJsonArray("parts").get(1).getAsJsonObject()
+                .getAsJsonObject("functionResponse").get("name").getAsString());
+    }
+
+    /** A failing tool is reported as an error to the listener and to the model, which then corrects itself. */
+    @Test
+    public void toolErrorReachesModelAndListener() throws InterruptedException {
+        final List<String> calls = Collections.synchronizedList(new ArrayList<String>());
+        apiClient.setLyricActionDelegate(new RecordingDelegate(calls));
+        mockInterceptor.enqueueSseResponse("data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": "
+                + "[{\"functionCall\": {\"name\": \"set_display\",\"args\": {}}}]}}]}}\n\n");
+        mockInterceptor.enqueueSseResponse("data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": "
+                + "[{\"functionCall\": {\"name\": \"set_display\",\"args\": {\"original_script\": false,\"romaji\": \"true\"}}}]}}]}}\n\n");
+        mockInterceptor.enqueueSseResponse("data: {\"response\": {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"OK\"}]}}]}}\n\n");
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final List<Boolean> errors = Collections.synchronizedList(new ArrayList<Boolean>());
+        apiClient.generateContentStream("m", new ArrayList<AiChatMessage>(), "latin saja", false,
+                new AntigravityApiClient.StreamListener() {
+                    @Override
+                    public void onToolCompleted(String toolName, int resultsCount, boolean isError) {
+                        errors.add(isError);
+                    }
+
+                    @Override
+                    public void onComplete(String fullResponse, List<String> webSources) {
+                        latch.countDown();
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        latch.countDown();
+                    }
+                });
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertEquals(Arrays.asList(true, false), errors);
+        assertEquals(Collections.singletonList("display:romaji=true,original=false"), calls);
+        String second = mockInterceptor.recordedRequestBodies.get(1);
+        assertTrue("the model sees the error text", second.contains("set_display needs at least one setting"));
+    }
+
+    /** Records what the tools asked for; never touches Android. */
+    static final class RecordingDelegate implements LyricActionDelegate {
+        private final List<String> calls;
+
+        RecordingDelegate(List<String> calls) {
+            this.calls = calls;
+        }
+
+        @Override public void getState(ActionCallback cb) { calls.add("state"); cb.onSuccess("{}"); }
+
+        @Override public void readLyrics(int from, int to, boolean words, ActionCallback cb) {
+            calls.add("read:" + from + ":" + to + ":" + words);
+            cb.onSuccess("{\"lines\":[{\"line\":0,\"text\":\"I love\",\"words\":[\"I\",\"love\"]}]}");
+        }
+
+        @Override public void editLyrics(JsonArray ops, ActionCallback cb) { calls.add("edit:" + ops.size()); cb.onSuccess("ok"); }
+
+        @Override public void undoEdit(boolean all, ActionCallback cb) { calls.add("undo:" + all); cb.onSuccess("ok"); }
+
+        @Override public void translateLyrics(String lang, ActionCallback cb) { calls.add("translate:" + lang); cb.onSuccess("ok"); }
+
+        @Override public void transliterateLyrics(String mode, boolean original, ActionCallback cb) {
+            calls.add("translit:" + mode + ":" + original);
+            cb.onSuccess("ok");
+        }
+
+        @Override public void setDisplay(Display d, ActionCallback cb) {
+            calls.add("display:romaji=" + d.romaji + ",original=" + d.originalScript);
+            cb.onSuccess("ok");
+        }
+
+        @Override public void controlPlayback(String action, int line, long pos, ActionCallback cb) {
+            calls.add("playback:" + action + ":" + line);
+            cb.onSuccess("ok");
+        }
     }
 
     static class FakeToolExecutor extends AntigravityToolExecutor {

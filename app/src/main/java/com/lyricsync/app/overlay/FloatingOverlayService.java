@@ -40,12 +40,14 @@ import android.widget.Toast;
 
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
+import com.lyricsync.app.ai.client.LyricActionDelegate;
 import com.lyricsync.app.ai.client.MainThreadLyricActionRouter;
 import com.lyricsync.app.ai.client.AntigravityQuotaClient;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.QuotaSummary;
 import com.lyricsync.app.ai.service.SongChatManager;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
+import com.lyricsync.app.ai.tools.LyricsEditor;
 import com.lyricsync.app.ai.util.AiStreamingAnimator;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
 
@@ -61,6 +63,7 @@ import com.lyricsync.app.LyricSyncApp;
 import com.lyricsync.app.R;
 import com.lyricsync.app.detection.MediaSessionTracker;
 import com.lyricsync.app.ai.transliteration.AiSyllableTransliterationService;
+import com.lyricsync.app.ai.transliteration.TransliterationRequest;
 import com.lyricsync.app.ai.transliteration.ScriptDetector;
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.LyricsProviderManager;
@@ -70,6 +73,7 @@ import com.lyricsync.app.lyrics.translation.GoogleTranslateService;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.renderer.AnimConfig;
+import com.lyricsync.app.renderer.AnimStyleDef;
 import com.lyricsync.app.renderer.SpringScroller;
 import com.lyricsync.app.renderer.SyllableHighlighter;
 import com.lyricsync.app.ui.AndroidPrefs;
@@ -85,10 +89,13 @@ import com.lyricsync.app.util.Permissions;
 import com.lyricsync.app.util.SeekBars;
 
 import java.lang.ref.WeakReference;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
-public class FloatingOverlayService extends Service implements AntigravityApiClient.LyricActionDelegate {
+public class FloatingOverlayService extends Service implements LyricActionDelegate {
     private static final String TAG = "FloatingOverlay";
     private static final int NOTIFICATION_ID = 1001;
 
@@ -196,6 +203,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     private TextView overlayTransliterationLabel;
     private View romajiRow;
     private boolean isProgrammaticRomajiUpdate = false;
+    private boolean isProgrammaticTranslateUpdate = false;
+    /** The AI's edits and their undo history for the current lyrics. */
+    private final LyricsEditor lyricsEditor = new LyricsEditor();
 
     // AI Insights UI & Subsystems
     private ImageView overlayAiButton;
@@ -452,6 +462,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             overlayTranslateSwitch.setTextOff("");
             overlayTranslateSwitch.setChecked(translationEnabled);
             overlayTranslateSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
+                if (isProgrammaticTranslateUpdate) return;
                 translationEnabled = isChecked;
                 sharedPrefs.edit().putBoolean(
                         GoogleTranslateService.PREF_TRANSLATION_ENABLED, isChecked).apply();
@@ -480,7 +491,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                 }
                 sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, isChecked).apply();
                 if (isChecked && currentLyrics != null && isLyricsNonLatin(currentLyrics) && !currentLyrics.hasTransliteration) {
-                    performTransliteration();
+                    performTransliteration(TransliterationRequest.KEEP, null);
                 }
                 String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
                         ? overlayTransliterationLabel.getText().toString()
@@ -1173,21 +1184,21 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                     getText(R.string.ai_chip_transliterate_with_translation),
                     getText(R.string.ai_chip_transliterate_with_translation_desc),
                     R.drawable.ic_sparkles,
-                    v -> { Haptics.tick(v); performTransliteration(true); }));
+                    v -> { Haptics.tick(v); performTransliteration(TransliterationRequest.WITH_TRANSLATION, null); }));
 
             // Option 2: Transliterasi Saja
             aiPromptTemplatesContainer.addView(createPromptTemplateView(
                     getText(R.string.ai_chip_transliterate_only),
                     getText(R.string.ai_chip_transliterate_only_desc),
                     R.drawable.ic_sparkles,
-                    v -> { Haptics.tick(v); performTransliteration(false, true); }));
+                    v -> { Haptics.tick(v); performTransliteration(TransliterationRequest.WITH_ORIGINAL, null); }));
 
             // Option 3: Latin Saja (Tanpa Huruf Asli)
             aiPromptTemplatesContainer.addView(createPromptTemplateView(
                     getText(R.string.ai_chip_transliterate_pure_romaji),
                     getText(R.string.ai_chip_transliterate_pure_romaji_desc),
                     R.drawable.ic_sparkles,
-                    v -> { Haptics.tick(v); performTransliteration(false, false); }));
+                    v -> { Haptics.tick(v); performTransliteration(TransliterationRequest.LATIN_ONLY, null); }));
         }
         String lang = LocaleHelper.getLanguage(this);
         List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
@@ -1224,18 +1235,15 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         return ScriptDetector.isNonLatin(sb.toString());
     }
     private void performTransliteration() {
-        performTransliteration(true, true, null);
+        performTransliteration(TransliterationRequest.WITH_TRANSLATION, null);
     }
 
-    private void performTransliteration(final boolean includeTranslation) {
-        performTransliteration(includeTranslation, true, null);
-    }
-
-    private void performTransliteration(final boolean includeTranslation, final boolean showOriginalScript) {
-        performTransliteration(includeTranslation, showOriginalScript, null);
-    }
-
-    private void performTransliteration(final boolean includeTranslation, final boolean showOriginalScript, final AntigravityApiClient.LyricActionDelegate.ActionCallback actionCallback) {
+    /**
+     * Shows the Latin line as {@code req} asks — with/without the original script and the
+     * translation. Runs the AI transliteration first when the lyrics have none yet.
+     */
+    private void performTransliteration(final TransliterationRequest req,
+                                        final LyricActionDelegate.ActionCallback actionCallback) {
         if (currentLyrics == null || aiTransliterationService == null || currentTrack == null) {
             if (actionCallback != null) actionCallback.onError("Lirik belum dimuat");
             return;
@@ -1244,100 +1252,91 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             activeTransliterationCall.cancel();
             activeTransliterationCall = null;
         }
-
         if (currentLyrics.hasTransliteration) {
-            if (highlighter != null) {
-                highlighter.setTransliterationEnabled(true);
-                highlighter.setOriginalScriptEnabled(showOriginalScript);
-                if (includeTranslation) {
-                    translationEnabled = true;
-                    sharedPrefs.edit()
-                            .putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
-                            .apply();
-                    highlighter.setTranslationEnabled(true);
-                    if (overlayTranslateSwitch != null) {
-                        overlayTranslateSwitch.setChecked(true);
-                    }
-                }
-            }
-            sharedPrefs.edit()
-                    .putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true)
-                    .putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, showOriginalScript)
-                    .apply();
-            if (overlayRomajiSwitch != null) {
-                isProgrammaticRomajiUpdate = true;
-                overlayRomajiSwitch.setChecked(true);
-                isProgrammaticRomajiUpdate = false;
-            }
-            updateTransliterationToggleUi();
-            Toast.makeText(this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
-            if (actionCallback != null) {
-                actionCallback.onSuccess("Transliterasi (" + (showOriginalScript ? "dengan" : "tanpa") + " aksara asli) berhasil diterapkan.");
-            }
+            applyTransliterationDisplay(req);
+            Toast.makeText(this, transliterationLabel(req), Toast.LENGTH_SHORT).show();
+            if (actionCallback != null) actionCallback.onSuccess("Tampilan diterapkan: " + req.describe() + ".");
             return;
         }
 
-        final TrackInfo track = currentTrack;
         final String fetchKey = pendingFetchKey;
+        final TrackInfo track = currentTrack;
         Toast.makeText(this, R.string.ai_transliterating, Toast.LENGTH_SHORT).show();
-        String title = currentTrack.title != null ? currentTrack.title : "";
-        String artist = currentTrack.artist != null ? currentTrack.artist : "";
-        String targetLang = LocaleHelper.getLanguage(this);
         activeTransliterationCall = aiTransliterationService.transliterateSyllablesAsync(
-                currentLyrics, title, artist, targetLang, includeTranslation,
+                currentLyrics,
+                track.title != null ? track.title : "",
+                track.artist != null ? track.artist : "",
+                null, // the song is translated separately, with full context
                 new AiSyllableTransliterationService.Callback() {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
                         activeTransliterationCall = null;
-                        // Null-safe: pendingFetchKey is null when no track fetch is in flight,
-                        // and a null context must not NPE the callback thread.
+                        // Null-safe: pendingFetchKey is null when no track fetch is in flight.
                         if (isDestroyed || !java.util.Objects.equals(fetchKey, pendingFetchKey)) {
                             if (actionCallback != null) actionCallback.onError("Konteks lagu telah kedaluwarsa");
                             return;
                         }
                         currentLyrics = enrichedData;
-                        sharedPrefs.edit()
-                                .putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true)
-                                .putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, showOriginalScript)
-                                .apply();
-                        if (includeTranslation) {
-                            translationEnabled = true;
-                            sharedPrefs.edit()
-                                    .putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
-                                    .apply();
-                            if (overlayTranslateSwitch != null) {
-                                overlayTranslateSwitch.setChecked(true);
-                            }
-                            if (highlighter != null) {
-                                highlighter.setTranslationEnabled(true);
-                            }
-                        }
-                        if (overlayRomajiSwitch != null) {
-                            isProgrammaticRomajiUpdate = true;
-                            overlayRomajiSwitch.setChecked(true);
-                            isProgrammaticRomajiUpdate = false;
-                        }
-                        if (lyricsCacheManager != null && currentTrack != null) {
-                            lyricsCacheManager.cache(currentTrack, enrichedData);
-                        }
+                        if (lyricsCacheManager != null) lyricsCacheManager.cache(track, enrichedData);
                         renderOverlayLyrics(currentLyrics);
                         updateSongChatLyrics(currentLyrics);
-                        Toast.makeText(FloatingOverlayService.this, R.string.ai_transliteration_complete, Toast.LENGTH_SHORT).show();
+                        applyTransliterationDisplay(req);
+                        Toast.makeText(FloatingOverlayService.this,
+                                transliterationLabel(req), Toast.LENGTH_SHORT).show();
                         if (actionCallback != null) {
-                            actionCallback.onSuccess("Transliterasi berhasil diproses dan diterapkan ke overlay.");
+                            actionCallback.onSuccess("Transliterasi selesai, tampilan: " + req.describe() + ".");
                         }
                     }
 
                     @Override
                     public void onError(String message) {
                         activeTransliterationCall = null;
-                        Toast.makeText(FloatingOverlayService.this, message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
-                        if (actionCallback != null) {
-                            actionCallback.onError("Transliterasi gagal: " + message);
-                        }
+                        Toast.makeText(FloatingOverlayService.this,
+                                message != null ? message : "Transliteration failed", Toast.LENGTH_SHORT).show();
+                        if (actionCallback != null) actionCallback.onError("Transliterasi gagal: " + message);
                     }
                 });
     }
+
+    /** Latin line on; original script and translation set as requested (null = unchanged). */
+    private void applyTransliterationDisplay(TransliterationRequest req) {
+        SharedPreferences.Editor e = sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true);
+        if (highlighter != null) highlighter.setTransliterationEnabled(true);
+        if (req.showOriginal != null) {
+            e.putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, req.showOriginal);
+            if (highlighter != null) highlighter.setOriginalScriptEnabled(req.showOriginal);
+        }
+        if (req.showTranslation != null) {
+            boolean on = req.showTranslation;
+            translationEnabled = on;
+            e.putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, on);
+            if (highlighter != null) highlighter.setTranslationEnabled(on);
+            // The switch listener fetches the translation when this turns it on.
+            if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(on);
+            else if (on && currentLyrics != null && currentLyrics.translationLang == null) fetchTranslationForCurrentLyrics();
+        }
+        e.apply();
+        if (overlayRomajiSwitch != null) {
+            isProgrammaticRomajiUpdate = true;
+            overlayRomajiSwitch.setChecked(true);
+            isProgrammaticRomajiUpdate = false;
+        }
+        updateTransliterationToggleUi();
+    }
+
+    /** "Lirik ditampilkan: Latin + terjemahan", in the UI language. */
+    private String transliterationLabel(TransliterationRequest req) {
+        String what;
+        if (Boolean.FALSE.equals(req.showOriginal) && !Boolean.TRUE.equals(req.showTranslation)) {
+            what = getString(R.string.translit_latin_only);
+        } else {
+            what = getString(R.string.translit_latin);
+            if (!Boolean.FALSE.equals(req.showOriginal)) what += getString(R.string.translit_plus_original);
+            if (Boolean.TRUE.equals(req.showTranslation)) what += getString(R.string.translit_plus_translation);
+        }
+        return getString(R.string.ai_transliteration_applied, what);
+    }
+
 
     private void updateTransliterationToggleUi() {
         if (overlayRomajiSwitch == null) return;
@@ -1369,10 +1368,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         final LyricsData targetLyrics = currentLyrics;
         String title = track.title != null ? track.title : "";
         String artist = track.artist != null ? track.artist : "";
-        String targetLang = LocaleHelper.getLanguage(this);
 
         activeTransliterationCall = aiTransliterationService.transliterateSyllablesAsync(
-                targetLyrics, title, artist, targetLang, true,
+                targetLyrics, title, artist, null,
                 new AiSyllableTransliterationService.Callback() {
                     @Override
                     public void onSuccess(LyricsData enrichedData) {
@@ -1395,297 +1393,293 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
     }
 
 
-    /**
-     * Reports the track the overlay is following right now, for the AI tools. The router
-     * posts every {@link AntigravityApiClient.LyricActionDelegate} call onto the main thread, so
-     * this runs there.
-     */
+    // ---------------------------------------------------------------- AI harness (LyricActionDelegate)
+    // The router posts every call here onto the main thread. Results are written for the model.
+
     @Override
-    public void getCurrentPlayingTrack(AntigravityApiClient.LyricActionDelegate.TrackInfoCallback callback) {
-        String title = currentTrack != null ? currentTrack.title : "";
-        String artist = currentTrack != null ? currentTrack.artist : "";
-        String lyrics = songChatManager != null ? songChatManager.getFullLyrics() : "";
-        boolean playing = sessionTracker != null && sessionTracker.isPlaying();
-        long position = sessionTracker != null ? sessionTracker.getCurrentPosition() : 0L;
-        if (callback != null) {
-            callback.onSuccess(title, artist, lyrics, playing, position);
-        }
+    public void getState(LyricActionDelegate.ActionCallback cb) {
+        cb.onSuccess(appState().toString());
     }
 
-    public void translateLyrics(String targetLang, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
+    /** Track, playback, lyrics and display state; also attached to every chat message. */
+    private JsonObject appState() {
+        JsonObject o = new JsonObject();
+        JsonObject track = new JsonObject();
+        track.addProperty("title", currentTrack != null && currentTrack.title != null ? currentTrack.title : "");
+        track.addProperty("artist", currentTrack != null && currentTrack.artist != null ? currentTrack.artist : "");
+        if (currentTrack != null && currentTrack.duration > 0) track.addProperty("duration_ms", currentTrack.duration);
+        o.add("track", track);
+
+        JsonObject playback = new JsonObject();
+        boolean player = sessionTracker != null && sessionTracker.hasController();
+        playback.addProperty("player_connected", player);
+        if (player) {
+            long pos = sessionTracker.getCurrentPosition();
+            playback.addProperty("playing", sessionTracker.isPlaying());
+            playback.addProperty("position_ms", pos);
+            int active = currentLyrics != null && lyricsContainer != null ? findActiveLine(pos) : -1;
+            if (active >= 0) playback.addProperty("active_line", active);
+        }
+        o.add("playback", playback);
+
+        JsonObject lyrics = new JsonObject();
+        lyrics.addProperty("loaded", currentLyrics != null && !currentLyrics.isEmpty());
+        if (currentLyrics != null && currentLyrics.lines != null) {
+            int withRomaji = 0, withTranslation = 0, withWordRomaji = 0;
+            for (LyricsData.LyricsLine l : currentLyrics.lines) {
+                if (l.romanji != null && !l.romanji.trim().isEmpty()) withRomaji++;
+                if (l.translation != null && !l.translation.trim().isEmpty()) withTranslation++;
+                if (highlighter != null && highlighter.hasAnyWordRomanji(l)) withWordRomaji++;
+            }
+            lyrics.addProperty("type", currentLyrics.type != null ? currentLyrics.type.name() : "");
+            lyrics.addProperty("provider", currentLyrics.provider != null ? currentLyrics.provider : "");
+            lyrics.addProperty("lines", currentLyrics.lines.size());
+            lyrics.addProperty("non_latin_script", isLyricsNonLatin(currentLyrics));
+            lyrics.addProperty("lines_with_romaji", withRomaji);
+            lyrics.addProperty("lines_with_word_romaji", withWordRomaji);
+            lyrics.addProperty("lines_with_translation", withTranslation);
+            if (currentLyrics.translationLang != null) lyrics.addProperty("translation_language", currentLyrics.translationLang);
+            lyrics.addProperty("undo_steps", lyricsEditor.undoSteps(currentLyrics));
+        }
+        o.add("lyrics", lyrics);
+
+        JsonObject display = new JsonObject();
+        display.addProperty("translation", translationEnabled);
+        display.addProperty("romaji", romajiPref());
+        display.addProperty("original_script", originalScriptPref());
+        display.addProperty("font_scale", sharedPrefs.getFloat(OverlayPrefKeys.FONT_SCALE, config.fontScaleDefault));
+        display.addProperty("width_percent", sharedPrefs.getInt(OverlayPrefKeys.WIDTH_PERCENT, config.widthPercentDefault));
+        display.addProperty("height_percent", sharedPrefs.getInt(OverlayPrefKeys.HEIGHT_PERCENT, config.heightPercentDefault));
+        display.addProperty("sync_offset_ms", OverlayGeometry.syncOffset(config, sharedPrefs.getLong(OverlayPrefKeys.SYNC_OFFSET_MS, 0)));
+        AndroidPrefs animPrefs = new AndroidPrefs(sharedPrefs);
+        display.addProperty("motion", AnimSelection.motionKey(animPrefs));
+        display.addProperty("effect", AnimSelection.effectKey(animPrefs));
+        display.addProperty("target_language", GoogleTranslateService.resolveTargetLang(
+                sharedPrefs.getString(GoogleTranslateService.PREF_TARGET_LANG, GoogleTranslateService.DEFAULT_TARGET_LANG),
+                java.util.Locale.getDefault()));
+        o.add("display", display);
+        return o;
+    }
+
+    @Override
+    public void readLyrics(int from, int to, boolean words, LyricActionDelegate.ActionCallback cb) {
         if (currentLyrics == null || currentLyrics.isEmpty()) {
-            if (callback != null) callback.onError("Tidak ada lirik aktif untuk diterjemahkan");
+            cb.onError("No lyrics are loaded.");
             return;
         }
-        final String lang = (targetLang != null && !targetLang.trim().isEmpty()) ? targetLang.trim() : "id";
-        sharedPrefs.edit()
-                .putString(GoogleTranslateService.PREF_TARGET_LANG, lang)
-                .putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true)
-                .apply();
-        translationEnabled = true;
+        cb.onSuccess(LyricsEditor.read(currentLyrics, from, to, words).toString());
+    }
+
+    @Override
+    public void editLyrics(JsonArray ops, LyricActionDelegate.ActionCallback cb) {
+        LyricsEditor.Result r;
+        try {
+            r = lyricsEditor.apply(currentLyrics, ops);
+            cancelBackgroundLyricJobs();
+        } catch (IllegalArgumentException e) {
+            cb.onError(e.getMessage());
+            return;
+        }
+        // Mark what the AI wrote as this song's translation/reading, so the re-render
+        // does not auto-fetch over it.
+        if (r.wroteTranslation) {
+            currentLyrics.translationLang = GoogleTranslateService.resolveTargetLang(sharedPrefs.getString(
+                    GoogleTranslateService.PREF_TARGET_LANG, GoogleTranslateService.DEFAULT_TARGET_LANG),
+                    java.util.Locale.getDefault());
+            setTranslationVisible(true);
+        }
+        if (r.wroteRomaji) {
+            currentLyrics.hasTransliteration = true;
+            setRomajiVisible(true);
+        }
+        renderLyricsEdit();
+        cb.onSuccess(r.summary);
+    }
+
+    @Override
+    public void undoEdit(boolean all, LyricActionDelegate.ActionCallback cb) {
+        String msg;
+        try {
+            msg = lyricsEditor.undo(currentLyrics, all);
+            cancelBackgroundLyricJobs();
+        } catch (IllegalStateException e) {
+            cb.onError(e.getMessage());
+            return;
+        }
+        renderLyricsEdit();
+        cb.onSuccess(msg);
+    }
+
+    @Override
+    public void translateLyrics(String targetLang, LyricActionDelegate.ActionCallback cb) {
+        if (currentLyrics == null || currentLyrics.isEmpty()) {
+            cb.onError("No lyrics are loaded.");
+            return;
+        }
+        String lang = targetLang != null && !targetLang.trim().isEmpty() ? targetLang.trim() : "id";
+        sharedPrefs.edit().putString(GoogleTranslateService.PREF_TARGET_LANG, lang).apply();
+        setTranslationVisible(true);
+        fetchTranslationForCurrentLyrics(cb);
+    }
+
+    @Override
+    public void transliterateLyrics(String mode, boolean showOriginalScript, LyricActionDelegate.ActionCallback cb) {
+        if (currentLyrics == null || currentLyrics.isEmpty()) {
+            cb.onError("No lyrics are loaded.");
+            return;
+        }
+        performTransliteration(TransliterationRequest.fromTool(mode, showOriginalScript), cb);
+    }
+
+    @Override
+    public void setDisplay(LyricActionDelegate.Display d, LyricActionDelegate.ActionCallback cb) {
+        List<String> done = new ArrayList<>();
+        if (d.motion != null && !hasStyle(AnimStyleDef.Registry.motionStyles(), d.motion)
+                || d.effect != null && !hasStyle(AnimStyleDef.Registry.effectStyles(), d.effect)) {
+            cb.onError("Unknown motion or effect; use one of the values listed in the tool schema.");
+            return;
+        }
+        if (d.translation != null) {
+            setTranslationVisible(d.translation);
+            if (d.translation && !hasAnyTranslation(currentLyrics)) fetchTranslationForCurrentLyrics();
+            done.add("translation " + onOff(d.translation));
+        }
+        if (d.romaji != null) {
+            setRomajiVisible(d.romaji);
+            done.add("romaji " + onOff(d.romaji));
+        }
+        if (d.originalScript != null) {
+            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, d.originalScript).apply();
+            if (highlighter != null) highlighter.setOriginalScriptEnabled(d.originalScript);
+            done.add("original script " + onOff(d.originalScript));
+        }
+        if (d.syncOffsetMs != null) {
+            int ms = OverlayGeometry.syncOffset(config, d.syncOffsetMs);
+            sharedPrefs.edit().putLong(OverlayPrefKeys.SYNC_OFFSET_MS, ms).apply();
+            if (sessionTracker != null) sessionTracker.setSyncOffsetMs(ms);
+            updateSyncOffsetLabel(ms);
+            syncOffsetSliderFromPrefs(ms);
+            done.add("sync offset " + ms + " ms");
+        }
+        // Size and animation prefs are applied by settingsListener (one rebuild for all).
+        SharedPreferences.Editor e = sharedPrefs.edit();
+        if (d.fontScale != null) {
+            float v = OverlayGeometry.fontScale(config, d.fontScale);
+            e.putFloat(OverlayPrefKeys.FONT_SCALE, v);
+            done.add("font scale " + v);
+        }
+        if (d.widthPercent != null) {
+            int v = OverlayGeometry.widthPercent(config, d.widthPercent);
+            e.putInt(OverlayPrefKeys.WIDTH_PERCENT, v);
+            done.add("width " + v + "%");
+        }
+        if (d.heightPercent != null) {
+            int v = OverlayGeometry.heightPercent(config, d.heightPercent);
+            e.putInt(OverlayPrefKeys.HEIGHT_PERCENT, v);
+            done.add("height " + v + "%");
+        }
+        e.apply();
+        if (d.motion != null || d.effect != null) {
+            AndroidPrefs animPrefs = new AndroidPrefs(sharedPrefs);
+            String motion = d.motion != null ? d.motion : AnimSelection.motionKey(animPrefs);
+            String effect = d.effect != null ? d.effect : AnimSelection.effectKey(animPrefs);
+            AnimSelection.save(animPrefs, motion, effect);
+            done.add("animation " + motion + " + " + effect);
+        }
+        cb.onSuccess("Display updated: " + String.join(", ", done) + ".");
+    }
+
+    /**
+     * An edit swaps in new line objects; a transliteration or translation still running
+     * would write into the old ones, so it is dropped and the edit wins.
+     */
+    private void cancelBackgroundLyricJobs() {
+        if (activeTransliterationCall != null) {
+            activeTransliterationCall.cancel();
+            activeTransliterationCall = null;
+        }
+        if (aiTranslationService != null) aiTranslationService.cancel();
+    }
+
+    private static boolean hasStyle(List<AnimStyleDef> styles, String key) {
+        for (AnimStyleDef s : styles) if (s.key.equals(key)) return true;
+        return false;
+    }
+
+    private static String onOff(boolean on) {
+        return on ? "on" : "off";
+    }
+
+    private static boolean hasAnyTranslation(LyricsData lyrics) {
+        if (lyrics == null || lyrics.lines == null) return false;
+        for (LyricsData.LyricsLine l : lyrics.lines) {
+            if (l.translation != null && !l.translation.trim().isEmpty()) return true;
+        }
+        return false;
+    }
+
+    /** Translation layer on/off, kept in sync with its pref and switch (without the switch's auto-fetch). */
+    private void setTranslationVisible(boolean on) {
+        translationEnabled = on;
+        sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, on).apply();
+        if (highlighter != null) highlighter.setTranslationEnabled(on);
         if (overlayTranslateSwitch != null) {
-            overlayTranslateSwitch.setChecked(true);
-        }
-        if (highlighter != null) {
-            highlighter.setTranslationEnabled(true);
-        }
-        fetchTranslationForCurrentLyrics(callback);
-    }
-
-    public void transliterateLyrics(String mode, boolean showOriginalScript, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (currentLyrics == null || currentLyrics.isEmpty()) {
-            if (callback != null) callback.onError("Tidak ada lirik aktif");
-            return;
-        }
-        boolean includeTranslation = !"romaji_only".equalsIgnoreCase(mode);
-        performTransliteration(includeTranslation, showOriginalScript, callback);
-    }
-
-    public void transliterateLyrics(String mode, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        transliterateLyrics(mode, true, callback);
-    }
-
-    public void setSyncOffset(int offsetMs, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        int clamped = OverlayGeometry.syncOffset(config, offsetMs);
-        sharedPrefs.edit().putLong(OverlayPrefKeys.SYNC_OFFSET_MS, clamped).apply();
-        if (sessionTracker != null) {
-            sessionTracker.setSyncOffsetMs(clamped);
-        }
-        updateSyncOffsetLabel(clamped);
-        syncOffsetSliderFromPrefs(clamped);
-        if (callback != null) {
-            callback.onSuccess("Offset sinkronisasi disetel ke " + clamped + " ms.");
+            isProgrammaticTranslateUpdate = true;
+            overlayTranslateSwitch.setChecked(on);
+            isProgrammaticTranslateUpdate = false;
         }
     }
 
-    public void modifyLine(int lineIndex, String text, String translation, String romanji, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (currentLyrics == null || currentLyrics.lines == null) {
-            if (callback != null) callback.onError("Tidak ada lirik aktif");
-            return;
-        }
-        if (lineIndex < 0 || lineIndex >= currentLyrics.lines.size()) {
-            if (callback != null) callback.onError("Indeks baris " + lineIndex + " di luar batas (0 - " + (currentLyrics.lines.size() - 1) + ")");
-            return;
-        }
-        LyricsData.LyricsLine line = currentLyrics.lines.get(lineIndex);
-        if (text != null && !text.trim().isEmpty()) {
-            line.text = text.trim();
-        }
-        if (translation != null && !translation.trim().isEmpty()) {
-            line.translation = translation.trim();
-            translationEnabled = true;
-            sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true).apply();
-            if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(true);
-            if (highlighter != null) highlighter.setTranslationEnabled(true);
-        }
-        if (romanji != null && !romanji.trim().isEmpty()) {
-            line.romanji = romanji.trim();
-            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true).apply();
-            if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(true);
-            if (highlighter != null) highlighter.setTransliterationEnabled(true);
-        }
-        renderLyricsEdit();
-        if (callback != null) {
-            callback.onSuccess("Baris " + (lineIndex + 1) + " berhasil diperbarui di overlay.");
+    /** Latin layer on/off, kept in sync with its pref and switch. */
+    private void setRomajiVisible(boolean on) {
+        sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, on).apply();
+        if (highlighter != null) highlighter.setTransliterationEnabled(on);
+        if (overlayRomajiSwitch != null) {
+            isProgrammaticRomajiUpdate = true;
+            overlayRomajiSwitch.setChecked(on);
+            isProgrammaticRomajiUpdate = false;
         }
     }
 
-    public void batchEditLyrics(List<AntigravityApiClient.LyricActionDelegate.LineEdit> edits, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (currentLyrics == null || currentLyrics.lines == null || currentLyrics.lines.isEmpty()) {
-            if (callback != null) callback.onError("Tidak ada lirik aktif");
-            return;
-        }
-        if (edits == null || edits.isEmpty()) {
-            if (callback != null) callback.onError("Daftar editan kosong");
-            return;
-        }
-        boolean hasAnyTrans = false;
-        boolean hasAnyRomaji = false;
-        int count = 0;
-        for (AntigravityApiClient.LyricActionDelegate.LineEdit e : edits) {
-            if (e != null && e.lineIndex >= 0 && e.lineIndex < currentLyrics.lines.size()) {
-                LyricsData.LyricsLine l = currentLyrics.lines.get(e.lineIndex);
-                if (e.text != null && !e.text.trim().isEmpty()) l.text = e.text.trim();
-                if (e.translation != null && !e.translation.trim().isEmpty()) {
-                    l.translation = e.translation.trim();
-                    hasAnyTrans = true;
-                }
-                if (e.romanji != null && !e.romanji.trim().isEmpty()) {
-                    l.romanji = e.romanji.trim();
-                    hasAnyRomaji = true;
-                }
-                count++;
-            }
-        }
-        if (hasAnyTrans) {
-            translationEnabled = true;
-            sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, true).apply();
-            if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(true);
-            if (highlighter != null) highlighter.setTranslationEnabled(true);
-        }
-        if (hasAnyRomaji) {
-            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true).apply();
-            if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(true);
-            if (highlighter != null) highlighter.setTransliterationEnabled(true);
-        }
-        renderLyricsEdit();
-        if (callback != null) {
-            callback.onSuccess(count + " baris lirik berhasil diperbarui dan dirender langsung di overlay.");
-        }
-    }
-
-    public void toggleDisplay(String feature, boolean enabled, AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if ("translation".equalsIgnoreCase(feature)) {
-            translationEnabled = enabled;
-            sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, enabled).apply();
-            if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(enabled);
-            if (highlighter != null) highlighter.setTranslationEnabled(enabled);
-            if (callback != null) callback.onSuccess("Terjemahan " + (enabled ? "ditampilkan" : "disembunyikan"));
-        } else if ("romaji".equalsIgnoreCase(feature)) {
-            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, enabled).apply();
-            if (overlayRomajiSwitch != null) overlayRomajiSwitch.setChecked(enabled);
-            if (highlighter != null) highlighter.setTransliterationEnabled(enabled);
-            if (callback != null) callback.onSuccess("Transliterasi Latin " + (enabled ? "ditampilkan" : "disembunyikan"));
-        } else if ("original_script".equalsIgnoreCase(feature)) {
-            sharedPrefs.edit().putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, enabled).apply();
-            if (highlighter != null) highlighter.setOriginalScriptEnabled(enabled);
-            if (callback != null) callback.onSuccess("Aksara asli " + (enabled ? "ditampilkan" : "disembunyikan"));
-        } else {
-            if (callback != null) callback.onError("Fitur tidak dikenal: " + feature);
-        }
-    }
-
-
-    public void controlPlayback(String action, int lineIndex, long positionMs,
-                                    AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (sessionTracker == null) {
-            if (callback != null) callback.onError("Pemutar musik tidak aktif");
+    @Override
+    public void controlPlayback(String action, int lineIndex, long positionMs, LyricActionDelegate.ActionCallback cb) {
+        if (sessionTracker == null || !sessionTracker.hasController()) {
+            cb.onError("No music player is connected.");
             return;
         }
         String act = action != null ? action.trim().toLowerCase(java.util.Locale.ROOT) : "";
-        if ("seek_to_line".equals(act)) {
-            if (currentLyrics == null || currentLyrics.lines == null || currentLyrics.lines.isEmpty()) {
-                if (callback != null) callback.onError("Tidak ada lirik aktif");
-                return;
-            }
-            if (lineIndex < 0 || lineIndex >= currentLyrics.lines.size()) {
-                if (callback != null) callback.onError("Indeks baris di luar batas: " + lineIndex);
-                return;
-            }
-            LyricsData.LyricsLine target = currentLyrics.lines.get(lineIndex);
-            if (target != null) {
-                sessionTracker.seekTo(target.startTime);
-                if (callback != null) callback.onSuccess("Berhasil melompat ke baris " + (lineIndex + 1));
-            }
-        } else if ("seek_to_position".equals(act)) {
-            sessionTracker.seekTo(Math.max(0, positionMs));
-            long s = positionMs / 1000;
-            String timeStr = String.format(java.util.Locale.ROOT, "%02d:%02d", s / 60, s % 60);
-            if (callback != null) callback.onSuccess("Berhasil melompat ke " + timeStr);
-        } else if ("play".equals(act)) {
-            sessionTracker.play();
-            if (callback != null) callback.onSuccess("Pemutaran lagu dilanjutkan.");
-        } else if ("pause".equals(act)) {
-            sessionTracker.pause();
-            if (callback != null) callback.onSuccess("Lagu dijeda.");
-        } else if ("skip_next".equals(act)) {
-            sessionTracker.skipNext();
-            if (callback != null) callback.onSuccess("Beralih ke lagu berikutnya.");
-        } else if ("skip_previous".equals(act)) {
-            sessionTracker.skipPrevious();
-            if (callback != null) callback.onSuccess("Beralih ke lagu sebelumnya.");
-        } else {
-            if (callback != null) callback.onError("Aksi pemutaran tidak dikenal: " + action);
-        }
-    }
-
-    public void adjustAppearance(Float fontScale, String animStyle, Integer widthPercent, Integer heightPercent,
-                                     AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        android.content.SharedPreferences.Editor ed = sharedPrefs.edit();
-        boolean changed = false;
-        if (fontScale != null && fontScale > 0) {
-            ed.putFloat(OverlayPrefKeys.FONT_SCALE, OverlayGeometry.fontScale(config, fontScale));
-            changed = true;
-        }
-        if (animStyle != null && !animStyle.trim().isEmpty()) {
-            ed.putString(OverlayPrefKeys.LEGACY_ANIM_STYLE, animStyle.trim().toLowerCase(java.util.Locale.ROOT));
-            changed = true;
-        }
-        if (widthPercent != null && widthPercent > 0) {
-            ed.putInt(OverlayPrefKeys.WIDTH_PERCENT, OverlayGeometry.widthPercent(config, widthPercent));
-            changed = true;
-        }
-        if (heightPercent != null && heightPercent > 0) {
-            ed.putInt(OverlayPrefKeys.HEIGHT_PERCENT, OverlayGeometry.heightPercent(config, heightPercent));
-            changed = true;
-        }
-        if (changed) {
-            ed.apply();
-            applyRuntimeSettings(true);
-            if (callback != null) callback.onSuccess("Tampilan overlay berhasil diperbarui!");
-        } else {
-            if (callback != null) callback.onError("Tidak ada parameter tampilan yang diubah.");
-        }
-    }
-
-    public void manageLines(AntigravityApiClient.LyricActionDelegate.LineOp op,
-                                AntigravityApiClient.LyricActionDelegate.ActionCallback callback) {
-        if (currentLyrics == null || currentLyrics.lines == null) {
-            if (callback != null) callback.onError("Tidak ada lirik aktif");
-            return;
-        }
-        final String action = op.action;
-        final int lineIndex = op.lineIndex;
-        final long startMs = op.startMs;
-        final long endMs = op.endMs;
-        final String text = op.text;
-        final String translation = op.translation;
-        final String romanji = op.romanji;
-        final long shiftMs = op.shiftMs;
-        String act = action != null ? action.trim().toLowerCase(java.util.Locale.ROOT) : "";
-        if ("delete".equals(act)) {
-            if (lineIndex < 0 || lineIndex >= currentLyrics.lines.size()) {
-                if (callback != null) callback.onError("Indeks baris di luar batas: " + lineIndex);
-                return;
-            }
-            currentLyrics.lines.remove(lineIndex);
-            renderLyricsEdit();
-            if (callback != null) callback.onSuccess("Baris " + (lineIndex + 1) + " berhasil dihapus.");
-        } else if ("insert".equals(act)) {
-            if (text == null || text.trim().isEmpty()) {
-                if (callback != null) callback.onError("Teks baris lirik tidak boleh kosong untuk insert");
-                return;
-            }
-            int insertPos = Math.max(0, Math.min(currentLyrics.lines.size(), lineIndex));
-            long start = startMs > 0 ? startMs : (insertPos > 0 ? currentLyrics.lines.get(insertPos - 1).endTime : 0);
-            long end = endMs > start ? endMs : start + config.editInsertLineDurationMs;
-            LyricsData.LyricsLine newLine = new LyricsData.LyricsLine(start, end, text.trim());
-            if (translation != null && !translation.trim().isEmpty()) newLine.translation = translation.trim();
-            if (romanji != null && !romanji.trim().isEmpty()) newLine.romanji = romanji.trim();
-            currentLyrics.lines.add(insertPos, newLine);
-            renderLyricsEdit();
-            if (callback != null) callback.onSuccess("Baris lirik baru berhasil disisipkan di baris " + (insertPos + 1) + ".");
-        } else if ("shift_timing".equals(act)) {
-            if (lineIndex < 0 || lineIndex >= currentLyrics.lines.size()) {
-                if (callback != null) callback.onError("Indeks baris di luar batas: " + lineIndex);
-                return;
-            }
-            LyricsData.LyricsLine target = currentLyrics.lines.get(lineIndex);
-            target.startTime = Math.max(0, target.startTime + shiftMs);
-            target.endTime = Math.max(target.startTime + config.editMinLineDurationMs, target.endTime + shiftMs);
-            if (target.words != null) {
-                for (LyricsData.Word w : target.words) {
-                    w.startTime = Math.max(0, w.startTime + shiftMs);
-                    w.endTime = Math.max(w.startTime + config.editMinWordDurationMs, w.endTime + shiftMs);
+        switch (act) {
+            case "seek_to_line":
+                if (currentLyrics == null || currentLyrics.lines == null
+                        || lineIndex < 0 || lineIndex >= currentLyrics.lines.size()) {
+                    cb.onError("line_index " + lineIndex + " is out of range.");
+                    return;
                 }
-            }
-            renderLyricsEdit();
-            if (callback != null) callback.onSuccess("Timing baris " + (lineIndex + 1) + " digeser sebesar " + shiftMs + " ms.");
-        } else {
-            if (callback != null) callback.onError("Aksi manage_lyric_lines tidak dikenal: " + action);
+                sessionTracker.seekTo(currentLyrics.lines.get(lineIndex).startTime);
+                cb.onSuccess("Jumped to line " + lineIndex + ".");
+                return;
+            case "seek_to_position":
+                sessionTracker.seekTo(Math.max(0, positionMs));
+                cb.onSuccess("Jumped to " + Math.max(0, positionMs) + " ms.");
+                return;
+            case "play":
+                sessionTracker.play();
+                break;
+            case "pause":
+                sessionTracker.pause();
+                break;
+            case "skip_next":
+                sessionTracker.skipNext();
+                break;
+            case "skip_previous":
+                sessionTracker.skipPrevious();
+                break;
+            default:
+                cb.onError("Unknown action: " + action);
+                return;
         }
+        cb.onSuccess("Done: " + act + ".");
     }
-
 
     private void submitAiChatInput() {
         if (aiChatInput == null) return;
@@ -1697,6 +1691,32 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
     private void sendAiChatMessage(String userQuery) {
         if (songChatManager == null || userQuery == null || userQuery.trim().isEmpty()) return;
+
+        // "romaji saja", "latin tanpa huruf asli", "romaji dengan arti": a display command,
+        // applied here directly. Sending it to the model as well could undo it with a
+        // different tool call, so the model is not asked.
+        TransliterationRequest displayCmd = isLyricsNonLatin(currentLyrics)
+                ? TransliterationRequest.fromChat(userQuery) : null;
+        if (displayCmd != null) {
+            if (aiChatEmptyState != null) aiChatEmptyState.setVisibility(View.GONE);
+            if (aiChatScroll != null) aiChatScroll.setVisibility(View.VISIBLE);
+            addUserChatBubble(userQuery);
+            showInlineToolStatus("transliterate_lyrics", displayCmd.describe());
+            performTransliteration(displayCmd, new LyricActionDelegate.ActionCallback() {
+                @Override
+                public void onSuccess(String message) {
+                    completeInlineToolStatus("transliterate_lyrics", 1, false);
+                    addAiChatBubble(transliterationLabel(displayCmd));
+                }
+
+                @Override
+                public void onError(String error) {
+                    completeInlineToolStatus("transliterate_lyrics", 0, true);
+                    addAiChatBubble(error);
+                }
+            });
+            return;
+        }
 
         AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
         if (auth == null || !auth.isAuthenticated()) {
@@ -1725,33 +1745,9 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             activeChatCall = null;
         }
 
-        if (userQuery != null && currentLyrics != null && currentLyrics.type == LyricsData.Type.SYLLABLE && isLyricsNonLatin(currentLyrics)) {
-            String lower = userQuery.toLowerCase(java.util.Locale.ROOT);
-            boolean isRomajiReq = lower.contains("romaji") || lower.contains("romanji") || lower.contains("pinyin") || lower.contains("transliterasi") || lower.contains("romaja");
-            boolean isHideScript = lower.contains("tanpa huruf") || lower.contains("tanpa aksara") || lower.contains("hide original")
-                    || lower.contains("tanpa jepang") || lower.contains("jepang buang") || lower.contains("buang jepang")
-                    || lower.contains("romaji saja") || lower.contains("romanji saja") || lower.contains("romaji only") || lower.contains("hanya romaji");
-            boolean isTranslateReq = lower.contains("terjemahan") || lower.contains("translate") || lower.contains("arti") || lower.contains("dengan") || lower.contains("dan") || lower.contains("with");
-            boolean isOnly = lower.contains("saja") || lower.contains("tanpa terjemahan") || lower.contains("tanpa arti") || lower.contains("only");
-
-            if (isRomajiReq || isHideScript) {
-                boolean includeTranslation = !isOnly && isTranslateReq;
-                boolean showOriginalScript = !isHideScript;
-                performTransliteration(includeTranslation, showOriginalScript);
-                showInlineToolStatus("transliterate_lyrics", "romaji");
-                completeInlineToolStatus("transliterate_lyrics", 1);
-            } else if (lower.contains("tampilkan huruf asli") || lower.contains("tampilkan aksara") || lower.contains("show original")) {
-                if (highlighter != null) {
-                    highlighter.setOriginalScriptEnabled(true);
-                }
-                sharedPrefs.edit().putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, true).apply();
-                showInlineToolStatus("toggle_display", "original_script (on)");
-                completeInlineToolStatus("toggle_display", 1);
-            }
-        }
-
         String currentModel = sharedPrefs.getString(OverlayPrefKeys.AI_MODEL, SongChatManager.DEFAULT_MODEL);
         songChatManager.setModelId(currentModel);
+        songChatManager.setAppState(appState().toString());
 
         final StringBuilder responseAcc = new StringBuilder();
         activeChatCall = songChatManager.sendMessage(userQuery, aiWebSearchEnabled,
@@ -1775,17 +1771,19 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                     }
 
                     @Override
-                    public void onToolCompleted(String toolName, int resultsCount) {
+                    public void onToolCompleted(String toolName, int resultsCount, boolean isError) {
                         handler.post(() -> {
                             if (isDestroyed) return;
-                            completeInlineToolStatus(toolName, resultsCount);
+                            completeInlineToolStatus(toolName, resultsCount, isError);
                             if (aiToolStatusContainer != null) {
                                 if (aiToolStatusIcon != null) {
-                                    aiToolStatusIcon.setImageResource(R.drawable.ic_check);
+                                    aiToolStatusIcon.setImageResource(isError ? R.drawable.ic_alert : R.drawable.ic_check);
                                 }
                                 CleanMarkdownFormatter.ToolDisplayInfo info =
                                         CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, FloatingOverlayService.this);
-                                if (aiToolStatusText != null) aiToolStatusText.setText(info.doneText);
+                                if (aiToolStatusText != null) {
+                                    aiToolStatusText.setText(isError ? getString(R.string.ai_tool_failed) : info.doneText);
+                                }
                                 scheduleToolStatusHide();
                             }
                         });
@@ -1798,7 +1796,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                             if (activeAiBubbleAnimator != null) {
                                 activeAiBubbleAnimator.updateStream(responseAcc.toString());
                             }
-                            scrollAiChatToBottom();
+                            followAiChatIfAtBottom();
                         });
                     }
 
@@ -1810,7 +1808,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                             String finalContent = (fullText != null && !fullText.trim().isEmpty())
                                     ? fullText : responseAcc.toString();
                             if (finalContent == null || finalContent.trim().isEmpty()) {
-                                finalContent = "Perubahan lirik telah berhasil diterapkan ke layar overlay.";
+                                finalContent = getString(R.string.ai_tool_generic_done);
                             }
                             if (activeAiBubbleAnimator != null) {
                                 activeAiBubbleAnimator.complete(finalContent);
@@ -1936,13 +1934,14 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         scrollAiChatToBottom();
     }
 
-    private void completeInlineToolStatus(String toolName, int resultsCount) {
+    private void completeInlineToolStatus(String toolName, int resultsCount, boolean isError) {
         if (activeOverlayToolCard != null) {
             CleanMarkdownFormatter.ToolDisplayInfo info =
                     CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
-            setToolCardIcon(activeOverlayToolCard, R.drawable.ic_check, config.chatToolDoneColor);
-            activeOverlayToolCard.setText(info.doneText);
-            activeOverlayToolCard.setTextColor(config.chatToolDoneColor);
+            int color = isError ? ContextCompat.getColor(this, R.color.state_error) : config.chatToolDoneColor;
+            setToolCardIcon(activeOverlayToolCard, isError ? R.drawable.ic_alert : R.drawable.ic_check, color);
+            activeOverlayToolCard.setText(isError ? getString(R.string.ai_tool_failed) : info.doneText);
+            activeOverlayToolCard.setTextColor(color);
             activeOverlayToolCard = null;
         }
     }
@@ -1997,6 +1996,14 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         aiChatMessages.addView(bubble);
         scrollAiChatToBottom();
         return bubble;
+    }
+
+    /** Keeps a streaming reply in view, unless the user scrolled up to read something. */
+    private void followAiChatIfAtBottom() {
+        if (aiChatScroll == null || aiChatScroll.getChildCount() == 0) return;
+        View content = aiChatScroll.getChildAt(0);
+        int distance = content.getBottom() - (aiChatScroll.getScrollY() + aiChatScroll.getHeight());
+        if (distance <= dpToPx(config.chatAutoFollowDp)) scrollAiChatToBottom();
     }
 
     void scrollAiChatToBottom() {
@@ -2093,9 +2100,11 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
                 String title = currentTrack != null ? currentTrack.title : "";
                 String artist = currentTrack != null ? currentTrack.artist : "";
-                String targetLang = LocaleHelper.getLanguage(this);
+                String translateTo = AiTranslationService.languageName(GoogleTranslateService.resolveTargetLang(
+                        sharedPrefs.getString(GoogleTranslateService.PREF_TARGET_LANG, GoogleTranslateService.DEFAULT_TARGET_LANG),
+                        java.util.Locale.getDefault()));
                 aiTransliterationService.transliterateSyllablesAsync(
-                        singleData, title, artist, targetLang,
+                        singleData, title, artist, translateTo,
                         new AiSyllableTransliterationService.Callback() {
                             @Override
                             public void onSuccess(LyricsData enrichedData) {
@@ -2563,23 +2572,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
                     setupAiPromptTemplates();
                     publishNowPlaying();
                     if (songChatManager != null && track != null) {
-                        StringBuilder sb = new StringBuilder();
-                        if (lyrics != null && lyrics.lines != null) {
-                            for (int i = 0; i < lyrics.lines.size(); i++) {
-                                LyricsData.LyricsLine l = lyrics.lines.get(i);
-                                if (l != null && l.text != null && !l.isInterlude) {
-                                    sb.append("[").append(i).append("] ").append(l.text);
-                                    if (l.romanji != null && !l.romanji.trim().isEmpty()) {
-                                        sb.append(" (romaji: ").append(l.romanji.trim()).append(")");
-                                    }
-                                    if (l.translation != null && !l.translation.trim().isEmpty()) {
-                                        sb.append(" (arti: ").append(l.translation.trim()).append(")");
-                                    }
-                                    sb.append("\n");
-                                }
-                            }
-                        }
-                        songChatManager.setCurrentSong(track.title, track.artist, sb.toString().trim());
+                        songChatManager.setCurrentSong(track.title, track.artist, chatLyrics(lyrics));
                     }
                 });
             }
@@ -2686,7 +2679,7 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
         fetchTranslationForCurrentLyrics(null);
     }
 
-    private void fetchTranslationForCurrentLyrics(final AntigravityApiClient.LyricActionDelegate.ActionCallback actionCallback) {
+    private void fetchTranslationForCurrentLyrics(final LyricActionDelegate.ActionCallback actionCallback) {
         if (currentLyrics == null || currentLyrics.isEmpty()) {
             if (actionCallback != null) actionCallback.onError("Lirik belum dimuat");
             return;
@@ -2736,17 +2729,8 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
             }
         };
 
-        boolean aiEnabled = sharedPrefs.getBoolean(
-                AiTranslationService.PREF_AI_TRANSLATION_ENABLED, true);
-        AntigravityAuthManager auth =
-                AntigravityAuthManager.getInstance(this);
-        boolean isAuthenticated = auth != null && auth.isAuthenticated();
-
-        if (aiEnabled && isAuthenticated && aiTranslationService != null) {
-            aiTranslationService.translateLyrics(targetLyrics.lines, targetLang, callback);
-        } else if (translateService != null) {
-            translateService.translateLines(targetLyrics.lines, targetLang, callback);
-        }
+        // Uses the AI when enabled and signed in, Google Translate otherwise or on failure.
+        aiTranslationService.translateLyrics(targetLyrics.lines, targetLang, callback);
     }
 
     /** Re-render, re-cache and re-publish the current lyrics after an in-place edit. */
@@ -2760,22 +2744,23 @@ public class FloatingOverlayService extends Service implements AntigravityApiCli
 
     private void updateSongChatLyrics(LyricsData lyrics) {
         if (songChatManager != null && currentTrack != null && lyrics != null && lyrics.lines != null) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < lyrics.lines.size(); i++) {
-                LyricsData.LyricsLine l = lyrics.lines.get(i);
-                if (l != null && l.text != null && !l.isInterlude) {
-                    sb.append("[").append(i).append("] ").append(l.text);
-                    if (l.romanji != null && !l.romanji.trim().isEmpty()) {
-                        sb.append(" (romaji: ").append(l.romanji.trim()).append(")");
-                    }
-                    if (l.translation != null && !l.translation.trim().isEmpty()) {
-                        sb.append(" (arti: ").append(l.translation.trim()).append(")");
-                    }
-                    sb.append("\n");
-                }
-            }
-            songChatManager.updateFullLyrics(sb.toString().trim());
+            songChatManager.updateFullLyrics(chatLyrics(lyrics));
         }
+    }
+
+    /** The lyrics as the chat model sees them: "[i] text | r: romaji | t: translation" per line. */
+    private static String chatLyrics(LyricsData lyrics) {
+        StringBuilder sb = new StringBuilder();
+        if (lyrics == null || lyrics.lines == null) return "";
+        for (int i = 0; i < lyrics.lines.size(); i++) {
+            LyricsData.LyricsLine l = lyrics.lines.get(i);
+            if (l == null || l.text == null || l.isInterlude) continue;
+            sb.append('[').append(i).append("] ").append(l.text);
+            if (l.romanji != null && !l.romanji.trim().isEmpty()) sb.append(" | r: ").append(l.romanji.trim());
+            if (l.translation != null && !l.translation.trim().isEmpty()) sb.append(" | t: ").append(l.translation.trim());
+            sb.append('\n');
+        }
+        return sb.toString().trim();
     }
 
     /** Tap a line to jump the player there. No-op on players that don't support seeking. */

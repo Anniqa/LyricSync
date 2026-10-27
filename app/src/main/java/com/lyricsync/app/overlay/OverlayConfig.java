@@ -166,6 +166,8 @@ public final class OverlayConfig {
     public final int chatToolPadHorizontalDp;
     public final int chatToolPadVerticalDp;
     public final int chatToolGapDp;
+    /** A streaming reply keeps scrolling only while the view is within this distance of the bottom. */
+    public final int chatAutoFollowDp;
     public final int chatToolIconDp;
     public final int chatToolIconGapDp;
     /** Tint of a finished tool card. */
@@ -308,6 +310,7 @@ public final class OverlayConfig {
         chatToolPadHorizontalDp = b.chatToolPadHorizontalDp;
         chatToolPadVerticalDp = b.chatToolPadVerticalDp;
         chatToolGapDp = b.chatToolGapDp;
+        chatAutoFollowDp = b.chatAutoFollowDp;
         chatToolIconDp = b.chatToolIconDp;
         chatToolIconGapDp = b.chatToolIconGapDp;
         chatToolDoneColor = b.chatToolDoneColor;
@@ -447,6 +450,7 @@ public final class OverlayConfig {
         public int chatToolPadHorizontalDp = 10;
         public int chatToolPadVerticalDp = 5;
         public int chatToolGapDp = 3;
+        public int chatAutoFollowDp = 96;
         public int chatToolIconDp = 13;
         public int chatToolIconGapDp = 6;
         public int chatToolDoneColor = 0xFF81C784;

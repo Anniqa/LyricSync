@@ -399,7 +399,8 @@ public class AntigravityToolExecutorTest {
         assertEquals("user", turn.get("role").getAsString());
         com.google.gson.JsonArray parts = turn.getAsJsonArray("parts");
         assertEquals(1, parts.size());
-        assertEquals("Queen Bohemian Rhapsody meaning", parts.get(0).getAsJsonObject().get("text").getAsString());
+        assertTrue(parts.get(0).getAsJsonObject().get("text").getAsString()
+                .startsWith("Search the web for: Queen Bohemian Rhapsody meaning\n"));
 
         // Tools
         assertTrue(request.has("tools"));

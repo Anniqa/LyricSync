@@ -1,6 +1,5 @@
 package com.lyricsync.app.ai.util;
 
-import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.SpannableStringBuilder;
@@ -33,6 +32,19 @@ public class AiStreamingAnimator {
     private boolean isStreaming = false;
     private boolean cursorVisible = true;
     private CharSequence lastFormattedContent = "";
+    private static final long FRAME_MS = 60;
+    private String pendingRaw = "";
+    private boolean renderScheduled;
+
+    private final Runnable frameRunnable = new Runnable() {
+        @Override
+        public void run() {
+            renderScheduled = false;
+            if (!isStreaming || targetView == null) return;
+            lastFormattedContent = CleanMarkdownFormatter.formatClean(targetView.getContext(), pendingRaw, true);
+            renderStreamingText();
+        }
+    };
 
     private final Runnable thinkingRunnable = new Runnable() {
         @Override
@@ -75,7 +87,8 @@ public class AiStreamingAnimator {
 
     /**
      * Updates the bubble with incoming streaming text, guarding unfinished syntax
-     * and displaying the blinking accent cursor.
+     * and displaying the blinking accent cursor. Markdown is re-parsed at most once per
+     * {@link #FRAME_MS}: parsing the whole reply on every token made long answers stutter.
      */
     public void updateStream(String rawMarkdown) {
         if (isThinking) {
@@ -87,10 +100,12 @@ public class AiStreamingAnimator {
             cursorVisible = true;
             handler.postDelayed(cursorBlinkRunnable, 480);
         }
-
-        Context ctx = targetView != null ? targetView.getContext() : null;
-        lastFormattedContent = CleanMarkdownFormatter.formatClean(ctx, rawMarkdown, true);
-        renderStreamingText();
+        pendingRaw = rawMarkdown;
+        if (!renderScheduled) {
+            renderScheduled = true;
+            // The first token shows at once; later ones are batched into frames.
+            handler.postDelayed(frameRunnable, lastFormattedContent.length() == 0 ? 0 : FRAME_MS);
+        }
     }
 
     private void renderStreamingText() {
@@ -137,5 +152,7 @@ public class AiStreamingAnimator {
         isStreaming = false;
         handler.removeCallbacks(thinkingRunnable);
         handler.removeCallbacks(cursorBlinkRunnable);
+        handler.removeCallbacks(frameRunnable);
+        renderScheduled = false;
     }
 }

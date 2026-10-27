@@ -9,406 +9,239 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.lyricsync.app.ai.util.JsonResponse;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.model.AiChatMessage;
+import com.lyricsync.app.ai.util.JsonResponse;
 import com.lyricsync.app.lyrics.model.LyricsData;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Dual-Engine Contextual Lyrics Translation service.
- * Translates song lyrics poetically using Google Antigravity Cloudcode PA endpoints
- * with automatic, seamless fallback to GoogleTranslateService on failure, timeout,
- * or unauthenticated state.
+ * Translates lyrics with the AI model and falls back to Google Translate when AI is off,
+ * the user is signed out, the call fails or times out, or the answer covers too few lines.
+ * Only the latest request may deliver a result.
  */
 public class AiTranslationService {
 
     public static final String PREF_AI_TRANSLATION_ENABLED = "pref_ai_translation_enabled";
     public static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
-    public static final long DEFAULT_TIMEOUT_MS = 8000;
-    public static final String PREF_NAME = "lyricsync";
+    /** A whole song in one call; a thinking model needs more than a few seconds. */
+    static final long DEFAULT_TIMEOUT_MS = 30_000;
+    /** Below this share of translated lines the AI answer is dropped for Google's. */
+    static final float MIN_COVERAGE = 0.8f;
+
+    private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "ai-translation-timeout");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final SharedPreferences prefs;
-    private final AntigravityAuthManager authManager;
-    private final AntigravityApiClient apiClient;
-    private final GoogleTranslateService fallbackService;
-    private final ScheduledExecutorService timeoutExecutor;
+    private final AntigravityAuthManager auth;
+    private final AntigravityApiClient api;
+    private final GoogleTranslateService google;
     private final long timeoutMs;
     private final Handler mainHandler;
-    private final String modelId;
 
-    private AntigravityApiClient.Cancellable activeAiCall;
-    private ScheduledFuture<?> timeoutFuture;
-    private final AtomicBoolean isCancelled = new AtomicBoolean(false);
-    /** Bumped on every translateLyrics/cancel so late callbacks from a superseded request are ignored. */
-    private final java.util.concurrent.atomic.AtomicInteger requestGeneration = new java.util.concurrent.atomic.AtomicInteger(0);
+    private int generation;
+    private AntigravityApiClient.Cancellable activeCall;
+    private ScheduledFuture<?> timeout;
 
-    public AiTranslationService(Context context,
-                                AntigravityApiClient apiClient,
-                                GoogleTranslateService fallbackService) {
-        this(context,
-             context != null ? AntigravityAuthManager.getInstance(context) : null,
-             apiClient,
-             fallbackService);
+    public AiTranslationService(Context context, AntigravityAuthManager auth,
+                                AntigravityApiClient api, GoogleTranslateService google) {
+        this(context.getSharedPreferences("lyricsync", Context.MODE_PRIVATE), auth, api, google,
+                DEFAULT_TIMEOUT_MS, new Handler(Looper.getMainLooper()));
     }
 
-    public AiTranslationService(Context context,
-                                AntigravityAuthManager authManager,
-                                AntigravityApiClient apiClient,
-                                GoogleTranslateService fallbackService) {
-        this(context != null ? context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) : null,
-             authManager,
-             apiClient,
-             fallbackService,
-             Executors.newSingleThreadScheduledExecutor(),
-             DEFAULT_TIMEOUT_MS,
-             createSafeMainHandler());
-    }
-
-    public AiTranslationService(SharedPreferences prefs,
-                                AntigravityAuthManager authManager,
-                                AntigravityApiClient apiClient,
-                                GoogleTranslateService fallbackService) {
-        this(prefs,
-             authManager,
-             apiClient,
-             fallbackService,
-             Executors.newSingleThreadScheduledExecutor(),
-             DEFAULT_TIMEOUT_MS,
-             createSafeMainHandler());
-    }
-
-    public AiTranslationService(SharedPreferences prefs,
-                                AntigravityAuthManager authManager,
-                                AntigravityApiClient apiClient,
-                                GoogleTranslateService fallbackService,
-                                ScheduledExecutorService timeoutExecutor,
-                                long timeoutMs,
-                                Handler mainHandler) {
+    /** {@code mainHandler} null runs callbacks inline (tests). */
+    AiTranslationService(SharedPreferences prefs, AntigravityAuthManager auth, AntigravityApiClient api,
+                         GoogleTranslateService google, long timeoutMs, Handler mainHandler) {
         this.prefs = prefs;
-        this.authManager = authManager;
-        this.apiClient = apiClient;
-        this.fallbackService = fallbackService;
-        this.timeoutExecutor = timeoutExecutor != null ? timeoutExecutor : Executors.newSingleThreadScheduledExecutor();
-        this.timeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
+        this.auth = auth;
+        this.api = api;
+        this.google = google;
+        this.timeoutMs = timeoutMs;
         this.mainHandler = mainHandler;
-        this.modelId = DEFAULT_MODEL;
     }
 
-    private static Handler createSafeMainHandler() {
-        try {
-            Looper mainLooper = Looper.getMainLooper();
-            if (mainLooper != null) {
-                return new Handler(mainLooper);
+    /** Translates {@code allLines} in place (interludes and blank lines are skipped). */
+    public synchronized void translateLyrics(List<LyricsData.LyricsLine> allLines, String targetLang,
+                                             GoogleTranslateService.TranslationCallback callback) {
+        cancel();
+        final int gen = generation;
+        final List<LyricsData.LyricsLine> lines = GoogleTranslateService.filterTranslatableLines(allLines);
+        final String lang = GoogleTranslateService.resolveTargetLang(targetLang, Locale.getDefault());
+        if (lines.isEmpty()) {
+            deliver(gen, () -> callback.onSuccess(new GoogleTranslateParser.ParseResult(), lang));
+            return;
+        }
+        boolean aiOn = prefs == null || prefs.getBoolean(PREF_AI_TRANSLATION_ENABLED, true);
+        if (!aiOn || api == null || auth == null || !auth.isAuthenticated()) {
+            google.translateLines(allLines, targetLang, callback);
+            return;
+        }
+
+        List<AiChatMessage> prompt = Collections.singletonList(AiChatMessage.user(buildPrompt(lines, lang)));
+        timeout = TIMER.schedule(() -> fallback(gen, allLines, targetLang, callback), timeoutMs, TimeUnit.MILLISECONDS);
+        activeCall = api.generateContent(DEFAULT_MODEL, prompt, false, "low", new AntigravityApiClient.CompletionCallback() {
+            @Override
+            public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
+                GoogleTranslateParser.ParseResult result = apply(fullText, lines, lang);
+                if (result == null) {
+                    fallback(gen, allLines, targetLang, callback);
+                } else {
+                    finish(gen, () -> callback.onSuccess(result, lang));
+                }
             }
-        } catch (Throwable ignored) {}
-        return null;
+
+            @Override
+            public void onError(Exception error) {
+                fallback(gen, allLines, targetLang, callback);
+            }
+        });
     }
 
-    /**
-     * Checks if AI translation is enabled in preferences. Defaults to true.
-     */
-    public boolean isAiTranslationEnabled() {
-        if (prefs != null) {
-            return prefs.getBoolean(PREF_AI_TRANSLATION_ENABLED, true);
+    public synchronized void cancel() {
+        generation++;
+        if (timeout != null) timeout.cancel(false);
+        if (activeCall != null) activeCall.cancel();
+        timeout = null;
+        activeCall = null;
+        if (google != null) google.cancel();
+    }
+
+    /** The current request hands over to Google; a superseded one does nothing. */
+    private void fallback(int gen, List<LyricsData.LyricsLine> allLines, String targetLang,
+                          GoogleTranslateService.TranslationCallback callback) {
+        synchronized (this) {
+            if (gen != generation) return;
+            generation++;
+            if (timeout != null) timeout.cancel(false);
+            if (activeCall != null) activeCall.cancel();
+            timeout = null;
+            activeCall = null;
         }
-        return true;
+        google.translateLines(allLines, targetLang, callback);
     }
 
-    /**
-     * Checks if the user is authenticated with Google Antigravity.
-     */
-    public boolean isUserLoggedIn() {
-        return authManager != null && authManager.isAuthenticated();
-    }
-
-    /**
-     * Constructs a structured translation prompt with a numbered JSON array of translatable lines.
-     */
-    public static String buildTranslationPrompt(List<LyricsData.LyricsLine> translatableLines, String targetLang) {
-        if (translatableLines == null || translatableLines.isEmpty()) {
-            return "";
+    private void finish(int gen, Runnable action) {
+        synchronized (this) {
+            if (gen != generation) return;
+            generation++;
+            if (timeout != null) timeout.cancel(false);
+            timeout = null;
+            activeCall = null;
         }
-        String lang = (targetLang != null && !targetLang.trim().isEmpty()) ? targetLang.trim() : "en";
+        post(action);
+    }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("You are an expert musical and poetic translator.\n");
-        sb.append("Translate the following song lyrics into target language: ").append(lang).append(".\n\n");
-        sb.append("Guidelines:\n");
-        sb.append("1. Provide a natural, poetic, and contextually aware translation fitting song lyrics.\n");
-        sb.append("2. Preserve the emotional resonance, metaphors, and artistic rhythm rather than literal word-for-word translation.\n");
-        sb.append("3. Maintain strict 1-to-1 line alignment using the provided 'id' numbers.\n");
-        sb.append("4. Output STRICTLY a JSON array of objects with \"id\" (integer) and \"text\" (translated line string):\n");
-        sb.append("   [{\"id\": 0, \"text\": \"...\"}, {\"id\": 1, \"text\": \"...\"}]\n");
-        sb.append("5. Return ONLY valid JSON without markdown code fences or conversational text.\n\n");
-        sb.append("Input lyrics:\n");
-
-        JsonArray array = new JsonArray();
-        for (int i = 0; i < translatableLines.size(); i++) {
-            LyricsData.LyricsLine line = translatableLines.get(i);
-            JsonObject obj = new JsonObject();
-            obj.addProperty("id", i);
-            obj.addProperty("text", (line != null && line.text != null) ? line.text : "");
-            array.add(obj);
+    private void deliver(int gen, Runnable action) {
+        synchronized (this) {
+            if (gen != generation) return;
         }
-        sb.append(array.toString());
+        post(action);
+    }
 
-        return sb.toString();
+    private void post(Runnable action) {
+        if (mainHandler == null) action.run();
+        else mainHandler.post(action);
+    }
+
+    static String buildPrompt(List<LyricsData.LyricsLine> lines, String targetLang) {
+        String language = languageName(targetLang);
+        JsonArray input = new JsonArray();
+        for (int i = 0; i < lines.size(); i++) {
+            JsonObject o = new JsonObject();
+            o.addProperty("id", i);
+            o.addProperty("text", lines.get(i).text.trim());
+            input.add(o);
+        }
+        return "You are a professional song-lyrics translator. Translate every line below into "
+                + language + " (" + targetLang + ").\n\n"
+                + "Quality rules:\n"
+                + "- Read all lines first and translate with the whole song's context, so tone, speaker and tense stay consistent.\n"
+                + "- Translate meaning and feeling, not word for word: natural, fluent " + language
+                + " that a native speaker would actually write as subtitles. Keep imagery and metaphors; use an idiomatic equivalent when a literal one sounds wrong.\n"
+                + "- Keep each line about as short as the original so it fits on screen as a one-line subtitle.\n"
+                + "- Repeated lines get the identical translation every time.\n"
+                + "- Keep names, places and brand names as they are. Vocalisations (oh, yeah, la la) stay unchanged.\n"
+                + "- A line already written in " + language + " is returned unchanged.\n"
+                + "- No notes, explanations, romanisation or quotation marks inside the text.\n\n"
+                + "Answer with JSON only, no code fence, exactly one entry per input id:\n"
+                + "{\"sourceLanguage\":\"<ISO 639-1 code of the lyrics>\",\"lines\":[{\"id\":0,\"text\":\"...\"}]}\n\n"
+                + "Lines:\n" + input;
     }
 
     /**
-     * Strips markdown fences (```json ... ``` or ``` ... ```) and extracts outermost JSON array or object.
+     * Writes the model's translations into {@code lines}. Returns null — and leaves the lines
+     * untouched — when the answer is unusable or covers less than {@link #MIN_COVERAGE}.
      */
-    public static String cleanJson(String raw) {
-        return JsonResponse.extract(raw);
-    }
+    static GoogleTranslateParser.ParseResult apply(String answer, List<LyricsData.LyricsLine> lines, String targetLang) {
+        JsonObject root;
+        try {
+            JsonElement parsed = JsonParser.parseString(JsonResponse.extract(answer));
+            if (parsed.isJsonArray()) {
+                root = new JsonObject();
+                root.add("lines", parsed);
+            } else {
+                root = parsed.getAsJsonObject();
+            }
+        } catch (RuntimeException e) {
+            return null;
+        }
 
-    /**
-     * Parses the AI response JSON array, maps translated lines to translatableLines,
-     * and constructs a GoogleTranslateParser.ParseResult.
-     */
-    public static GoogleTranslateParser.ParseResult parseAiTranslation(String aiResponse,
-                                                                       List<LyricsData.LyricsLine> translatableLines,
-                                                                       String targetLang) {
         GoogleTranslateParser.ParseResult result = new GoogleTranslateParser.ParseResult();
-        if (aiResponse == null || aiResponse.trim().isEmpty() || translatableLines == null || translatableLines.isEmpty()) {
+        String source = string(root, "sourceLanguage");
+        if (source != null) result.detectedSourceLang = source.toLowerCase(Locale.ROOT);
+        if (targetLang.equalsIgnoreCase(result.detectedSourceLang)) {
+            result.isSameLanguage = true;
             return result;
         }
 
-        String cleaned = cleanJson(aiResponse);
-        if (cleaned.isEmpty()) {
-            return result;
+        JsonArray items = root.has("lines") && root.get("lines").isJsonArray() ? root.getAsJsonArray("lines") : null;
+        if (items == null) return null;
+        String[] texts = new String[lines.size()];
+        int count = 0;
+        for (int i = 0; i < items.size(); i++) {
+            if (!items.get(i).isJsonObject()) continue;
+            JsonObject item = items.get(i).getAsJsonObject();
+            int id = item.has("id") ? asInt(item.get("id")) : i;
+            String text = string(item, "text");
+            if (id < 0 || id >= texts.length || text == null || text.trim().isEmpty() || texts[id] != null) continue;
+            texts[id] = text.trim();
+            count++;
         }
-
-        try {
-            JsonElement root = JsonParser.parseString(cleaned);
-            JsonArray array = null;
-
-            if (root.isJsonArray()) {
-                array = root.getAsJsonArray();
-            } else if (root.isJsonObject()) {
-                JsonObject obj = root.getAsJsonObject();
-                if (obj.has("detectedSourceLang") && !obj.get("detectedSourceLang").isJsonNull()) {
-                    result.detectedSourceLang = obj.get("detectedSourceLang").getAsString();
-                } else if (obj.has("sourceLang") && !obj.get("sourceLang").isJsonNull()) {
-                    result.detectedSourceLang = obj.get("sourceLang").getAsString();
-                }
-
-                if (obj.has("lines") && obj.get("lines").isJsonArray()) {
-                    array = obj.getAsJsonArray("lines");
-                } else if (obj.has("translations") && obj.get("translations").isJsonArray()) {
-                    array = obj.getAsJsonArray("translations");
-                } else if (obj.has("lyrics") && obj.get("lyrics").isJsonArray()) {
-                    array = obj.getAsJsonArray("lyrics");
-                } else {
-                    for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
-                        if (entry.getValue().isJsonArray()) {
-                            array = entry.getValue().getAsJsonArray();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (array == null) {
-                return result;
-            }
-
-            if (targetLang != null && !targetLang.isEmpty()
-                    && !targetLang.equalsIgnoreCase("auto")
-                    && targetLang.equalsIgnoreCase(result.detectedSourceLang)) {
-                result.isSameLanguage = true;
-                return result;
-            }
-
-            int count = 0;
-            for (int i = 0; i < array.size(); i++) {
-                JsonElement elem = array.get(i);
-                if (!elem.isJsonObject()) continue;
-                JsonObject item = elem.getAsJsonObject();
-
-                int id = -1;
-                if (item.has("id") && !item.get("id").isJsonNull()) {
-                    try {
-                        id = item.get("id").getAsInt();
-                    } catch (Exception e) {
-                        try {
-                            id = Integer.parseInt(item.get("id").getAsString().trim());
-                        } catch (Exception ignored) {}
-                    }
-                } else {
-                    id = i;
-                }
-
-                if (id < 0 || id >= translatableLines.size()) {
-                    continue;
-                }
-
-                String text = null;
-                if (item.has("text") && !item.get("text").isJsonNull()) {
-                    text = item.get("text").getAsString();
-                } else if (item.has("translation") && !item.get("translation").isJsonNull()) {
-                    text = item.get("translation").getAsString();
-                } else if (item.has("translatedText") && !item.get("translatedText").isJsonNull()) {
-                    text = item.get("translatedText").getAsString();
-                } else if (item.has("translated_text") && !item.get("translated_text").isJsonNull()) {
-                    text = item.get("translated_text").getAsString();
-                }
-
-                if (text != null) {
-                    String trimmed = text.trim();
-                    translatableLines.get(id).translation = trimmed.isEmpty() ? null : trimmed;
-                    count++;
-                }
-            }
-            result.translatedLineCount = count;
-        } catch (Exception ignored) {}
-
+        if (count < Math.ceil(lines.size() * MIN_COVERAGE)) return null;
+        for (int i = 0; i < texts.length; i++) {
+            if (texts[i] != null) lines.get(i).translation = texts[i];
+        }
+        result.translatedLineCount = count;
         return result;
     }
 
-    /**
-     * Cancels any active AI translation call, timeout task, and fallback service request.
-     */
-    public synchronized void cancel() {
-        isCancelled.set(true);
-        requestGeneration.incrementAndGet();
-        cancelTimeout();
-        cancelAiCall();
-        if (fallbackService != null) {
-            fallbackService.cancel();
-        }
+    /** "id" → "Indonesian"; unknown codes stay as they are. */
+    public static String languageName(String code) {
+        String name = Locale.forLanguageTag(code).getDisplayLanguage(Locale.ENGLISH);
+        return name == null || name.isEmpty() || name.equalsIgnoreCase(code) ? code : name;
     }
 
-    private synchronized void cancelTimeout() {
-        if (timeoutFuture != null) {
-            timeoutFuture.cancel(false);
-            timeoutFuture = null;
-        }
+    private static String string(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonPrimitive() ? e.getAsString() : null;
     }
 
-    private synchronized void cancelAiCall() {
-        if (activeAiCall != null) {
-            activeAiCall.cancel();
-            activeAiCall = null;
-        }
-    }
-
-    /**
-     * Translates lyrics using AI if available, falling back smoothly to GoogleTranslateService.
-     */
-    public synchronized void translateLyrics(final List<LyricsData.LyricsLine> allLines,
-                                            final String targetLang,
-                                            final GoogleTranslateService.TranslationCallback callback) {
-        cancel();
-        isCancelled.set(false);
-        final int myGeneration = requestGeneration.get();
-
-        final List<LyricsData.LyricsLine> translatable = GoogleTranslateService.filterTranslatableLines(allLines);
-        if (translatable.isEmpty()) {
-            dispatchSuccess(new GoogleTranslateParser.ParseResult(), targetLang, callback);
-            return;
-        }
-
-        final String finalTargetLang = GoogleTranslateService.resolveTargetLang(targetLang, Locale.getDefault());
-
-        // Global constraint: fallback if AI translation disabled, not logged in, or apiClient null
-        if (!isAiTranslationEnabled() || !isUserLoggedIn() || apiClient == null) {
-            fallbackToGoogle(allLines, targetLang, callback);
-            return;
-        }
-
-        String prompt = buildTranslationPrompt(translatable, finalTargetLang);
-        List<AiChatMessage> messages = Collections.singletonList(new AiChatMessage("user", prompt));
-
-        final AtomicBoolean handled = new AtomicBoolean(false);
-
-        // Schedule timeout fallback
-        timeoutFuture = timeoutExecutor.schedule(() -> {
-            if (isCancelled.get() || requestGeneration.get() != myGeneration) return;
-            if (handled.compareAndSet(false, true)) {
-                cancelAiCall();
-                fallbackToGoogle(allLines, targetLang, callback);
-            }
-        }, timeoutMs, TimeUnit.MILLISECONDS);
-
+    private static int asInt(JsonElement e) {
         try {
-            activeAiCall = apiClient.generateContent(modelId, messages, false, "low",
-                    new AntigravityApiClient.CompletionCallback() {
-                @Override
-                public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
-                    if (isCancelled.get() || requestGeneration.get() != myGeneration) return;
-                    if (handled.compareAndSet(false, true)) {
-                        cancelTimeout();
-                        try {
-                            GoogleTranslateParser.ParseResult result =
-                                    parseAiTranslation(fullText, translatable, finalTargetLang);
-                            if (result.translatedLineCount > 0 || result.isSameLanguage) {
-                                dispatchSuccess(result, finalTargetLang, callback);
-                            } else {
-                                fallbackToGoogle(allLines, targetLang, callback);
-                            }
-                        } catch (Exception e) {
-                            fallbackToGoogle(allLines, targetLang, callback);
-                        }
-                    }
-                }
-
-                @Override
-                public void onError(Exception error) {
-                    if (isCancelled.get() || requestGeneration.get() != myGeneration) return;
-                    if (handled.compareAndSet(false, true)) {
-                        cancelTimeout();
-                        fallbackToGoogle(allLines, targetLang, callback);
-                    }
-                }
-            });
-        } catch (Exception e) {
-            if (handled.compareAndSet(false, true)) {
-                cancelTimeout();
-                fallbackToGoogle(allLines, targetLang, callback);
-            }
-        }
-    }
-
-    private void fallbackToGoogle(List<LyricsData.LyricsLine> allLines,
-                                  String targetLang,
-                                  GoogleTranslateService.TranslationCallback callback) {
-        if (fallbackService != null) {
-            fallbackService.translateLines(allLines, targetLang, callback);
-        } else if (callback != null) {
-            dispatchError(new IOException("AiTranslation failed and fallback service is null"), callback);
-        }
-    }
-
-    private void dispatchSuccess(GoogleTranslateParser.ParseResult result,
-                                String targetLang,
-                                GoogleTranslateService.TranslationCallback callback) {
-        if (callback == null) return;
-        if (mainHandler == null) {
-            callback.onSuccess(result, targetLang);
-        } else {
-            mainHandler.post(() -> callback.onSuccess(result, targetLang));
-        }
-    }
-
-    private void dispatchError(Exception error, GoogleTranslateService.TranslationCallback callback) {
-        if (callback == null) return;
-        if (mainHandler == null) {
-            callback.onError(error);
-        } else {
-            mainHandler.post(() -> callback.onError(error));
+            return e.getAsInt();
+        } catch (RuntimeException ex) {
+            return -1;
         }
     }
 }

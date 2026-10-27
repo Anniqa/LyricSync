@@ -361,7 +361,9 @@ public class SyllableHighlighter {
             lv.interludeView = dotView;
             lv.rootView = container;
             lv.usePerWord = false;
-        } else if (syllableMode && hasWordTiming(line)) {
+        } else if ((syllableMode || hasAnyWordRomanji(line)) && hasWordTiming(line)) {
+            // Line-synced lyrics switch to word views too once words carry a Latin label
+            // (e.g. a word-by-word gloss), since only word views can draw it.
             lv.usePerWord = true;
             lv.rootView = createPerWordView(line, lv, params);
         } else {

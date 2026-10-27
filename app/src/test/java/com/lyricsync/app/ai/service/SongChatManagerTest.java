@@ -101,7 +101,7 @@ public class SongChatManagerTest {
         );
         chatManager.loadSession(session);
 
-        List<AiChatMessage> messages = chatManager.buildMessagesToSend();
+        List<AiChatMessage> messages = chatManager.buildMessagesToSend(false);
         assertFalse(messages.isEmpty());
         AiChatMessage lastUser = messages.get(messages.size() - 1);
         assertEquals("user", lastUser.role);
@@ -147,7 +147,7 @@ public class SongChatManagerTest {
     @Test
     public void testBuildMessagesToSendSanitization() {
         chatManager.setCurrentSong("Song", "Artist", "Lyrics");
-        List<AiChatMessage> messages = chatManager.buildMessagesToSend();
+        List<AiChatMessage> messages = chatManager.buildMessagesToSend(false);
 
         // Must have system context user message + model acknowledgment
         assertTrue(messages.size() >= 2);
