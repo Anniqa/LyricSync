@@ -7,23 +7,35 @@ on:
       - main
     tags:
       - 'v*'
+  pull_request:
   workflow_dispatch:
 
+# A newer push to the same branch/PR cancels the run still going for the old
+# one. Tag builds are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
 jobs:
+  # Branch pushes, pull requests and manual runs: unit tests, lint and the
+  # debug APK. Tags build the minified release in the `release` job below.
   build:
-    # Debug builds run for branch pushes and manual triggers only; tags build the
-    # minified release in the `release` job below.
-    if: github.ref_type == 'branch' || github.event_name == 'workflow_dispatch'
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 17 (with Gradle cache)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: 17
+          cache: 'gradle'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -31,20 +43,24 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Unit tests, lint and debug APK
+        run: >-
+          ./gradlew testDebugUnitTest lintDebug assembleDebug
+          --no-daemon --stacktrace
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LyricSync-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
 
       - name: Find APK
         id: apk
@@ -60,37 +76,48 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
 
+      # Values come in through env (never ${{ }} inside the script), so a
+      # commit message cannot inject shell code.
       - name: Send to Telegram
+        if: github.event_name == 'push'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          APK_PATH: ${{ steps.apk.outputs.path }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "Telegram secrets not set — skipping (APK is available as an artifact)."
+            echo "Telegram secrets not set; skipping (APK is an artifact)."
             exit 0
           fi
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+          api="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
+          resp=$(curl -s -X POST "$api/sendDocument" \
             -F "chat_id=${TELEGRAM_CHAT_ID}" \
-            -F "document=@${{ steps.apk.outputs.path }}" \
-            -F "caption=LyricSync debug build — ${{ github.event.head_commit.message }}" \
-            | python3 -c "import sys,json; r=json.load(sys.stdin); print('OK' if r.get('ok') else 'FAIL: '+str(r))"
+            -F "document=@${APK_PATH}" \
+            -F "caption=LyricSync debug build — ${COMMIT_MSG}")
+          case "$resp" in
+            *'"ok":true'*) echo "OK" ;;
+            *) echo "FAIL: $resp" ;;
+          esac
 
-  # Tag push (v*): build the minified, R8-optimised release APK and publish it on
-  # a GitHub Release page with auto-generated notes.
+  # Tag push (v*): build the minified, R8-optimised release APK and publish
+  # it on a GitHub Release page with auto-generated notes.
   release:
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 17 (with Gradle cache)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: 17
+          cache: 'gradle'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -98,20 +125,13 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build release APK (minified)
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+      - name: Unit tests and release APK (minified)
+        run: >-
+          ./gradlew testDebugUnitTest assembleRelease
+          --no-daemon --stacktrace
 
       - name: Find release APK
         id: apk
@@ -138,13 +158,19 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          APK_PATH: ${{ steps.apk.outputs.path }}
+          TAG_NAME: ${{ github.ref_name }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "Telegram secrets not set — skipping (APK is on the Release page)."
+            echo "Telegram secrets not set; skipping (APK is on the Release)."
             exit 0
           fi
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+          api="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
+          resp=$(curl -s -X POST "$api/sendDocument" \
             -F "chat_id=${TELEGRAM_CHAT_ID}" \
-            -F "document=@${{ steps.apk.outputs.path }}" \
-            -F "caption=LyricSync ${{ github.ref_name }} — minified release build" \
-            | python3 -c "import sys,json; r=json.load(sys.stdin); print('OK' if r.get('ok') else 'FAIL: '+str(r))"
+            -F "document=@${APK_PATH}" \
+            -F "caption=LyricSync ${TAG_NAME} — minified release build")
+          case "$resp" in
+            *'"ok":true'*) echo "OK" ;;
+            *) echo "FAIL: $resp" ;;
+          esac
