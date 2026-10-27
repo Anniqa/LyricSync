@@ -1,5 +1,7 @@
 package com.lyricsync.app.lyrics.provider;
 
+import com.lyricsync.app.BuildConfig;
+
 import android.content.Context;
 
 import com.google.gson.JsonArray;
@@ -7,15 +9,13 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lyricsync.app.lyrics.model.LyricsData;
-import com.lyricsync.app.lyrics.model.TrackInfo;
+import com.lyricsync.app.lyrics.util.TrackQuery;
 import com.lyricsync.app.util.AppLog;
 import com.lyricsync.app.ai.transliteration.ScriptDetector;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -29,20 +29,15 @@ public class SpicyLyricsProvider implements LyricsProvider {
     /** The app-wide SharedPreferences file the settings screen writes to. */
     private static final String PREF_FILE = "lyricsync";
     /**
-     * Publishable key shipped with the app so the official API works out of the box.
-     * A key pasted in Settings overrides this. Publishable keys are meant to live in
-     * client apps (that is what "publishable" means); rotate it in the dashboard if abused.
+     * Key baked in at build time from local.properties / the SPICY_CLIENT_KEY env var
+     * (see app/build.gradle); empty in builds without one. A key set in Settings wins.
      */
-    private static final String DEFAULT_CLIENT_KEY =
-            "sl_pk_KKPqmweywKoS6MWFkaru-nRLsZMDkpAu7WMvtnTfXis";
+    private static final String BUILT_IN_CLIENT_KEY = BuildConfig.SPICY_CLIENT_KEY;
     private static final String SPICY_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Spotify/1.2.52.442";
 
     private final Context context;
-    private final OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build();
+    private final OkHttpClient client = Http.CLIENT;
 
     public SpicyLyricsProvider(Context context) {
         this.context = context;
@@ -54,30 +49,30 @@ public class SpicyLyricsProvider implements LyricsProvider {
     }
 
     @Override
-    public LyricsData fetchLyrics(TrackInfo track) throws Exception {
-        String trackId = extractSpotifyId(track);
-        if (trackId == null) {
-            trackId = resolveSpotifyTrackId(track);
-        }
-        if (trackId == null) {
-            throw new IOException("No Spotify track ID available");
-        }
-
-        // Official developer API (/v1/lyrics) — the supported route.
-        return fetchOfficialLyrics(trackId, getClientKey());
+    public LyricsData fetchLyrics(TrackQuery q) throws Exception {
+        if (q == null || q.isEmpty()) return null;
+        String trackId = q.spotifyId != null ? q.spotifyId : SpotifyTrackResolver.resolve(q);
+        if (trackId == null) return null; // not on Spotify (or not found): let the next provider try
+        String key = getClientKey();
+        if (key == null) return null; // no key: the other providers (Kugou, Netease, LRCLIB) still run
+        return fetchOfficialLyrics(trackId, key);
     }
 
-    /** The user's Spicy Lyrics client key, or null when not configured/invalid. */
+    /** The user's key from Settings, else the built-in one; null when there is neither. */
     private String getClientKey() {
-        try {
-            String stored = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-                    .getString(PREF_SPICY_CLIENT_KEY, null);
-            if (stored != null) {
-                String key = stored.trim();
-                if (key.matches("sl_(pk|sk)_[A-Za-z0-9_-]+")) return key;
-            }
-        } catch (Exception ignored) {}
-        return DEFAULT_CLIENT_KEY;
+        if (context != null) {
+            try {
+                String stored = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+                        .getString(PREF_SPICY_CLIENT_KEY, null);
+                if (stored != null && stored.trim().matches("sl_(pk|sk)_[A-Za-z0-9_-]+")) return stored.trim();
+            } catch (Exception ignored) {}
+        }
+        return hasBuiltInKey() ? BUILT_IN_CLIENT_KEY.trim() : null;
+    }
+
+    /** True when this build ships a key (so Spicy works without one in Settings). */
+    public static boolean hasBuiltInKey() {
+        return BUILT_IN_CLIENT_KEY != null && !BUILT_IN_CLIENT_KEY.trim().isEmpty();
     }
 
     /**
@@ -96,6 +91,7 @@ public class SpicyLyricsProvider implements LyricsProvider {
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
+            if (response.code() == 404) return null; // no lyrics for this recording
             if (response.body() == null) throw new IOException("Empty response body");
             return parseOfficialResponse(response.body().string());
         }
@@ -409,47 +405,5 @@ public class SpicyLyricsProvider implements LyricsProvider {
             }
         }
         return "";
-    }
-
-    private String extractSpotifyId(TrackInfo track) {
-        if (track.trackId == null || track.trackId.isEmpty()) return null;
-        String id = track.trackId.trim();
-        if (id.startsWith("spotify:track:")) {
-            id = id.substring("spotify:track:".length());
-        } else if (id.contains("open.spotify.com/track/")) {
-            int start = id.indexOf("open.spotify.com/track/") + "open.spotify.com/track/".length();
-            int end = id.indexOf('?', start);
-            id = end >= 0 ? id.substring(start, end) : id.substring(start);
-        }
-        if (!isSpotifyTrackId(id)) return null;
-        return id;
-    }
-
-    private String resolveSpotifyTrackId(TrackInfo track) {
-        if (!track.isValid()) return null;
-
-        String id = extractSpotifyId(track);
-        if (id != null) return id;
-
-        String title = track.title;
-        String artist = track.artist;
-        if (title != null && title.contains(" - ")) {
-            String[] parts = title.split(" - ", 2);
-            if (artist == null || artist.trim().isEmpty() || artist.toLowerCase(Locale.US).contains("topic")) {
-                artist = parts[0];
-                title = parts[1];
-            }
-        }
-
-        String isrcResolvedId = SpotifyTrackResolver.resolve(title, artist, track.duration);
-        if (isrcResolvedId != null) {
-            track.trackId = "spotify:track:" + isrcResolvedId;
-            AppLog.i(TAG, "Resolved trackId via SpotifyTrackResolver: " + isrcResolvedId + " for " + title);
-            return isrcResolvedId;
-        }
-        return null;
-    }
-    private boolean isSpotifyTrackId(String id) {
-        return id != null && id.matches("[A-Za-z0-9]{22}");
     }
 }

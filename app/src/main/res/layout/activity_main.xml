@@ -165,6 +165,7 @@
                         <TextView android:id="@+id/tv_spicy_key_status" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingStart="0dp" android:paddingEnd="@dimen/ls_space_3" android:text="@string/spicy_key_status_none" android:textAppearance="@style/TextAppearance.LyricSync.Main.Body" />
                         <com.google.android.material.button.MaterialButton android:id="@+id/btn_spicy_key" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/spicy_key_button" />
                     </LinearLayout>
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_spicy_get_key" style="@style/Widget.LyricSync.Main.Button.Text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:text="@string/spicy_key_get" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

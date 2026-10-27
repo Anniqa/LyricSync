@@ -44,6 +44,8 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Unit tests, lint and debug APK
+        env:
+          SPICY_CLIENT_KEY: ${{ secrets.SPICY_CLIENT_KEY }}
         run: >-
           ./gradlew testDebugUnitTest lintDebug assembleDebug
           --no-daemon --stacktrace
@@ -123,6 +125,8 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Unit tests and release APK (minified)
+        env:
+          SPICY_CLIENT_KEY: ${{ secrets.SPICY_CLIENT_KEY }}
         run: >-
           ./gradlew testDebugUnitTest assembleRelease
           --no-daemon --stacktrace

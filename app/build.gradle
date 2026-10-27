@@ -2,6 +2,14 @@ plugins {
     id 'com.android.application'
 }
 
+// The Spicy Lyrics key is never committed. It comes from local.properties
+// (spicy.client.key=sl_pk_...) or the SPICY_CLIENT_KEY env var (a CI secret); without
+// one the build still works and users paste their own key in Settings.
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) localPropsFile.withInputStream { localProps.load(it) }
+def spicyClientKey = (localProps.getProperty('spicy.client.key') ?: System.getenv('SPICY_CLIENT_KEY') ?: '').trim()
+
 android {
     namespace 'com.lyricsync.app'
     compileSdk 35
@@ -14,6 +22,11 @@ android {
         targetSdk 35
         versionCode 83
         versionName "16.4.29"
+        buildConfigField 'String', 'SPICY_CLIENT_KEY', "\"${spicyClientKey}\""
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     signingConfigs {
