@@ -1,34 +1,38 @@
 package com.lyricsync.app.lyrics;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
 import com.lyricsync.app.lyrics.provider.LyricsProvider;
+import com.lyricsync.app.lyrics.util.TrackQuery;
 
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.Assert.*;
-
+/** The cascade: stop at word-sync, keep the best otherwise, survive failures, share fetches. */
 public class LyricsProviderManagerTest {
 
-    static class MockLyricsProvider implements LyricsProvider {
-        private final String name;
-        private final LyricsData lyricsToReturn;
-        final AtomicBoolean wasCalled = new AtomicBoolean(false);
+    private static final class Fake implements LyricsProvider {
+        final String name;
+        final LyricsData.Type type;
+        final AtomicInteger calls = new AtomicInteger();
+        volatile CountDownLatch gate;
 
-        MockLyricsProvider(String name, LyricsData lyricsToReturn) {
+        Fake(String name, LyricsData.Type type) {
             this.name = name;
-            this.lyricsToReturn = lyricsToReturn;
+            this.type = type;
         }
 
         @Override
@@ -37,163 +41,90 @@ public class LyricsProviderManagerTest {
         }
 
         @Override
-        public LyricsData fetchLyrics(TrackInfo track) throws Exception {
-            wasCalled.set(true);
-            return lyricsToReturn;
+        public LyricsData fetchLyrics(TrackQuery q) throws Exception {
+            calls.incrementAndGet();
+            if (gate != null) gate.await(5, TimeUnit.SECONDS);
+            if (type == null) throw new RuntimeException("boom");
+            LyricsData l = new LyricsData(type);
+            l.provider = name;
+            l.lines.add(new LyricsData.LyricsLine(0, 1000, q.title + " lyric"));
+            return l;
         }
     }
 
-    private static LyricsData createLyrics(LyricsData.Type type, String provider, int lineCount) {
-        LyricsData data = new LyricsData(type);
-        data.provider = provider;
-        for (int i = 0; i < lineCount; i++) {
-            LyricsData.LyricsLine line = new LyricsData.LyricsLine(i * 1000L, (i + 1) * 1000L, "Line " + i);
-            if (type == LyricsData.Type.SYLLABLE) {
-                line.words.add(new LyricsData.Word(i * 1000L, (i + 1) * 1000L, "Word " + i));
-            }
-            data.lines.add(line);
-        }
-        return data;
+    private static TrackInfo track(String title) {
+        TrackInfo t = new TrackInfo();
+        t.title = title;
+        t.artist = "Artist";
+        return t;
+    }
+
+    private static LyricsProviderManager manager(ExecutorService pool, LyricsProvider... ps) {
+        return new LyricsProviderManager(new LyricsCacheManager(null), Arrays.asList(ps), pool, null);
     }
 
     @Test
-    public void testSyllablePrioritizedOverLine() throws Exception {
-        LyricsData lineLyrics = createLyrics(LyricsData.Type.LINE, "LRCLIB", 20);
-        LyricsData syllableLyrics = createLyrics(LyricsData.Type.SYLLABLE, "Kugou", 15);
+    public void stopsAtFirstSyllableResult() {
+        Fake line = new Fake("A", LyricsData.Type.LINE), syl = new Fake("B", LyricsData.Type.SYLLABLE),
+                never = new Fake("C", LyricsData.Type.SYLLABLE);
+        LyricsData l = manager(null, line, syl, never).find(track("Song"));
+        assertEquals("B", l.provider);
+        assertEquals(0, never.calls.get());
+    }
 
-        MockLyricsProvider kugou = new MockLyricsProvider("Kugou", syllableLyrics);
-        MockLyricsProvider lrclib = new MockLyricsProvider("LRCLIB", lineLyrics);
+    @Test
+    public void keepsBestWhenNoSyllableAndSkipsFailures() {
+        Fake broken = new Fake("X", null), stat = new Fake("S", LyricsData.Type.STATIC),
+                line = new Fake("L", LyricsData.Type.LINE);
+        assertEquals("L", manager(null, broken, stat, line).find(track("Song")).provider);
+    }
 
-        LyricsProviderManager manager = new LyricsProviderManager(
-                null,
-                Arrays.asList(kugou, lrclib),
-                Executors.newSingleThreadExecutor(),
-                null
-        );
+    @Test
+    public void nothingFound_isNull() {
+        assertNull(manager(null, new Fake("X", null)).find(track("Song")));
+    }
 
-        TrackInfo track = new TrackInfo();
-        track.title = "Song";
-        track.artist = "Artist";
-
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<LyricsData> resultRef = new AtomicReference<>();
-
-        manager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
+    @Test
+    public void concurrentRequestsShareOneFetch() throws Exception {
+        Fake p = new Fake("P", LyricsData.Type.SYLLABLE);
+        p.gate = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        LyricsProviderManager m = manager(pool, p);
+        CountDownLatch done = new CountDownLatch(2);
+        List<LyricsData> got = new ArrayList<>();
+        LyricsProviderManager.LyricsCallback cb = new LyricsProviderManager.LyricsCallback() {
             @Override
             public void onLyricsLoaded(LyricsData lyrics) {
-                resultRef.set(lyrics);
-                latch.countDown();
+                synchronized (got) { got.add(lyrics); }
+                done.countDown();
             }
 
             @Override
             public void onLyricsError(String error) {
-                latch.countDown();
+                done.countDown();
             }
-        });
-
-        assertTrue("Callback should complete", latch.await(3, TimeUnit.SECONDS));
-        assertNotNull("Should return lyrics", resultRef.get());
-        assertEquals("Should prioritize syllable lyrics over line lyrics",
-                LyricsData.Type.SYLLABLE, resultRef.get().type);
-        assertEquals("Kugou", resultRef.get().provider);
+        };
+        m.fetchLyrics(track("Song"), cb);
+        m.fetchLyrics(track("Song"), cb);
+        p.gate.countDown();
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals(1, p.calls.get());
+        assertEquals(2, got.size());
+        m.shutdown();
     }
 
     @Test
-    public void testSyllableEarlyReturnSkipsSubsequentProviders() throws Exception {
-        LyricsData syllableLyrics = createLyrics(LyricsData.Type.SYLLABLE, "Kugou", 10);
-        LyricsData lineLyrics = createLyrics(LyricsData.Type.LINE, "LRCLIB", 10);
-
-        MockLyricsProvider kugou = new MockLyricsProvider("Kugou", syllableLyrics);
-        MockLyricsProvider slowProvider = new MockLyricsProvider("LRCLIB", lineLyrics);
-
-        LyricsProviderManager manager = new LyricsProviderManager(
-                null,
-                Arrays.asList(kugou, slowProvider),
-                Executors.newSingleThreadExecutor(),
-                null
-        );
-
-        TrackInfo track = new TrackInfo();
-        track.title = "Fast Song";
-        track.artist = "Fast Artist";
-
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<LyricsData> resultRef = new AtomicReference<>();
-
-        manager.fetchLyrics(track, new LyricsProviderManager.LyricsCallback() {
+    public void emptyTitle_reportsError() {
+        String[] err = new String[1];
+        manager(null).fetchLyrics(track(" "), new LyricsProviderManager.LyricsCallback() {
             @Override
-            public void onLyricsLoaded(LyricsData lyrics) {
-                resultRef.set(lyrics);
-                latch.countDown();
-            }
+            public void onLyricsLoaded(LyricsData lyrics) {}
 
             @Override
             public void onLyricsError(String error) {
-                latch.countDown();
+                err[0] = error;
             }
         });
-
-        assertTrue("Callback should complete", latch.await(3, TimeUnit.SECONDS));
-        assertNotNull(resultRef.get());
-        assertEquals(LyricsData.Type.SYLLABLE, resultRef.get().type);
-        assertTrue("Kugou should have been called", kugou.wasCalled.get());
-        assertFalse("Slow provider should NOT have been called once syllable lyrics were found",
-                slowProvider.wasCalled.get());
-    }
-
-    @Test
-    public void testTargetProviderSyllableAlias() throws Exception {
-        LyricsData lineLyrics = createLyrics(LyricsData.Type.LINE, "LRCLIB", 10);
-        LyricsData syllableLyrics = createLyrics(LyricsData.Type.SYLLABLE, "Kugou", 10);
-
-        MockLyricsProvider kugou = new MockLyricsProvider("Kugou", syllableLyrics);
-        MockLyricsProvider lrclib = new MockLyricsProvider("LRCLIB", lineLyrics);
-
-        LyricsProviderManager manager = new LyricsProviderManager(
-                null,
-                Arrays.asList(lrclib, kugou),
-                Executors.newSingleThreadExecutor(),
-                null
-        );
-
-        TrackInfo track = new TrackInfo();
-        track.title = "Karaoke Song";
-        track.artist = "Karaoke Singer";
-
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<LyricsData> resultRef = new AtomicReference<>();
-
-        manager.fetchLyrics(track, "syllable", new LyricsProviderManager.LyricsCallback() {
-            @Override
-            public void onLyricsLoaded(LyricsData lyrics) {
-                resultRef.set(lyrics);
-                latch.countDown();
-            }
-
-            @Override
-            public void onLyricsError(String error) {
-                latch.countDown();
-            }
-        });
-
-        assertTrue("Callback should complete", latch.await(3, TimeUnit.SECONDS));
-        assertNotNull("Should find syllable lyrics", resultRef.get());
-        assertEquals(LyricsData.Type.SYLLABLE, resultRef.get().type);
-        assertEquals("Kugou", resultRef.get().provider);
-        assertFalse("LRCLIB should be skipped when 'syllable' is targeted", lrclib.wasCalled.get());
-    }
-
-    @Test
-    public void testIsSyllableTargetHelper() {
-        assertTrue(LyricsProviderManager.isSyllableTarget("syllable"));
-        assertTrue(LyricsProviderManager.isSyllableTarget("karaoke"));
-        assertTrue(LyricsProviderManager.isSyllableTarget("suku kata"));
-        assertTrue(LyricsProviderManager.isSyllableTarget("word_by_word"));
-        assertTrue(LyricsProviderManager.isSyllableTarget("krc"));
-        assertTrue(LyricsProviderManager.isSyllableTarget("yrc"));
-        assertFalse(LyricsProviderManager.isSyllableTarget("kugou"));
-        assertFalse(LyricsProviderManager.isSyllableTarget("lrclib"));
-        assertFalse(LyricsProviderManager.isSyllableTarget("all"));
-        assertFalse(LyricsProviderManager.isSyllableTarget(null));
+        assertTrue(err[0] != null);
     }
 }
