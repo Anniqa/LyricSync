@@ -63,6 +63,7 @@ public class LyricsCacheManager {
         return null;
     }
 
+    /** Stores {@code lyrics} unless the cache already holds a better type for the track. */
     public void cache(TrackInfo track, LyricsData lyrics) {
         if (lyrics == null || lyrics.type == null || dbHelper == null) return;
         LyricsData existing = getCached(track);
@@ -71,6 +72,12 @@ public class LyricsCacheManager {
                 return;
             }
         }
+        replace(track, lyrics);
+    }
+
+    /** Stores {@code lyrics} as the track's lyrics, whatever was cached (the user chose them). */
+    public void replace(TrackInfo track, LyricsData lyrics) {
+        if (lyrics == null || lyrics.type == null || dbHelper == null) return;
         String key = makeKey(track);
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 

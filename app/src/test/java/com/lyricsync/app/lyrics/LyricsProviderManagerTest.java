@@ -63,13 +63,12 @@ public class LyricsProviderManagerTest {
         return new LyricsProviderManager(new LyricsCacheManager(null), Arrays.asList(ps), pool, null);
     }
 
+    /** Sources run at once, so a later SYLLABLE source is queried too; priority order still decides. */
     @Test
-    public void stopsAtFirstSyllableResult() {
+    public void firstSyllableInPriorityOrderWins() {
         Fake line = new Fake("A", LyricsData.Type.LINE), syl = new Fake("B", LyricsData.Type.SYLLABLE),
-                never = new Fake("C", LyricsData.Type.SYLLABLE);
-        LyricsData l = manager(null, line, syl, never).find(track("Song"));
-        assertEquals("B", l.provider);
-        assertEquals(0, never.calls.get());
+                later = new Fake("C", LyricsData.Type.SYLLABLE);
+        assertEquals("B", manager(null, line, syl, later).find(track("Song")).provider);
     }
 
     @Test
@@ -77,6 +76,45 @@ public class LyricsProviderManagerTest {
         Fake broken = new Fake("X", null), stat = new Fake("S", LyricsData.Type.STATIC),
                 line = new Fake("L", LyricsData.Type.LINE);
         assertEquals("L", manager(null, broken, stat, line).find(track("Song")).provider);
+    }
+
+    /** Sources run at once: a slow better source is waited for only within the grace time. */
+    @Test
+    public void slowBetterSourceGetsOnlyTheGraceTime() {
+        Fake slowBest = new Fake("Slow", LyricsData.Type.SYLLABLE), fast = new Fake("Fast", LyricsData.Type.SYLLABLE);
+        slowBest.gate = new CountDownLatch(1); // never opens in time
+        LyricsProviderManager m = manager(null, slowBest, fast);
+        m.graceMs = 200;
+        long t0 = System.currentTimeMillis();
+        assertEquals("Fast", m.find(track("Song")).provider);
+        assertTrue(System.currentTimeMillis() - t0 < 3000);
+        slowBest.gate.countDown();
+        m.shutdown();
+    }
+
+    @Test
+    public void searchReportsEverySourceThatHasLyrics() throws Exception {
+        Fake a = new Fake("A", LyricsData.Type.LINE), b = new Fake("B", LyricsData.Type.SYLLABLE), x = new Fake("X", null);
+        LyricsProviderManager m = manager(null, a, b, x);
+        List<String> seen = new ArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        int[] found = {-1};
+        m.search(track("Song"), "Other Title", "", new LyricsProviderManager.SearchListener() {
+            @Override
+            public void onCandidate(LyricsProviderManager.Candidate c) {
+                synchronized (seen) { seen.add(c.source + ":" + c.lyrics.lines.get(0).text); }
+            }
+
+            @Override
+            public void onFinished(int n) {
+                found[0] = n;
+                done.countDown();
+            }
+        });
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals(2, found[0]);
+        assertTrue(seen.contains("A:Other Title lyric") && seen.contains("B:Other Title lyric"));
+        m.shutdown();
     }
 
     @Test

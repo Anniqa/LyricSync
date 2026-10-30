@@ -42,9 +42,11 @@ public final class TrackQuery {
     public final String spotifyId;
     /** The title carried video noise ("Official Video", "MV" …): its length is the video's, not the song's. */
     public final boolean fromVideo;
+    /** Album as the player reported it, "" when unknown (some sources key their cache on it). */
+    public final String album;
 
     private TrackQuery(String title, String artist, String artists, List<String> aliases,
-                       long durationMs, String spotifyId, boolean fromVideo) {
+                       long durationMs, String spotifyId, boolean fromVideo, String album) {
         this.title = title;
         this.artist = artist;
         this.artists = artists;
@@ -52,13 +54,14 @@ public final class TrackQuery {
         this.durationMs = Math.max(0, durationMs);
         this.spotifyId = spotifyId;
         this.fromVideo = fromVideo;
+        this.album = album == null ? "" : album.trim();
     }
 
     public static TrackQuery from(TrackInfo t) {
         if (t == null) return of("", "", 0);
         TrackQuery q = of(t.title, t.artist, t.duration);
-        String id = spotifyId(t.trackId);
-        return id == null ? q : new TrackQuery(q.title, q.artist, q.artists, q.aliases, q.durationMs, id, q.fromVideo);
+        return new TrackQuery(q.title, q.artist, q.artists, q.aliases, q.durationMs, spotifyId(t.trackId),
+                q.fromVideo, t.album);
     }
 
     public static TrackQuery of(String rawTitle, String rawArtist, long durationMs) {
@@ -131,7 +134,7 @@ public final class TrackQuery {
         for (String a : aliases) {
             if (!a.isEmpty() && !a.equalsIgnoreCase(title) && !clean.contains(a)) clean.add(a);
         }
-        return new TrackQuery(title, artist, artists, clean, durationMs, null, fromVideo);
+        return new TrackQuery(title, artist, artists, clean, durationMs, null, fromVideo, "");
     }
 
     /** Title first, then the aliases: the spellings a provider should search, in order. */

@@ -6,7 +6,9 @@ import static org.junit.Assume.assumeTrue;
 import com.lyricsync.app.lyrics.cache.LyricsCacheManager;
 import com.lyricsync.app.lyrics.model.LyricsData;
 import com.lyricsync.app.lyrics.model.TrackInfo;
+import com.lyricsync.app.lyrics.provider.BetterLyricsProvider;
 import com.lyricsync.app.lyrics.provider.KugouLyricsProvider;
+import com.lyricsync.app.lyrics.provider.LyricsPlusProvider;
 import com.lyricsync.app.lyrics.provider.LRCLIBProvider;
 import com.lyricsync.app.lyrics.provider.LyricsProvider;
 import com.lyricsync.app.lyrics.provider.NeteaseLyricsProvider;
@@ -42,9 +44,9 @@ public class LyricsHitRateLiveTest {
         assumeTrue("live benchmark; set LYRICSYNC_LIVE=1", "1".equals(System.getenv("LYRICSYNC_LIVE")));
 
         List<TrackInfo> tracks = loadTracks();
-        List<LyricsProvider> providers = Arrays.asList(
-                new SpicyLyricsProvider(null), new KugouLyricsProvider(),
-                new NeteaseLyricsProvider(), new LRCLIBProvider());
+        // Same sources and order as the app.
+        List<LyricsProvider> providers = Arrays.asList(new SpicyLyricsProvider(null), new BetterLyricsProvider(),
+                new LyricsPlusProvider(), new KugouLyricsProvider(), new NeteaseLyricsProvider(), new LRCLIBProvider());
         ExecutorService pool = Executors.newFixedThreadPool(4);
         LyricsProviderManager manager =
                 new LyricsProviderManager(new LyricsCacheManager(null), providers, pool, null);

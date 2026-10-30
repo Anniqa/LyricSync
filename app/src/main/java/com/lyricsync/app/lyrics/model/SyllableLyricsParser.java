@@ -13,6 +13,8 @@ import java.util.zip.InflaterInputStream;
  * <ul>
  *   <li>YRC (Netease): {@code [lineStart,dur](wordStart,dur,0)word…} — absolute word times</li>
  *   <li>KRC (Kugou, XOR+zlib encrypted): {@code [lineStart,dur]<offset,dur,0>word…} — offsets</li>
+ *   <li>QRC (QQ Music): {@code [lineStart,dur]word(start,dur)…} — text before its absolute time,
+ *       usually inside an XML envelope ({@code LyricContent="…"})</li>
  *   <li>LRC: {@code [mm:ss.xx]line}, repeated tags allowed — line-synced</li>
  * </ul>
  * A word-timed format with no usable word lines falls back to LINE.
@@ -26,6 +28,8 @@ public final class SyllableLyricsParser {
     private static final Pattern LINE_HEADER = Pattern.compile("^\\[(\\d+),(\\d+)]");
     private static final Pattern YRC_WORD = Pattern.compile("\\((\\d+),(\\d+),-?\\d+\\)([^()]*)");
     private static final Pattern KRC_WORD = Pattern.compile("<(\\d+),(\\d+),-?\\d+>([^<>]*)");
+    private static final Pattern QRC_TIME = Pattern.compile("\\((\\d+),(\\d+)\\)");
+    private static final Pattern QRC_BODY = Pattern.compile("LyricContent=\"([\\s\\S]*?)\"\\s*(?:/?>|[A-Za-z_]+=)");
     private static final Pattern LRC_TIME = Pattern.compile("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]");
     private static final long INTERLUDE_GAP_MS = 3000;
 
@@ -78,6 +82,52 @@ public final class SyllableLyricsParser {
         if (lyrics.lines.isEmpty()) return asLine(lyrics);
         LyricsData.insertInterludes(lyrics, INTERLUDE_GAP_MS);
         return lyrics;
+    }
+
+    /**
+     * QRC: each word is followed by its own {@code (start,dur)}; spaces belong to the word
+     * before them, so "Let (1,2)it(3,4)" is two words. Accepts the bare body or the
+     * {@code <QrcInfos>} XML envelope the APIs wrap it in.
+     */
+    public static LyricsData parseQrc(String raw) {
+        LyricsData lyrics = new LyricsData(LyricsData.Type.SYLLABLE);
+        if (raw == null) return asLine(lyrics);
+        Matcher env = QRC_BODY.matcher(raw);
+        String body = env.find() ? xmlUnescape(env.group(1)) : raw;
+        for (String rawLine : body.split("\\r?\\n")) {
+            String line = rawLine.trim();
+            Matcher h = LINE_HEADER.matcher(line);
+            if (!h.find()) continue;
+            long lineStart = Long.parseLong(h.group(1));
+            LyricsData.LyricsLine ll = new LyricsData.LyricsLine(lineStart, lineStart + Long.parseLong(h.group(2)), "");
+            String rest = line.substring(h.end());
+            StringBuilder text = new StringBuilder();
+            Matcher w = QRC_TIME.matcher(rest);
+            int from = 0;
+            while (w.find()) {
+                String t = rest.substring(from, w.start());
+                from = w.end();
+                if (t.trim().isEmpty()) {
+                    if (!t.isEmpty() && text.length() > 0 && text.charAt(text.length() - 1) != ' ') text.append(' ');
+                    continue; // QQ times bare spaces too; they only separate words
+                }
+                long start = Long.parseLong(w.group(1));
+                ll.words.add(new LyricsData.Word(start, start + Long.parseLong(w.group(2)), t.trim()));
+                if (Character.isWhitespace(t.charAt(0)) && text.length() > 0 && text.charAt(text.length() - 1) != ' ') text.append(' ');
+                text.append(t.trim());
+                if (Character.isWhitespace(t.charAt(t.length() - 1))) text.append(' ');
+            }
+            ll.text = text.toString().trim();
+            if (!ll.text.isEmpty()) lyrics.lines.add(ll);
+        }
+        if (lyrics.lines.isEmpty()) return asLine(lyrics);
+        LyricsData.insertInterludes(lyrics, INTERLUDE_GAP_MS);
+        return lyrics;
+    }
+
+    private static String xmlUnescape(String s) {
+        return s.replace("&quot;", "\"").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">")
+                .replace("&#10;", "\n").replace("&amp;", "&");
     }
 
     /**
