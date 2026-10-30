@@ -39,6 +39,8 @@ public final class AnimConfig {
     public final boolean meteor;
     public final boolean ringPulse;
     public final boolean neon;
+    public final boolean hologram;
+    public final boolean sakura;
     public final AnimStyleDef.Signature signature;
 
     public final float glowBoost;
@@ -84,6 +86,8 @@ public final class AnimConfig {
         meteor = effect.meteor;
         ringPulse = effect.ringPulse;
         neon = effect.neon;
+        hologram = effect.hologram;
+        sakura = effect.sakura;
         glowBoost = effect.glowBoost;
 
         // Glow: the effect's signature spline wins when it defines one
@@ -93,6 +97,14 @@ public final class AnimConfig {
 
         motionKey = motion.key;
         effectKey = effect.key;
+    }
+
+    /**
+     * The effect keeps drawing outside the word's bounds after the word (or its line)
+     * ends, so a finished line must not be flattened into a clipped hardware layer.
+     */
+    public boolean drawsPastWordEnd() {
+        return fireworks || ringPulse || meteor || sakura || aurora || neon || hologram || sparkle;
     }
 
     public static AnimConfig combine(AnimStyleDef motion, AnimStyleDef effect) {

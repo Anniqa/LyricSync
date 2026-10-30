@@ -35,6 +35,15 @@ public class WordFlowLayout extends ViewGroup {
     // sizes with zero gap those overpaints read as overlapping lyrics.
     private int rowSpacing = 0;
 
+    /** Centre each row instead of starting it at the left edge (previews). Off by default. */
+    private boolean centered;
+
+    public void setCentered(boolean center) {
+        if (centered == center) return;
+        centered = center;
+        requestLayout();
+    }
+
     public void setRowSpacing(int px) {
         int next = Math.max(0, px);
         if (next == rowSpacing) return;
@@ -69,10 +78,47 @@ public class WordFlowLayout extends ViewGroup {
         return p instanceof LayoutParams;
     }
 
+    /**
+     * Wrap width for centred rows: the narrowest width that still needs the same number
+     * of rows as the full width, so a line breaks into even rows ("It's funny / and it's
+     * ironic") instead of leaving one word alone on the last row.
+     */
+    private int balancedWidth(int availableWidth) {
+        if (!centered || rowsAt(availableWidth) <= 1) return availableWidth;
+        int rows = rowsAt(availableWidth), lo = availableWidth / 2, hi = availableWidth;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (rowsAt(mid) <= rows) hi = mid;
+            else lo = mid + 1;
+        }
+        return hi;
+    }
+
+    private int rowsAt(int width) {
+        int rows = 1, x = 0;
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() == GONE) continue;
+            LayoutParams lp = (LayoutParams) child.getLayoutParams();
+            int w = child.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
+            if (x + w > width && x > 0) {
+                rows++;
+                x = 0;
+            }
+            x += w;
+        }
+        return rows;
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
-        int availableWidth = width - getPaddingLeft() - getPaddingRight();
+        int fullWidth = width - getPaddingLeft() - getPaddingRight();
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() != GONE) measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, 0);
+        }
+        int availableWidth = balancedWidth(fullWidth);
 
         int x = 0;
         int y = 0;
@@ -83,7 +129,6 @@ public class WordFlowLayout extends ViewGroup {
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
             if (child.getVisibility() == GONE) continue;
-            measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, 0);
 
             LayoutParams lp = (LayoutParams) child.getLayoutParams();
             int childW = child.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
@@ -114,7 +159,10 @@ public class WordFlowLayout extends ViewGroup {
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        int availableWidth = r - l - getPaddingLeft() - getPaddingRight();
+        int fullWidth = r - l - getPaddingLeft() - getPaddingRight();
+        int wrapWidth = balancedWidth(fullWidth);
+        // Rows wrap at the balanced width but centre in the full width.
+        int availableWidth = wrapWidth;
         int left = getPaddingLeft();
         int top = getPaddingTop();
 
@@ -135,7 +183,7 @@ public class WordFlowLayout extends ViewGroup {
             int bl = child.getBaseline();
 
             if (x + childW > left + availableWidth && x > left) {
-                layoutRow(rowViews, rowLefts, top, maxBaseline);
+                layoutRow(rowViews, rowLefts, top, maxBaseline, shift(fullWidth, x - left));
                 int fullRowH = (maxBaseline > 0) ? Math.max(rowHeight, maxBaseline + maxDescender) : rowHeight;
                 top += fullRowH + rowSpacing;
 
@@ -158,14 +206,19 @@ public class WordFlowLayout extends ViewGroup {
         }
 
         if (!rowViews.isEmpty()) {
-            layoutRow(rowViews, rowLefts, top, maxBaseline);
+            layoutRow(rowViews, rowLefts, top, maxBaseline, shift(fullWidth, x - left));
         }
     }
 
-    private void layoutRow(java.util.List<View> rowViews, java.util.List<Integer> rowLefts, int rowTop, int maxBaseline) {
+    private int shift(int availableWidth, int rowWidth) {
+        return centered ? Math.max(0, (availableWidth - rowWidth) / 2) : 0;
+    }
+
+    private void layoutRow(java.util.List<View> rowViews, java.util.List<Integer> rowLefts, int rowTop, int maxBaseline,
+                           int shift) {
         for (int i = 0; i < rowViews.size(); i++) {
             View child = rowViews.get(i);
-            int childLeft = rowLefts.get(i);
+            int childLeft = rowLefts.get(i) + shift;
             LayoutParams lp = (LayoutParams) child.getLayoutParams();
             int bl = child.getBaseline();
             int offset = (maxBaseline > 0 && bl > 0) ? (maxBaseline - (bl + lp.topMargin)) : 0;

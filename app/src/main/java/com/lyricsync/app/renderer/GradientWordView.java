@@ -101,6 +101,8 @@ public class GradientWordView extends AppCompatTextView {
     private boolean meteorStyle;
     private boolean ringPulseStyle;
     private boolean neonStyle;
+    private boolean hologramStyle;
+    private boolean sakuraStyle;
     private AnimStyleDef.Signature signature = AnimStyleDef.Signature.NONE;
     // Drop / Bounce landing detector: clock of the last touchdown + previous offset.
     private long landMs = Long.MIN_VALUE;
@@ -150,6 +152,19 @@ public class GradientWordView extends AppCompatTextView {
     private final Paint meteorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint auroraRayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint holoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint sakuraPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path petalPath = new Path();
+    /** Glyph outline of this word for the hologram (scanlines stay inside the letters). */
+    private final Path holoTextPath = new Path();
+    private String holoPathText;
+    private float holoPathSize;
+    private final float[] petalPose = new float[5];
+    /** Hologram fades out over this long after its line lets go. */
+    private static final float HOLO_FADE_MS = 600f;
+    /** Petals keep falling this long after the word ends. */
+    private static final float SAKURA_FADE_MS = 1400f;
+    private static final int[] SAKURA_COLORS = {0x00FFC1D9, 0x00FFD6E5, 0x00F8A5C2, 0x00FFFFFF};
     // Reused meteor state buffer - zero allocation per frame.
     private final float[] meteorState = new float[5];
     // Reused aurora colour stops (LinearGradient copies the array) and ring rect.
@@ -243,6 +258,8 @@ public class GradientWordView extends AppCompatTextView {
         meteorStyle = config.meteor;
         ringPulseStyle = config.ringPulse;
         neonStyle = config.neon;
+        hologramStyle = config.hologram;
+        sakuraStyle = config.sakura;
         signature = config.signature != null ? config.signature : AnimStyleDef.Signature.NONE;
         landMs = Long.MIN_VALUE;
         // Re-tune the scale spring for the combination's bounce character.
@@ -355,6 +372,8 @@ public class GradientWordView extends AppCompatTextView {
             fxTextPaint.setTypeface(typeface);
             neonPaint.setTextSize(getPaint().getTextSize());
             neonPaint.setTypeface(typeface);
+            holoPaint.setTextSize(getPaint().getTextSize());
+            holoPaint.setTypeface(typeface);
             bloomRadiusPx = Math.max(2f, getPaint().getTextSize() * 0.14f);
             // Generous padding: word scale peaks (~1.10-1.14x) and letter pops draw
             // outside the raw text bounds, so give the glyph room before the parent's
@@ -678,7 +697,7 @@ public class GradientWordView extends AppCompatTextView {
         boolean binaryStruck = binaryLetters && letters != null && letterProgress != null;
         float edgeP = -1f;
         if (!backgroundMode && (shimmerStyle || sparkleStyle || weldingStyle || burningStyle
-                || auroraStyle || meteorStyle || neonStyle)) {
+                || auroraStyle || meteorStyle || neonStyle || hologramStyle || sakuraStyle)) {
             edgeP = EffectLayout.fillEdge(progress, p, classicStyle, binaryStruck,
                     binaryStruck ? struckFraction(shaderW) : 0f);
         }
@@ -757,7 +776,7 @@ public class GradientWordView extends AppCompatTextView {
         // SHIMMER: a narrow light band that rides the fill edge across the already-sung
         // part of the word. Its position comes from the SAME edge the clip uses, so the
         // whole band stays inside the sung region; mapping it in its own 0.05..0.98
-        // progress space instead ran it ahead of the clip and the effect rendered as
+        // progress space instead ran it ahead of the clip and the band vanished early.
         if (shimmerStyle && progress > 0.05f && progress < 0.98f && !backgroundMode && edgeP > 0f) {
             float cx = drawX + EffectLayout.shimmerCenter(progress, edgeP, classicStyle) * shaderW;
             float halfW = EffectLayout.SHIMMER_HALF_WIDTH * shaderW;
@@ -1293,6 +1312,140 @@ public class GradientWordView extends AppCompatTextView {
             meteorPaint.setStyle(Paint.Style.FILL);
         }
 
+        // HOLOGRAM: the sung part turns into a projected hologram - a cyan/violet
+        // body with rolling scanlines, a light cone from below, a chromatic RGB
+        // split that tears sideways on glitch frames, and a fine sweep line.
+        // Clipped to the true sung edge; fades when its line lets go.
+        float holoEnv = hologramStyle ? holoEnvelope() : 0f;
+        if (holoEnv > 0f && edgeP > 0f) {
+            float ts = holoPaint.getTextSize();
+            float sungW = edgeP * shaderW;
+            if (sungW > 1f) {
+                float top = baseline + holoPaint.ascent();
+                float hue = EffectFx.holoHue(lastPositionMs, wordIndex);
+                int body = EffectFx.hsvToRgb(hue, 0.55f, 1f);
+                int edge = EffectFx.hsvToRgb(hue + 40f, 0.65f, 1f);
+                float glitch = EffectFx.holoGlitch(lastPositionMs, wordIndex);
+                canvas.save();
+                canvas.clipRect(drawX - ts * 0.3f, top - ts * 0.6f, drawX + sungW + 2f, baseline + ts * 0.9f);
+
+                // 1) Projector cone rising from below the word.
+                int ca = Math.round(holoEnv * 34f);
+                holoPaint.setStyle(Paint.Style.FILL);
+                holoPaint.setShader(new LinearGradient(0, baseline + ts * 0.8f, 0, top,
+                        (ca << 24) | body, body & 0x00FFFFFF, Shader.TileMode.CLAMP));
+                petalPath.rewind();
+                petalPath.moveTo(drawX + sungW * 0.35f, baseline + ts * 0.8f);
+                petalPath.lineTo(drawX + sungW * 0.65f, baseline + ts * 0.8f);
+                petalPath.lineTo(drawX + sungW + ts * 0.2f, top);
+                petalPath.lineTo(drawX - ts * 0.2f, top);
+                petalPath.close();
+                canvas.drawPath(petalPath, holoPaint);
+
+                // 2) Chromatic split: cyan right, magenta left; jumps on glitch frames.
+                if (!letterFill) {
+                    float split = ts * (0.025f + 0.10f * glitch);
+                    holoPaint.setShader(null);
+                    holoPaint.setColor((Math.round(holoEnv * 120f) << 24) | 0x0000E5FF);
+                    canvas.drawText(text, drawX + split, baseline, holoPaint);
+                    holoPaint.setColor((Math.round(holoEnv * 120f) << 24) | 0x00FF4FC3);
+                    canvas.drawText(text, drawX - split, baseline, holoPaint);
+                    // Holographic body: vertical tint, brighter edge at the top.
+                    holoPaint.setShader(new LinearGradient(0, top, 0, baseline,
+                            (Math.round(holoEnv * 235f) << 24) | edge,
+                            (Math.round(holoEnv * 200f) << 24) | body, Shader.TileMode.CLAMP));
+                    canvas.drawText(text, drawX, baseline, holoPaint);
+                    holoPaint.setShader(null);
+                }
+
+                // 3) Rolling scanlines and the sweep: clipped to the letters, so the
+                // stripes cut through the glyphs and never paint a striped box.
+                if (holoPathText == null || !holoPathText.equals(text) || holoPathSize != ts) {
+                    holoPaint.getTextPath(text, 0, text.length(), 0f, 0f, holoTextPath);
+                    holoPathText = text;
+                    holoPathSize = ts;
+                }
+                canvas.save();
+                canvas.translate(drawX, baseline);
+                canvas.clipPath(holoTextPath);
+                canvas.translate(-drawX, -baseline);
+                float gap = EffectFx.HOLO_LINE_GAP * ts;
+                float off = EffectFx.holoScanOffset(lastPositionMs) * ts;
+                holoPaint.setShader(null); // the cone gradient must not tint the scanlines
+                holoPaint.setColor((Math.round(holoEnv * 95f) << 24) | 0x00050A14);
+                holoPaint.setStrokeWidth(Math.max(1f, gap * 0.32f));
+                holoPaint.setStyle(Paint.Style.STROKE);
+                for (float y = top - gap + off; y < baseline + ts * 0.25f; y += gap) {
+                    canvas.drawLine(drawX - ts * 0.2f, y, drawX + sungW + 2f, y, holoPaint);
+                }
+                // 4) Bright sweep line rolling down the hologram every 1.6s.
+                float sweep = (float) ((lastPositionMs * 0.001 / 1.6 + wordIndex * 0.23) % 1.0);
+                float sy = top + (baseline - top + ts * 0.2f) * sweep;
+                holoPaint.setStrokeWidth(Math.max(1.5f, ts * 0.03f));
+                holoPaint.setColor((Math.round(holoEnv * 170f) << 24) | 0x00E0F7FA);
+                canvas.drawLine(drawX - ts * 0.2f, sy, drawX + sungW + 2f, sy, holoPaint);
+                canvas.restore();
+                // 5) Glitch tear: a displaced slice on glitch frames.
+                if (glitch > 0f && !letterFill) {
+                    float y0 = top + hash01((int) (lastPositionMs / 90) + wordIndex * 13) * (baseline - top) * 0.8f;
+                    float h = ts * (0.10f + 0.18f * glitch);
+                    float dx = (hash01((int) (lastPositionMs / 90) * 3 + 1) - 0.5f) * ts * 0.4f * glitch;
+                    canvas.save();
+                    canvas.clipRect(drawX - ts, y0, drawX + sungW + ts, y0 + h);
+                    holoPaint.setStyle(Paint.Style.FILL);
+                    holoPaint.setColor((Math.round(holoEnv * 220f) << 24) | edge);
+                    canvas.drawText(text, drawX + dx, baseline, holoPaint);
+                    canvas.restore();
+                }
+                holoPaint.setStyle(Paint.Style.FILL);
+                canvas.restore();
+            }
+        }
+
+        // SAKURA: cherry petals drift down from the sung part, swaying, spinning
+        // and tumbling in 3D (width follows a cosine), pink-to-white. Each petal
+        // falls on its own staggered 2.2s loop; analytic in the clock (seek-safe).
+        // Petals keep falling for SAKURA_FADE_MS after the word, then thin out.
+        float sakuraEnv = (sakuraStyle && !backgroundMode && progress > 0f)
+                ? EffectFx.envelope(lastPositionMs, startTime, endTime, 200f, SAKURA_FADE_MS) : 0f;
+        if (sakuraEnv > 0f && edgeP > 0f) {
+            float ts = getPaint().getTextSize();
+            float sungW = Math.max(ts * 0.6f, edgeP * shaderW);
+            float top = baseline + getPaint().ascent();
+            int wordSeed = wordIndex * 31 + text.length() * 7;
+            sakuraPaint.setStyle(Paint.Style.FILL);
+            for (int k = 0; k < EffectFx.SAKURA_COUNT; k++) {
+                float life = EffectFx.sakuraLife(lastPositionMs, k);
+                int seed = wordSeed + EffectFx.sakuraCycle(lastPositionMs, k) * 977 + k * 53;
+                EffectFx.sakuraPose(seed, life, petalPose);
+                float a = petalPose[4] * sakuraEnv;
+                if (a < 0.02f) continue;
+                float px = drawX + petalPose[0] * sungW;
+                float py = top + petalPose[1] * ts;
+                float size = ts * (0.13f + 0.07f * hash01(seed + 31));
+                int rgb = SAKURA_COLORS[(int) (hash01(seed + 41) * SAKURA_COLORS.length) % SAKURA_COLORS.length];
+                canvas.save();
+                canvas.translate(px, py);
+                canvas.rotate(petalPose[2]);
+                canvas.scale(0.35f + 0.65f * petalPose[3], 1f);
+                // Petal: two curves meeting at a notched tip.
+                petalPath.rewind();
+                petalPath.moveTo(0f, -size);
+                petalPath.cubicTo(size * 0.9f, -size * 0.7f, size * 0.7f, size * 0.6f, 0f, size);
+                petalPath.cubicTo(-size * 0.7f, size * 0.6f, -size * 0.9f, -size * 0.7f, 0f, -size);
+                petalPath.close();
+                sakuraPaint.setColor((Math.round(a * 60f) << 24) | rgb);
+                canvas.scale(1.35f, 1.35f);
+                canvas.drawPath(petalPath, sakuraPaint);
+                canvas.scale(1f / 1.35f, 1f / 1.35f);
+                sakuraPaint.setColor((Math.round(a * 235f) << 24) | rgb);
+                canvas.drawPath(petalPath, sakuraPaint);
+                sakuraPaint.setColor((Math.round(a * 150f) << 24) | 0x00E91E63);
+                canvas.drawCircle(0f, size * 0.55f, Math.max(0.8f, size * 0.14f), sakuraPaint);
+                canvas.restore();
+            }
+        }
+
         // RING PULSE: the instant a word finishes, three staggered tinted rings
         // ripple outward from it (ovals hugging the word, so long words are
         // circled too instead of a ring born inside the text), a burst of sparks
@@ -1574,6 +1727,14 @@ public class GradientWordView extends AppCompatTextView {
         return in * EffectFx.clamp01(1f - (lastPositionMs - auroraFadeAnchor()) / AURORA_FADE_MS);
     }
 
+    /** Hologram strength: on while its line is active, fades over HOLO_FADE_MS after. */
+    private float holoEnvelope() {
+        if (!hologramStyle || backgroundMode || progress <= 0f) return 0f;
+        float in = EffectFx.clamp01((lastPositionMs - startTime) / 180f);
+        if (lineActive) return in;
+        return in * EffectFx.clamp01(1f - (lastPositionMs - auroraFadeAnchor()) / HOLO_FADE_MS);
+    }
+
     /** Aurora fades from the later of the word end and the moment its line went inactive. */
     private long auroraFadeAnchor() {
         return Math.max(endTime, lineOffMs);
@@ -1607,6 +1768,9 @@ public class GradientWordView extends AppCompatTextView {
             if (fireworksStyle && sinceEnd < FIREWORKS_WINDOW_MS + 32) return true;
         }
         if (meteorStyle && position >= startTime && sinceEnd < METEOR_FADE_MS + 32) return true;
+        if (sakuraStyle && position >= startTime && sinceEnd < SAKURA_FADE_MS + 32) return true;
+        if (hologramStyle && progress > 0f
+                && (lineActive || position - auroraFadeAnchor() < HOLO_FADE_MS + 32)) return true;
         if (position >= startTime) {
             if (sparkleStyle && sinceEnd < 532) return true;
             if (squashStyle && position - startTime < MotionFx.JELLY_LIFE * 1000f + 32) return true;
@@ -1658,6 +1822,18 @@ public class GradientWordView extends AppCompatTextView {
         float auroraLetterEnv = (auroraStyle && !burningStyle) ? auroraEnvelope() : 0f;
         LinearGradient auroraLetterShader = auroraLetterEnv > 0f
                 ? auroraShader(startX, totalTextW, getPaint().getTextSize(), auroraLetterEnv) : null;
+
+        // Hologram tint for sung letters, built once per frame like the aurora band.
+        float holoLetterEnv = hologramStyle ? holoEnvelope() : 0f;
+        LinearGradient holoLetterShader = null;
+        if (holoLetterEnv > 0f) {
+            float hue = EffectFx.holoHue(lastPositionMs, wordIndex);
+            float top = baseline + getPaint().ascent();
+            holoLetterShader = new LinearGradient(0, top, 0, baseline,
+                    (Math.round(255f * (0.55f + 0.45f * holoLetterEnv)) << 24) | EffectFx.hsvToRgb(hue + 40f, 0.65f, 1f),
+                    (Math.round(255f * (0.55f + 0.45f * holoLetterEnv)) << 24) | EffectFx.hsvToRgb(hue, 0.55f, 1f),
+                    Shader.TileMode.CLAMP);
+        }
 
         cursor = startX;
         for (int i = 0; i < n; i++) {
@@ -1800,6 +1976,10 @@ public class GradientWordView extends AppCompatTextView {
             if (auroraLetterShader != null) {
                 boolean sung = binaryLetters ? letterProgress[i] > 0 : centers[i] < p;
                 if (sung) getPaint().setShader(auroraLetterShader);
+            }
+            if (holoLetterShader != null && !burningStyle) {
+                boolean sung = binaryLetters ? letterProgress[i] > 0 : centers[i] < p;
+                if (sung) getPaint().setShader(holoLetterShader);
             }
             getPaint().setColor(letterColor);
             canvas.drawText(letter, cursor, baseline, getPaint());

@@ -122,6 +122,13 @@ public class SyllableHighlighter {
         this.fontSizeSp = fontSizeSp;
     }
 
+    /** Centre every lyric row (Combo Lab preview, full-screen lyrics). The overlay keeps left alignment. */
+    private boolean centerLines;
+
+    public void setCenterLines(boolean center) {
+        centerLines = center;
+    }
+
     public void setSyllableMode(boolean syllable) {
         this.syllableMode = syllable;
     }
@@ -286,6 +293,10 @@ public class SyllableHighlighter {
         tv.setTextColor(INACTIVE_COLOR);
         tv.setLineSpacing(0, 1.08f);
         tv.setPadding(0, dpToPx(1), 0, dpToPx(2));
+        if (centerLines) {
+            tv.setGravity(Gravity.CENTER_HORIZONTAL);
+            tv.setPadding(0, 0, 0, dpToPx(2));
+        }
         boolean hasText = line.translation != null && !line.translation.trim().isEmpty();
         if (hasText) {
             tv.setText(line.translation);
@@ -425,6 +436,7 @@ public class SyllableHighlighter {
         // Row gap scales with the font: wrapped rows must keep breathing room
         // for word glow/lift that paints outside bounds (clipping is disabled).
         flow.setRowSpacing(Math.round(fontPx() * 0.12f));
+        flow.setCentered(centerLines);
         // Word views must paint outside their own box too (fireworks bursts and
         // welding sparks fly beyond the word); without this the flow slices them.
         flow.setClipChildren(false);
@@ -491,6 +503,7 @@ public class SyllableHighlighter {
         int topPadding = !originalScriptEnabled ? dpToPx(4) : dpToPx(1);
         romajiFlow.setPadding(0, topPadding, 0, dpToPx(1));
         romajiFlow.setRowSpacing(Math.round(fontPx() * 0.08f));
+        romajiFlow.setCentered(centerLines);
         romajiFlow.setClipChildren(false);
         romajiFlow.setClipToPadding(false);
 
@@ -573,6 +586,7 @@ public class SyllableHighlighter {
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         gv.setLayoutParams(gvParams);
         gv.setPadding(0, dpToPx(6), 0, dpToPx(2));
+        if (centerLines) gv.setGravity(Gravity.CENTER_HORIZONTAL);
         gv.setText(line.text);
         container.addView(gv);
         lv.gradientView = gv;
@@ -813,10 +827,11 @@ public class SyllableHighlighter {
                 applyWordStyle(lv, ACTIVE_COLOR, romajiFontSize, romajiTf);
                 playWordCascade(lv, position);
             } else if (isPast) {
-                // Hardware layers buffer at view bounds and would slice the
-                // fireworks burst of a line-final word — keep software layers
-                // when that effect is active.
-                boolean needsOverflow = animConfig != null && animConfig.fireworks;
+                // Hardware layers buffer at view bounds and would slice whatever a
+                // line-final word still draws after the line ends (fireworks, ring
+                // pulse, meteors, petals, fading aurora/neon/hologram) — keep
+                // software layers for those effects.
+                boolean needsOverflow = animConfig != null && animConfig.drawsPastWordEnd();
                 if (lv.rootView != null) {
                     lv.rootView.setLayerType(
                             needsOverflow ? View.LAYER_TYPE_NONE : View.LAYER_TYPE_HARDWARE, null);

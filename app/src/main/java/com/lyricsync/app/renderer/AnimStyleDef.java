@@ -14,9 +14,10 @@ import java.util.List;
  *  - MOTION (18): how words/letters move — spring, bubble, wave, pulse, rise,
  *    typewriter, drop, zoom, swing, scatter, calm, classic, bounce, elastic,
  *    heartbeat, spin, squash, pop.
- *  - EFFECT (15): a visual overlay — none, glow, echo, shimmer, flicker,
+ *  - EFFECT (21): a visual overlay — none, glow, echo, shimmer, flicker,
  *    outline, trail, flash, sparkle, fireworks, welding, burning, aurora,
- *    meteor, ringpulse.
+ *    meteor, ringpulse, hologram, sakura, plus four combination effects that
+ *    layer several overlays at once (supernova, cosmic, inferno, cyberpunk).
  *
  * A motion and an effect are merged into an {@link AnimConfig} for rendering.
  *
@@ -105,6 +106,10 @@ public final class AnimStyleDef {
     public final boolean ringPulse;
     /** Neon Glow: coloured neon tube halo + outline instead of a white bloom. */
     public final boolean neon;
+    /** Hologram: projector beam, moving scanlines and RGB split over the sung part. */
+    public final boolean hologram;
+    /** Sakura: cherry petals drift and spin down from the sung part. */
+    public final boolean sakura;
 
     private AnimStyleDef(Builder b) {
         key = b.key;
@@ -144,6 +149,18 @@ public final class AnimStyleDef {
         meteor = b.meteor;
         ringPulse = b.ringPulse;
         neon = b.neon;
+        hologram = b.hologram;
+        sakura = b.sakura;
+    }
+
+    /** True for an effect that layers two or more overlays (the picker marks it with ls_ic_combo). */
+    public boolean isCombo() {
+        int n = 0;
+        for (boolean f : new boolean[]{echo, shimmer, flicker, outline, trail, flash, sparkle, fireworks,
+                welding, burning, aurora, meteor, ringPulse, neon, hologram, sakura}) {
+            if (f) n++;
+        }
+        return n >= 2;
     }
 
     private static Spline spline(double[] times, double[] values) {
@@ -195,6 +212,8 @@ public final class AnimStyleDef {
         boolean meteor = false;
         boolean ringPulse = false;
         boolean neon = false;
+        boolean hologram = false;
+        boolean sakura = false;
 
         Builder(String key, String displayName, Category category) {
             this.key = key;
@@ -235,6 +254,8 @@ public final class AnimStyleDef {
         Builder meteor() { meteor = true; return this; }
         Builder ringPulse() { ringPulse = true; return this; }
         Builder neon() { neon = true; return this; }
+        Builder hologram() { hologram = true; return this; }
+        Builder sakura() { sakura = true; return this; }
         Builder sig(Signature s) { signature = s; return this; }
 
         AnimStyleDef build() { return new AnimStyleDef(this); }
@@ -420,6 +441,27 @@ public final class AnimStyleDef {
                     .build());
             e.add(new Builder("meteor", "Meteor Shower", Category.EFFECT).meteor().build());
             e.add(new Builder("ringpulse", "Ring Pulse", Category.EFFECT).ringPulse().build());
+            e.add(new Builder("hologram", "Hologram", Category.EFFECT)
+                    .glow(new double[]{0.0, 0.10, 0.6, 1.0}, new double[]{0.0, 0.8, 0.8, 0.0})
+                    .glowOn().boost(1.3f).hologram()
+                    .build());
+            e.add(new Builder("sakura", "Sakura", Category.EFFECT).sakura().build());
+            // Combination effects: several overlays tuned to read as one show.
+            e.add(new Builder("supernova", "Supernova", Category.EFFECT)
+                    .glow(new double[]{0.0, 0.10, 0.6, 1.0}, new double[]{0.0, 1.0, 0.9, 0.0})
+                    .glowOn().boost(1.6f).neon().ringPulse().fireworks()
+                    .build());
+            e.add(new Builder("cosmic", "Cosmic Sky", Category.EFFECT)
+                    .glow(new double[]{0.0, 0.12, 0.6, 1.0}, new double[]{0.0, 0.85, 0.85, 0.0})
+                    .glowOn().boost(1.4f).aurora().meteor().sparkle()
+                    .build());
+            e.add(new Builder("inferno", "Inferno", Category.EFFECT)
+                    .burning().welding().ringPulse()
+                    .build());
+            e.add(new Builder("cyberpunk", "Cyberpunk", Category.EFFECT)
+                    .glow(new double[]{0.0, 0.08, 1.0}, new double[]{0.0, 1.0, 0.85})
+                    .glowOn().boost(1.5f).hologram().flicker().trail()
+                    .build());
             EFFECT = Collections.unmodifiableList(e);
         }
 

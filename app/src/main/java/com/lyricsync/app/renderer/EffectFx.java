@@ -1,8 +1,8 @@
 package com.lyricsync.app.renderer;
 
 /**
- * Pure-JVM geometry for the three palette effects that arrived after the first
- * twelve (Aurora, Meteor Shower, Ring Pulse). No android imports, so the unit
+ * Pure-JVM geometry for the palette effects that arrived after the first
+ * twelve (Aurora, Meteor Shower, Ring Pulse, Hologram, Sakura). No android imports, so the unit
  * tests run on the bare JVM; GradientWordView turns these numbers into Paint
  * calls and reuses its own hash01 for per-word seeds (same formula).
  *
@@ -213,6 +213,71 @@ public final class EffectFx {
         if (tSec <= 0f) return 0f;
         float t = clamp01(tSec / RING_WINDOW);
         return (1f - t) * (1f - t);
+    }
+
+    // ── Hologram ──────────────────────────────────────────────────────────
+
+    /** Scanline spacing in text-size units and how fast the lines roll (text sizes per second). */
+    public static final float HOLO_LINE_GAP = 0.11f;
+    public static final float HOLO_SCROLL = 0.55f;
+
+    /** Vertical phase 0..gap of the rolling scanlines (in text-size units). */
+    public static float holoScanOffset(long positionMs) {
+        double t = positionMs * 0.001 * HOLO_SCROLL;
+        double g = HOLO_LINE_GAP;
+        return (float) (t % g);
+    }
+
+    /**
+     * Projector glitch 0..1 for a 90ms bucket: mostly 0, a short tear about one
+     * bucket in eight. Deterministic so every frame of a bucket agrees.
+     */
+    public static float holoGlitch(long positionMs, int wordIndex) {
+        float h = hash01((int) (positionMs / 90) * 7 + wordIndex * 131 + 17);
+        return h < 0.125f ? 1f - h / 0.125f : 0f;
+    }
+
+    /** Hologram hue drifting between cyan (185°) and violet (275°), per word phase. */
+    public static float holoHue(long positionMs, int wordIndex) {
+        double t = positionMs * 0.001 / 3.2 + wordIndex * 0.17;
+        double frac = t - Math.floor(t);
+        return (float) (185.0 + 90.0 * (0.5 - 0.5 * Math.cos(frac * 2.0 * Math.PI)));
+    }
+
+    // ── Sakura ────────────────────────────────────────────────────────────
+
+    /** Petals alive per word; life of one fall (s). */
+    public static final int SAKURA_COUNT = 7;
+    public static final double SAKURA_PERIOD = 2.2;
+
+    /** Cycle-local life 0..1 of petal {@code k}, staggered so they fall one after another. */
+    public static float sakuraLife(long positionMs, int k) {
+        double t = positionMs * 0.001 / SAKURA_PERIOD + (double) k / SAKURA_COUNT;
+        return (float) (t - Math.floor(t));
+    }
+
+    /** Fall cycle of petal {@code k}; each cycle re-rolls the petal's path. */
+    public static int sakuraCycle(long positionMs, int k) {
+        double t = positionMs * 0.001 / SAKURA_PERIOD + (double) k / SAKURA_COUNT;
+        return (int) Math.floor(t);
+    }
+
+    /**
+     * Petal pose at {@code life}: fills {@code out} = {x01 of the sung width, y in
+     * text sizes below the glyph top, rotation degrees, flip 0..1 (3D tumble width),
+     * alpha 0..1}. Petals sway sideways on a sine, spin, and fade in/out.
+     */
+    public static void sakuraPose(int seed, float life, float[] out) {
+        float x0 = 0.04f + 0.92f * hash01(seed * 7 + 3);
+        float sway = 0.10f + 0.10f * hash01(seed * 11 + 5);
+        float drift = (hash01(seed * 13 + 7) - 0.5f) * 0.30f;
+        double ph = hash01(seed * 17 + 9) * 6.2832;
+        out[0] = x0 + drift * life + sway * (float) Math.sin(life * 6.2832 * 1.3 + ph);
+        out[1] = -0.85f + 1.75f * life;
+        out[2] = (float) ((hash01(seed * 19 + 1) * 360.0 + life * 420.0 * (hash01(seed * 23 + 2) < 0.5 ? -1 : 1)) % 360.0);
+        out[3] = (float) Math.abs(Math.cos(life * 6.2832 * 1.1 + ph));
+        float in = clamp01(life / 0.15f), outA = clamp01((1f - life) / 0.25f);
+        out[4] = in * outA;
     }
 
     static float clamp01(float v) {

@@ -20,7 +20,7 @@ public class AnimStyleDefSelfTest {
     @Test
     public void registryCountsAndLegacyKeysResolve() {
         assertEquals(18, AnimStyleDef.Registry.motionStyles().size());
-        assertEquals(15, AnimStyleDef.Registry.effectStyles().size());
+        assertEquals(21, AnimStyleDef.Registry.effectStyles().size());
         assertEquals("none", AnimStyleDef.Registry.effectStyles().get(0).key);
         assertTrue("none is EFFECT", AnimStyleDef.Registry.none().category == AnimStyleDef.Category.EFFECT);
 
