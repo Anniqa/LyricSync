@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
+import com.lyricsync.app.ai.client.AiProvider;
 import com.lyricsync.app.ai.client.AntigravityApiClient.Cancellable;
 
 import java.io.IOException;
@@ -207,6 +208,22 @@ public class AntigravityToolExecutor {
     public AntigravityToolExecutor(AntigravityAuthManager authManager, OkHttpClient httpClient) {
         this.authManager = authManager;
         this.httpClient = httpClient != null ? httpClient : createDefaultHttpClient();
+    }
+
+    private volatile java.util.function.Supplier<AiProvider.Settings> providerSettings;
+
+    /** Exa key and engine preference; null = Gemini grounding only (the old behaviour). */
+    public void setProviderSettings(java.util.function.Supplier<AiProvider.Settings> settings) {
+        providerSettings = settings;
+    }
+
+    public boolean googleSignedIn() {
+        return authManager != null && authManager.isAuthenticated();
+    }
+
+    private AiProvider.Settings settings() {
+        java.util.function.Supplier<AiProvider.Settings> s = providerSettings;
+        return s != null ? s.get() : null;
     }
 
     private static OkHttpClient createDefaultHttpClient() {
@@ -1035,6 +1052,20 @@ public class AntigravityToolExecutor {
 
         if (handle.isCancelled()) {
             return handle;
+        }
+
+        AiProvider.Settings settings = settings();
+        if (settings != null) {
+            String engine = AiProvider.searchEngine(settings, googleSignedIn());
+            if (engine == null) {
+                if (callback != null) callback.onResult(createGracefulErrorResult(
+                        "Web search needs a Google sign-in or an Exa API key (Settings → AI)."));
+                return handle;
+            }
+            if (AiProvider.ENGINE_EXA.equals(engine)) {
+                ExaSearch.search(httpClient, settings.exaKey, query, maxResults, handle, callback);
+                return handle;
+            }
         }
 
         if (authManager != null) {

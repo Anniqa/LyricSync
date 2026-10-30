@@ -19,7 +19,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Lightweight local HTTP loopback server listening on 127.0.0.1:51121 for OAuth redirect callbacks.
+ * Lightweight local HTTP loopback server on 127.0.0.1 for OAuth redirect callbacks:
+ * Google (port 51121, the default) or ChatGPT/Codex (port 1455).
  */
 public class OAuthLoopbackServer {
 
@@ -115,8 +116,8 @@ public class OAuthLoopbackServer {
             "      <svg viewBox=\"0 0 24 24\"><path d=\"M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z\"/></svg>\n" +
             "    </div>\n" +
             "    <h1>Login Berhasil</h1>\n" +
-            "    <div class=\"subtitle\">Antigravity AI Authorization</div>\n" +
-            "    <p class=\"message\">Autentikasi akun Google berhasil.<br>Silakan kembali ke aplikasi <span class=\"app-name\">LyricSync</span> untuk melanjutkan sinkronisasi lirik.<br><br><em>You can now return to LyricSync.</em></p>\n" +
+            "    <div class=\"subtitle\">{{service}}</div>\n" +
+            "    <p class=\"message\">Autentikasi {{account}} berhasil.<br>Silakan kembali ke aplikasi <span class=\"app-name\">LyricSync</span> untuk melanjutkan sinkronisasi lirik.<br><br><em>You can now return to LyricSync.</em></p>\n" +
             "    <div class=\"badge\">Anda dapat menutup tab ini</div>\n" +
             "  </div>\n" +
             "</body>\n" +
@@ -139,13 +140,30 @@ public class OAuthLoopbackServer {
             "<body>\n" +
             "  <div class=\"card\">\n" +
             "    <h1>Login Gagal</h1>\n" +
-            "    <p>Otorisasi Antigravity AI tidak selesai. Silakan kembali ke aplikasi <strong>LyricSync</strong> dan coba lagi.<br><br><em>You can return to LyricSync.</em></p>\n" +
+            "    <p>Otorisasi {{service}} tidak selesai. Silakan kembali ke aplikasi <strong>LyricSync</strong> dan coba lagi.<br><br><em>You can return to LyricSync.</em></p>\n" +
             "  </div>\n" +
             "</body>\n" +
             "</html>\n";
 
+    private final int port;
+    private final String path;
+    private final String successHtml;
+    private final String errorHtml;
     private ServerSocket serverSocket;
     private volatile boolean running = false;
+
+    /** Google Antigravity callback: 127.0.0.1:51121/oauth-callback. */
+    public OAuthLoopbackServer() {
+        this(PORT, PATH, "Antigravity AI Authorization", "akun Google");
+    }
+
+    /** @param service shown on the result page; {@code account} completes "Autentikasi … berhasil". */
+    public OAuthLoopbackServer(int port, String path, String service, String account) {
+        this.port = port;
+        this.path = path;
+        this.successHtml = SUCCESS_HTML.replace("{{service}}", service).replace("{{account}}", account);
+        this.errorHtml = ERROR_HTML.replace("{{service}}", service);
+    }
 
     /**
      * Starts the loopback server asynchronously and listens for callback requests.
@@ -159,7 +177,7 @@ public class OAuthLoopbackServer {
         try {
             newSocket = new ServerSocket();
             newSocket.setReuseAddress(true);
-            newSocket.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 1);
+            newSocket.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 1);
         } catch (IOException e) {
             closeQuietly(newSocket);
             if (callback != null) {
@@ -228,21 +246,21 @@ public class OAuthLoopbackServer {
             }
 
             String rawUri = parts[1];
-            String path = rawUri;
+            String reqPath = rawUri;
             String rawQuery = null;
             int questionMarkIdx = rawUri.indexOf('?');
             if (questionMarkIdx != -1) {
-                path = rawUri.substring(0, questionMarkIdx);
+                reqPath = rawUri.substring(0, questionMarkIdx);
                 rawQuery = rawUri.substring(questionMarkIdx + 1);
             }
 
-            if (PATH.equals(path)) {
+            if (path.equals(reqPath)) {
                 Map<String, String> queryParams = parseQueryParams(rawQuery);
                 String authCode = queryParams.get("code");
                 String state = queryParams.get("state");
                 String error = queryParams.get("error");
 
-                sendHtmlResponse(socket, 200, authCode != null ? SUCCESS_HTML : ERROR_HTML);
+                sendHtmlResponse(socket, 200, authCode != null ? successHtml : errorHtml);
                 shouldStop = true;
 
                 if (callback != null) {

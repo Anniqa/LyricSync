@@ -134,6 +134,12 @@ public class AiStreamingAnimator {
         }
     }
 
+    /** Stopped by the user: keeps what has streamed, or shows {@code emptyText} if nothing has. */
+    public void stopWithCurrent(String emptyText) {
+        String raw = pendingRaw;
+        complete(raw != null && !raw.trim().isEmpty() ? raw : emptyText);
+    }
+
     /**
      * Displays error and cleanly stops all running animations.
      */

@@ -83,7 +83,8 @@ public class AiTranslationService {
             return;
         }
         boolean aiOn = prefs == null || prefs.getBoolean(PREF_AI_TRANSLATION_ENABLED, true);
-        if (!aiOn || api == null || auth == null || !auth.isAuthenticated()) {
+        boolean backend = api != null && (api.usesCustomProvider() || (auth != null && auth.isAuthenticated()));
+        if (!aiOn || !backend) {
             google.translateLines(allLines, targetLang, callback);
             return;
         }

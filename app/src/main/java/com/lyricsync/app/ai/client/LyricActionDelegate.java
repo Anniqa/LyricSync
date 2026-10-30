@@ -54,4 +54,11 @@ public interface LyricActionDelegate {
     void setDisplay(Display display, ActionCallback callback);
 
     void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback callback);
+
+    /**
+     * Lyrics sources: {@code search} every source (title/artist blank = the playing track's)
+     * and list what each has; {@code use} one listed result by index; {@code paste} lyrics
+     * text in any format (TTML, QRC, LRC, enhanced LRC, plain).
+     */
+    void findLyrics(String action, String title, String artist, int index, String text, ActionCallback callback);
 }

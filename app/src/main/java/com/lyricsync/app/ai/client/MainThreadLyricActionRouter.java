@@ -57,4 +57,9 @@ public final class MainThreadLyricActionRouter implements LyricActionDelegate {
     public void controlPlayback(String action, int lineIndex, long positionMs, ActionCallback cb) {
         mainHandler.post(() -> target.controlPlayback(action, lineIndex, positionMs, cb));
     }
+
+    @Override
+    public void findLyrics(String action, String title, String artist, int index, String text, ActionCallback cb) {
+        mainHandler.post(() -> target.findLyrics(action, title, artist, index, text, cb));
+    }
 }

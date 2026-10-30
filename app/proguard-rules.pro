@@ -5,3 +5,4 @@
 -keepattributes *Annotation*
 -keep class * extends androidx.room.RoomDatabase
 -dontwarn androidx.room.**
+-keep class com.lyricsync.app.ai.client.AiProfiles$Profile { *; }

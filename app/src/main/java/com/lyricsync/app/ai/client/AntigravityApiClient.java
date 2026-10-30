@@ -7,10 +7,7 @@ import com.google.gson.JsonParser;
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
-import com.lyricsync.app.ai.tools.AntigravityToolExecutor.SourceItem;
-import com.lyricsync.app.ai.tools.AntigravityToolExecutor.ToolCallback;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor.ToolResult;
-import com.lyricsync.app.ai.tools.ToolArgs;
 import com.lyricsync.app.ai.util.ApiErrors;
 
 import java.io.IOException;
@@ -19,9 +16,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
-import okhttp3.Call;
-import okhttp3.Callback;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -153,9 +149,11 @@ public class AntigravityApiClient {
     }
 
     private final AntigravityAuthManager authManager;
-    private final OkHttpClient httpClient;
-    private final AntigravityToolExecutor toolExecutor;
-    private volatile LyricActionDelegate lyricActionDelegate;
+    final OkHttpClient httpClient;
+    final AntigravityToolExecutor toolExecutor;
+    volatile LyricActionDelegate lyricActionDelegate;
+    private volatile Supplier<AiProvider.Settings> providerSettings;
+    private volatile com.lyricsync.app.ai.auth.CodexAuth codexAuth;
 
     public AntigravityApiClient(AntigravityAuthManager authManager) {
         this(authManager, null, null);
@@ -180,7 +178,32 @@ public class AntigravityApiClient {
         this.lyricActionDelegate = delegate;
     }
 
+    /** Where to read the provider settings from; null = Google Antigravity only. */
+    public void setProviderSettings(Supplier<AiProvider.Settings> settings) {
+        providerSettings = settings;
+        toolExecutor.setProviderSettings(settings);
+    }
+
+    /** ChatGPT sign-in used when the Codex provider is selected. */
+    public void setCodexAuth(com.lyricsync.app.ai.auth.CodexAuth auth) {
+        codexAuth = auth;
+    }
+
+    /** The custom provider to use (OpenAI-compatible or Codex), or null for Antigravity. */
+    AiProvider.Settings customProvider() {
+        Supplier<AiProvider.Settings> s = providerSettings;
+        AiProvider.Settings settings = s != null ? s.get() : null;
+        return settings != null && settings.customReady() ? settings : null;
+    }
+
+    public boolean usesCustomProvider() {
+        return customProvider() != null;
+    }
+
+    /** True when some backend can answer: the custom provider, or a Google sign-in. */
     public boolean isAuthenticated() {
+        AiProvider.Settings custom = customProvider();
+        if (custom != null) return !custom.codex || (codexAuth != null && codexAuth.isSignedIn());
         return authManager != null && authManager.isAuthenticated();
     }
 
@@ -358,6 +381,18 @@ public class AntigravityApiClient {
     public Cancellable generateContentStream(final String modelId, final List<AiChatMessage> messages,
                                             final boolean enableWebSearch, final String effortLevel,
                                             final StreamListener listener) {
+        AiProvider.Settings custom = customProvider();
+        if (custom != null && custom.codex) {
+            CodexTurn t = new CodexTurn(this, this::codexToken, custom, messages, enableWebSearch, listener);
+            t.stream();
+            return t;
+        }
+        if (custom != null) {
+            // The custom provider answers with its own model; Gemini ids and effort do not apply.
+            OpenAiTurn t = new OpenAiTurn(this, custom, messages, enableWebSearch, listener);
+            t.stream();
+            return t;
+        }
         final Turn turn = new Turn(modelId, convertMessagesToContents(messages), enableWebSearch, effortLevel, listener);
         if (authManager == null) {
             turn.fail(new IllegalStateException("AntigravityAuthManager is null"));
@@ -382,6 +417,25 @@ public class AntigravityApiClient {
         return turn;
     }
 
+    private void codexToken(CodexTurn.TokenReady ready) {
+        com.lyricsync.app.ai.auth.CodexAuth auth = codexAuth;
+        if (auth == null || !auth.isSignedIn()) {
+            ready.onError("Sign in with ChatGPT first (Settings → AI provider).");
+            return;
+        }
+        auth.token(new com.lyricsync.app.ai.auth.CodexAuth.TokenCallback() {
+            @Override
+            public void onToken(String accessToken, String accountId) {
+                ready.onToken(accessToken, accountId);
+            }
+
+            @Override
+            public void onError(String message) {
+                ready.onError(message);
+            }
+        });
+    }
+
     /** Non-streaming convenience (batch translation/transliteration). */
     public Cancellable generateContent(String modelId, List<AiChatMessage> messages,
                                       boolean enableWebSearch, String effortLevel,
@@ -401,81 +455,33 @@ public class AntigravityApiClient {
 
     // ---------------------------------------------------------------- one conversation turn
 
-    /** State of one request across its tool round-trips; also the caller's cancel handle. */
-    final class Turn implements Cancellable {
+    /** A Gemini (Cloudcode PA) turn; the tool loop itself lives in {@link ToolTurn}. */
+    final class Turn extends ToolTurn {
         private final String modelId;
         private final JsonArray contents;
         private final boolean webTools;
         private final String effort;
-        private final StreamListener listener;
-        private final StringBuilder text = new StringBuilder();
-        private final List<String> sources = new ArrayList<>();
         private volatile String token;
-        private volatile boolean cancelled;
-        private volatile boolean finished;
-        private volatile Call call;
-        private volatile Cancellable tool;
-        private int toolRounds;
-        private int promptTokens;
-        private int candidateTokens;
+        private String lastSig;
 
         Turn(String modelId, JsonArray contents, boolean webTools, String effort, StreamListener listener) {
+            super(AntigravityApiClient.this, listener);
             this.modelId = modelId;
             this.contents = contents;
             this.webTools = webTools;
             this.effort = effort;
-            this.listener = listener;
         }
 
         @Override
-        public void cancel() {
-            cancelled = true;
-            Call c = call;
-            Cancellable t = tool;
-            if (c != null) c.cancel();
-            if (t != null) {
-                try {
-                    t.cancel();
-                } catch (Exception ignored) {
-                }
-            }
-        }
-
-        @Override
-        public boolean isCancelled() {
-            Call c = call;
-            Cancellable t = tool;
-            return cancelled || (c != null && c.isCanceled()) || (t != null && t.isCancelled());
-        }
-
         void stream() {
-            if (isCancelled()) return;
-            Request request = new Request.Builder()
+            send(new Request.Builder()
                     .url(ENDPOINT_STREAM)
                     .addHeader("Authorization", "Bearer " + token)
                     .addHeader("User-Agent", USER_AGENT)
                     .addHeader("Accept", "text/event-stream")
                     .addHeader("Content-Type", "application/json")
                     .post(RequestBody.create(JSON, buildRequestBodyWithContents(modelId, contents, webTools, effort)))
-                    .build();
-            try {
-                Call c = httpClient.newCall(request);
-                call = c;
-                if (cancelled) c.cancel();
-                c.enqueue(new Callback() {
-                    @Override
-                    public void onFailure(Call c, IOException e) {
-                        fail(e);
-                    }
-
-                    @Override
-                    public void onResponse(Call c, Response response) {
-                        onStream(response);
-                    }
-                });
-            } catch (Exception e) {
-                fail(new IOException("Failed to initiate stream request: " + e.getMessage(), e));
-            }
+                    .build(), this::onStream);
         }
 
         private void onStream(Response response) {
@@ -495,11 +501,8 @@ public class AntigravityApiClient {
                     if (chunk.errorMessage != null) throw new IOException("Antigravity API stream error: " + chunk.errorMessage);
                     if (chunk.thoughtSignature != null) streamSig = chunk.thoughtSignature;
                     calls.addAll(chunk.functionCalls);
-                    if (chunk.textDelta != null && !chunk.textDelta.isEmpty()) {
-                        text.append(chunk.textDelta);
-                        notify(() -> listener.onDelta(chunk.textDelta));
-                    }
-                    for (String s : chunk.webSearchQueries) addOnce(sources, s);
+                    delta(chunk.textDelta);
+                    for (String s : chunk.webSearchQueries) addSourceLine(s);
                     if (chunk.promptTokens > 0) promptTokens = chunk.promptTokens;
                     if (chunk.candidateTokens > 0) candidateTokens = chunk.candidateTokens;
                 }
@@ -507,87 +510,20 @@ public class AntigravityApiClient {
                 fail(e);
                 return;
             }
-            if (isCancelled()) return;
-            if (calls.isEmpty() || toolRounds >= MAX_TOOL_ITERATIONS) {
-                complete(); // no tool call, or the loop guard: answer with what we have
-                return;
-            }
-            toolRounds++;
-            contents.add(callTurn(calls, streamSig));
-            runTools(calls, 0, new JsonArray());
+            lastSig = streamSig;
+            onReply(calls);
         }
 
-        /** Runs {@code calls} one after another (they may depend on each other), then streams again. */
-        private void runTools(List<FunctionCall> calls, int i, JsonArray responses) {
-            if (isCancelled()) return;
-            if (i >= calls.size()) {
-                JsonObject t = new JsonObject();
-                t.addProperty("role", "user");
-                t.add("parts", responses);
-                contents.add(t);
-                stream();
-                return;
-            }
-            FunctionCall fc = calls.get(i);
-            String name = fc.getName();
-            JsonObject args = fc.getArgs();
-            notify(() -> listener.onToolExecuting(name, LyricTools.describe(name, args)));
-            ToolCallback done = result -> {
-                if (isCancelled()) return;
-                boolean error = result == null || result.isError;
-                int count = result == null ? 0
-                        : result.sources != null && !result.sources.isEmpty() ? result.sources.size()
-                        : error ? 0 : 1;
-                notify(() -> listener.onToolCompleted(name, count, error));
-                if (result != null && result.sources != null) {
-                    for (SourceItem s : result.sources) addSource(s);
-                }
-                responses.add(responsePart(fc, result));
-                runTools(calls, i + 1, responses);
-            };
-            try {
-                if ("web_search".equals(name)) {
-                    tool = toolExecutor.executeWebSearch(ToolArgs.str(args, "query", ""),
-                            ToolArgs.intValue(args, "num_search_results", 5), done);
-                } else if ("web_fetch".equals(name)) {
-                    tool = toolExecutor.executeWebFetch(ToolArgs.str(args, "url", ""), done);
-                } else {
-                    LyricTools.dispatch(lyricActionDelegate, name, args, done);
-                }
-                if (cancelled && tool != null) tool.cancel();
-            } catch (Exception e) {
-                done.onResult(ToolResult.error("Tool execution error: " + e.getMessage()));
-            }
-        }
-
-        private void addSource(SourceItem s) {
-            if (s == null) return;
-            String url = s.url != null ? s.url.trim() : "", title = s.title != null ? s.title.trim() : "";
-            if (!url.isEmpty()) addOnce(sources, url);
-            if (!title.isEmpty() && !url.isEmpty() && !title.equalsIgnoreCase(url)) addOnce(sources, title + "|" + url);
-            else if (!title.isEmpty()) addOnce(sources, title);
-        }
-
-        private void complete() {
-            if (finished || isCancelled()) return;
-            finished = true;
-            String full = text.toString();
-            notify(() -> listener.onComplete(full, sources, promptTokens, candidateTokens));
-        }
-
-        void fail(Exception e) {
-            if (finished || isCancelled()) return; // a cancelled call ends silently
-            finished = true;
-            notify(() -> listener.onError(e));
-        }
-
-        private void notify(Runnable r) {
-            if (listener == null) return;
-            try {
-                r.run();
-            } catch (Throwable ignored) {
-                // a broken listener must not abort the stream
-            }
+        /** The model's calls in one model turn, then every result in one user turn. */
+        @Override
+        void addToolTurn(List<FunctionCall> calls, List<ToolResult> results) {
+            contents.add(callTurn(calls, lastSig));
+            JsonArray responses = new JsonArray();
+            for (int i = 0; i < calls.size(); i++) responses.add(responsePart(calls.get(i), results.get(i)));
+            JsonObject t = new JsonObject();
+            t.addProperty("role", "user");
+            t.add("parts", responses);
+            contents.add(t);
         }
     }
 

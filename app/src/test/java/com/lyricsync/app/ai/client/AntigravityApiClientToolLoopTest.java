@@ -64,7 +64,7 @@ public class AntigravityApiClientToolLoopTest {
             names.add(el.getAsJsonObject().get("name").getAsString());
         }
         assertEquals(Arrays.asList("web_search", "web_fetch", "get_app_state", "read_lyrics", "edit_lyrics",
-                "undo_edit", "translate_lyrics", "transliterate_lyrics", "set_display", "control_playback"), names);
+                "undo_edit", "translate_lyrics", "transliterate_lyrics", "set_display", "find_lyrics", "control_playback"), names);
         assertEquals(names.size() - 2, AntigravityApiClient.buildToolDeclarations(false).size());
 
         // edit_lyrics takes an array of typed ops, and the animation keys are real registry keys.
@@ -100,7 +100,7 @@ public class AntigravityApiClientToolLoopTest {
         assertFalse("tool object must NOT have built-in googleSearch", tool0.has("googleSearch"));
 
         JsonArray decls = tool0.getAsJsonArray("functionDeclarations");
-        assertEquals(10, decls.size());
+        assertEquals(11, decls.size());
         assertEquals("web_search", decls.get(0).getAsJsonObject().get("name").getAsString());
         assertEquals("web_fetch", decls.get(1).getAsJsonObject().get("name").getAsString());
     }
@@ -655,6 +655,11 @@ public class AntigravityApiClientToolLoopTest {
 
         @Override public void controlPlayback(String action, int line, long pos, ActionCallback cb) {
             calls.add("playback:" + action + ":" + line);
+            cb.onSuccess("ok");
+        }
+
+        @Override public void findLyrics(String action, String title, String artist, int index, String text, ActionCallback cb) {
+            calls.add("lyrics:" + action + ":" + title + ":" + index);
             cb.onSuccess("ok");
         }
     }

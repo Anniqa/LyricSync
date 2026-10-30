@@ -429,6 +429,11 @@ public final class CleanMarkdownFormatter {
                 running = R.string.ai_tool_display;
                 done = R.string.ai_tool_display_done;
                 break;
+            case "find_lyrics":
+                icon = R.drawable.ic_search;
+                running = R.string.ai_tool_find_lyrics;
+                done = R.string.ai_tool_find_lyrics_done;
+                break;
             case "control_playback":
                 icon = R.drawable.ic_play;
                 running = R.string.ai_tool_playback;

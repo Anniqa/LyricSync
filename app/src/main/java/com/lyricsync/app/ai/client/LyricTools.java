@@ -70,6 +70,18 @@ final class LyricTools {
                 num("sync_offset_ms", "INTEGER", "Lyric timing offset in ms (+ = lyrics later, - = earlier), max +-1500."),
                 choice("motion", "Word animation motion.", keys(AnimStyleDef.Registry.motionStyles())),
                 choice("effect", "Word highlight effect.", keys(AnimStyleDef.Registry.effectStyles()))));
+        d.add(tool("find_lyrics", "Find other lyrics for the song or load the user's own. 'search' asks every "
+                        + "source (Spicy, Better Lyrics/Apple, LyricsPlus, Kugou, Netease, LRCLIB) and lists what each "
+                        + "has: sync type (SYLLABLE word-by-word > LINE > STATIC), line count, first lines. 'use' "
+                        + "loads one listed result. 'paste' loads lyrics text the user gave, in any format (TTML, QRC, "
+                        + "KRC, enhanced LRC, LRC or plain). Use it when lyrics are wrong, missing, another version, "
+                        + "or not word-by-word.",
+                req("action"),
+                choice("action", "What to do.", "search", "use", "paste"),
+                str("title", "search: title to look for (blank = the playing track's)."),
+                str("artist", "search: artist (blank = the playing track's)."),
+                num("index", "INTEGER", "use: result index from the last search."),
+                str("text", "paste: the full lyrics text.")));
         d.add(tool("control_playback", "Control the music player.",
                 req("action"),
                 choice("action", "What to do.", "play", "pause", "skip_next", "skip_previous", "seek_to_line", "seek_to_position"),
@@ -141,6 +153,13 @@ final class LyricTools {
                     }
                 }
                 return sb.toString();
+            }
+            case "find_lyrics": {
+                String action = ToolArgs.str(a, "action", "search");
+                if ("use".equals(action)) return "#" + (ToolArgs.intValue(a, "index", 0) + 1);
+                if ("paste".equals(action)) return action;
+                String q = (ToolArgs.str(a, "title", "") + " " + ToolArgs.str(a, "artist", "")).trim();
+                return q.isEmpty() ? action : q;
             }
             case "control_playback": {
                 String action = ToolArgs.str(a, "action", "");
@@ -221,6 +240,11 @@ final class LyricTools {
             case "control_playback":
                 d.controlPlayback(ToolArgs.str(a, "action", ""), ToolArgs.intValue(a, "line_index", -1),
                         ToolArgs.longValue(a, "position_ms", 0L), reply);
+                return;
+            case "find_lyrics":
+                d.findLyrics(ToolArgs.str(a, "action", "search"), ToolArgs.str(a, "title", ""),
+                        ToolArgs.str(a, "artist", ""), ToolArgs.intValue(a, "index", -1),
+                        ToolArgs.str(a, "text", ""), reply);
                 return;
             default:
                 cb.onResult(ToolResult.error("Unknown tool: " + name));

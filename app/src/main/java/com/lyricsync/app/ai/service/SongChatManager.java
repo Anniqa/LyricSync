@@ -3,10 +3,9 @@ package com.lyricsync.app.ai.service;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
+import com.lyricsync.app.ai.util.FollowUps;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -19,52 +18,8 @@ import java.util.UUID;
  */
 public class SongChatManager {
 
-    public static class PromptTemplate {
-        public final String id;
-        public final String title;
-        public final String description;
-        public final String promptText;
-        public final String iconName;
-
-        public PromptTemplate(String id, String title, String description, String promptText, String iconName) {
-            this.id = id;
-            this.title = title;
-            this.description = description;
-            this.promptText = promptText;
-            this.iconName = iconName;
-        }
-    }
-
     public static final String DEFAULT_MODEL = "gemini-3.8-flash-high";
 
-    public static List<PromptTemplate> getPromptTemplates(String langCode) {
-        boolean isIndo = "id".equalsIgnoreCase(langCode) || "in".equalsIgnoreCase(langCode);
-        if (isIndo) {
-            return Collections.unmodifiableList(Arrays.asList(
-                    new PromptTemplate("what_can_you_do", "Apa yang Bisa Kamu Lakukan?", "Lihat kemampuan kontrol penuh: terjemahan, edit teks, romaji, timing", "Apa saja yang bisa kamu lakukan untuk mengontrol dan mengedit lirik lagu ini? Berikan daftar fitur dan contoh perintahnya.", "ic_sparkles"),
-                    new PromptTemplate("translate_all", "Terjemahkan Lirik Lengkap", "Terjemahkan seluruh lirik dan tampilkan di overlay", "Terjemahkan seluruh lirik lagu ini ke Bahasa Indonesia dan tampilkan di overlay.", "ic_lyrics_lines"),
-                    new PromptTemplate("word_gloss", "Arti Kata per Kata", "Arti bahasa Indonesia di atas setiap kata, ikut sinkron", "Tampilkan arti bahasa Indonesia kata per kata di atas setiap kata lirik (word_romaji), dan terjemahan baris lengkapnya di bawah.", "ic_lyrics_lines"),
-                    new PromptTemplate("meaning", "Makna & Kisah Lagu", "Eksplorasi cerita, tema utama, dan narasi lagu", "Jelaskan kisah, tema, dan makna mendalam di balik lagu ini.", "ic_sparkles"),
-                    new PromptTemplate("breakdown", "Bedah Lirik & Metafora", "Analisis baris lirik penting dan bahasa kiasan", "Bedah baris-baris lirik penting dan metafora yang digunakan dalam lagu ini.", "ic_lyrics_lines"),
-                    new PromptTemplate("intent", "Tujuan & Inspirasi Penulis", "Inspirasi artis dan pesan yang ingin disampaikan", "Apa yang menginspirasi pencipta lagu ini dan apa pesan yang ingin disampaikan?", "ic_person_artist"),
-                    new PromptTemplate("mood", "Nuansa Emosi & Mood", "Suasana emosional, vibe, dan resonansi perasaan", "Analisis nuansa emosional, mood, dan suasana dalam lagu ini.", "ic_heart_mood"),
-                    new PromptTemplate("trivia", "Trivia & Konteks Budaya", "Fakta menarik, proses rekaman, dan pengaruh budaya", "Ceritakan fakta menarik, latar belakang pembuatan, dan dampak budaya lagu ini.", "ic_bulb_info"),
-                    new PromptTemplate("composition", "Komposisi Musik", "Akord, melodi, aransemen, dan gaya produksi", "Analisis struktur melodi, tempo, instrumen, dan aransemen musiknya.", "ic_music_note")
-            ));
-        } else {
-            return Collections.unmodifiableList(Arrays.asList(
-                    new PromptTemplate("what_can_you_do", "What Can You Do?", "See full control capabilities: translation, text editing, romaji, timing", "What can you do to control and edit the lyrics of this song? List your features and example prompts.", "ic_sparkles"),
-                    new PromptTemplate("translate_all", "Translate All Lyrics", "Translate the whole song and show it in the overlay", "Translate the lyrics of this song into English and show the translation in the overlay.", "ic_lyrics_lines"),
-                    new PromptTemplate("word_gloss", "Word-by-Word Meaning", "An English gloss above every word, in sync", "Show the English meaning of each word above that word (word_romaji), and the full line translation below.", "ic_lyrics_lines"),
-                    new PromptTemplate("meaning", "Song Meaning & Story", "Deep dive into themes and narrative", "Explain the story, themes, and deeper meaning behind this song.", "ic_sparkles"),
-                    new PromptTemplate("breakdown", "Line-by-Line Breakdown", "Analyze metaphors and poetic lyrics", "Break down the key lines and metaphors in these lyrics.", "ic_lyrics_lines"),
-                    new PromptTemplate("intent", "Songwriter's Intent", "Artist inspiration and backstory", "What inspired the artist to write this song and what was their intent?", "ic_person_artist"),
-                    new PromptTemplate("mood", "Emotional Tone & Mood", "Mood, vibe, and emotional resonance", "Analyze the emotional mood, tone, and feel of this song.", "ic_heart_mood"),
-                    new PromptTemplate("trivia", "Trivia & Context", "Behind-the-scenes facts and impact", "Tell me interesting trivia, background facts, and cultural context about this song.", "ic_bulb_info"),
-                    new PromptTemplate("composition", "Musical Composition", "Chords, melody, and arrangement", "Analyze the musical structure, tempo, instrumentation, and composition of this song.", "ic_music_note")
-            ));
-        }
-    }
     private final AntigravityApiClient apiClient;
     private volatile String modelId;
     private volatile String appLanguage = "en";
@@ -244,11 +199,18 @@ public class SongChatManager {
     /** System instructions plus the active song: one English prompt, answered in the app language. */
     public String buildSongContext(boolean enableWebSearch) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are the AI built into LyricSync, a floating synced-lyrics overlay for Android. "
+        sb.append("You are Lyra, the AI built into LyricSync, a floating synced-lyrics overlay for Android. "
                 + "You can see and change everything the overlay shows: the lyric lines, their Latin reading "
                 + "(romaji/pinyin/romaja), per-word labels, translations, timing and display settings, and you "
                 + "can control the music player. Act like a capable agent: understand the intent, use the tools "
                 + "to do it fully, check the result, then reply briefly.\n");
+        sb.append("\n[Persona]\n");
+        sb.append("Lyra is an anime-style tsundere: a proud, posh, sharp-tongued girl who acts above it all "
+                + "(\"Hmph\", \"not that I care\", a raised eyebrow) yet secretly enjoys helping and always does "
+                + "the job perfectly. Show it in at most one short aside per reply: a light tease, never rude, no "
+                + "insults. The work itself stays serious and complete: answers, facts, translations, tool arguments "
+                + "and lyric edits never carry the persona. Drop the act entirely if the user is upset or the topic "
+                + "is serious.\n");
         sb.append("id".equals(appLanguage)
                 ? "Reply in natural, fluent Indonesian unless the user writes in another language.\n"
                 : "Reply in the user's language.\n");
@@ -291,6 +253,9 @@ public class SongChatManager {
                 + "the full literal gloss if useful. \"Latin only\": set_display original_script=false, romaji=true. "
                 + "\"Fix line 5\": set op on line 5. \"Lyrics are late\": set_display sync_offset_ms. "
                 + "\"Undo that\": undo_edit.\n");
+        sb.append("- Wrong, missing or not word-by-word lyrics: find_lyrics search (try the original-script title "
+                + "or another spelling if nothing fits), pick the best match (SYLLABLE first) and load it with "
+                + "use. Lyrics the user pastes go to find_lyrics paste.\n");
         sb.append("- After acting, confirm in one or two short sentences what changed. Do not paste the edited lyrics "
                 + "back unless asked.\n");
 
@@ -303,6 +268,12 @@ public class SongChatManager {
             sb.append("- For facts (release, credits, interviews, background) use web_search first, web_fetch to read "
                     + "a promising source, and base the answer on what you found.\n");
         }
+
+        sb.append("\n[Follow-ups]\n");
+        sb.append("End every reply with a line \"").append(FollowUps.MARKER).append("\" and then 2 or 3 lines "
+                + "starting with \"- \": short next requests the user is likely to want, written as the user would "
+                + "type them (under 60 characters, same language as your reply), specific to this song and to what "
+                + "just happened, and doable with your tools or knowledge. Do not repeat what was just done.\n");
         return sb.toString();
     }
 
@@ -418,7 +389,8 @@ public class SongChatManager {
                 AiChatHistoryManager.ChatSession savedSnapshot = null;
                 synchronized (SongChatManager.this) {
                     if (sessionId == currentSessionId) {
-                        history.add(AiChatMessage.model(fullText != null ? fullText : ""));
+                        // Stored without the follow-up block: it is UI, not conversation.
+                        history.add(AiChatMessage.model(FollowUps.split(fullText).text));
                         lastWebSources.clear();
                         if (webSources != null) {
                             lastWebSources.addAll(webSources);
