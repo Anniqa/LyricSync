@@ -290,6 +290,9 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
         if (previous == null || next == null) return true;
         if (!same(previous.albumArtUri, next.albumArtUri)) return true;
         if (!same(previous.trackId, next.trackId)) return true;
+        // Players often publish the duration a moment after the title; without this the
+        // UI kept the first snapshot (duration 0) until it was reopened.
+        if (previous.duration != next.duration) return true;
         return bitmapSignature(previous.albumArtBitmap) != bitmapSignature(next.albumArtBitmap);
     }
 
@@ -472,6 +475,11 @@ public class MediaSessionTracker implements MediaSessionManager.OnActiveSessions
             if (dur > 0 && pos > dur) pos = dur;
             return pos;
         }
+    }
+
+    /** Live track length from the player, ms (0 = unknown). */
+    public long getDurationMs() {
+        return trackDurationMs;
     }
 
     public void setSyncOffsetMs(long offsetMs) {

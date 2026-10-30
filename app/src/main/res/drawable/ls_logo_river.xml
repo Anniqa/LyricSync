@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generic "river" wave mark drawn for LyricSync (not River's own logo). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.4" android:strokeLineCap="round" android:fillColor="#00000000" android:pathData="M3,8.5c2,-2 4,-2 6,0s4,2 6,0 4,-2 6,0" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.4" android:strokeLineCap="round" android:fillColor="#00000000" android:pathData="M3,15.5c2,-2 4,-2 6,0s4,2 6,0 4,-2 6,0" />
+</vector>

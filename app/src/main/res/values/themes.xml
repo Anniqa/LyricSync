@@ -287,4 +287,100 @@
         <item name="android:paddingEnd">8dp</item>
         <item name="android:maxLines">1</item>
     </style>
+    <!-- Full-screen lyrics: edge-to-edge, transparent bars over the album backdrop. -->
+    <style name="Theme.LyricSync.Lyrics" parent="Theme.LyricSync.Main">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/ls_bg</item>
+    </style>
+    <!-- Combo Lab element chip ("Fire", "Cosmic"): tinted per element in code. -->
+    <style name="Widget.LyricSync.Lab.TypeChip" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:background">@drawable/ls_lab_badge</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.06</item>
+    </style>
+    <!-- Full-screen lyrics display chip (Latin, original script, translation). -->
+    <style name="Widget.LyricSync.Lyrics.Chip" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:checkable">true</item>
+        <item name="android:minHeight">36dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="cornerRadius">18dp</item>
+        <item name="iconSize">16dp</item>
+        <item name="iconPadding">6dp</item>
+        <item name="backgroundTint">@color/ls_lyrics_chip_bg</item>
+        <item name="android:textColor">@color/ls_lyrics_chip_fg</item>
+        <item name="iconTint">@color/ls_lyrics_chip_fg</item>
+        <item name="rippleColor">#33FFFFFF</item>
+    </style>
+    <!-- Overlay panel: tabs, section labels, chips and action rows. -->
+    <style name="Widget.LyricSync.Overlay.Tab" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/ls_ov_tab</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+    <style name="Widget.LyricSync.Overlay.Section" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:textColor">@color/text_faint</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.10</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+    <style name="Widget.LyricSync.Overlay.Chip" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">32dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:drawablePadding">5dp</item>
+        <item name="android:background">@drawable/ls_ov_chip</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+    <style name="Widget.LyricSync.Overlay.Action" parent="">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:background">@drawable/ls_ov_action</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+    <style name="Widget.LyricSync.Overlay.ActionText" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
 </resources>

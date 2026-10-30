@@ -4,7 +4,6 @@
     <color name="white">#FFFFFFFF</color>
     <!-- Base surfaces: near-black with a faint cool tint for depth. -->
     <color name="background_primary">#FF07070B</color>
-    <color name="card_stroke">#0DFFFFFF</color>
     <color name="divider">#1AFFFFFF</color>
     <!-- Text -->
     <color name="text_primary">#FFFFFFFF</color>
@@ -43,4 +42,21 @@
     <color name="ls_on_error">#FF2D0505</color>
     <color name="ls_error_container">#FF362228</color>
     <color name="ls_ripple">#1FFFFFFF</color>
+    <!-- AI chat ("Lyra") palette: slate, platinum and Slytherin green-silver. AA on lyra_surface. -->
+    <color name="ls_lyra_bg_top">#FC1A1E22</color>
+    <color name="ls_lyra_bg_bottom">#FD0E1113</color>
+    <color name="ls_lyra_surface">#FF1C2226</color>
+    <color name="ls_lyra_surface_high">#FF242B30</color>
+    <color name="ls_lyra_outline">#FF2E383D</color>
+    <color name="ls_lyra_green">#FF7FCFA3</color>
+    <color name="ls_lyra_green_container">#FF173328</color>
+    <color name="ls_lyra_on_green">#FF04170D</color>
+    <color name="ls_lyra_platinum">#FFF1E7D4</color>
+    <color name="ls_lyra_silver">#FFB9C2C6</color>
+    <color name="ls_lyra_muted">#FF8D989D</color>
+    <!-- AI suggestion card accents (icon / tile), all AA on the dark surface -->
+    <color name="ls_ai_sky">#FF7CC4FF</color>
+    <color name="ls_ai_sky_container">#FF1B2C3E</color>
+    <color name="ls_ai_rose">#FFFF8FB1</color>
+    <color name="ls_ai_rose_container">#FF3A2030</color>
 </resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Green-silver ring around Lyra's portrait, like the house tie. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <gradient android:startColor="@color/ls_lyra_green" android:endColor="@color/ls_lyra_silver" android:angle="315" />
+</shape>

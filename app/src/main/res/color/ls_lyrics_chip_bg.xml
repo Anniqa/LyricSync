@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Display chips in the full-screen lyrics; the checked colour is replaced by the album accent in code. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#FFF2F3F7" android:state_checked="true" />
+    <item android:color="#1FFFFFFF" />
+</selector>

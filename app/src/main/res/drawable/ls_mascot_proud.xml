@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lyra's mood variant; the built-in art has one face. Local builds may override it. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ls_mascot" />

@@ -37,6 +37,7 @@ import com.lyricsync.app.ui.main.HeroSection;
 import com.lyricsync.app.ui.main.LanguageSection;
 import com.lyricsync.app.ui.main.LyricsApiSection;
 import com.lyricsync.app.ui.main.MainPrefs;
+import com.lyricsync.app.ui.main.AiProviderSection;
 import com.lyricsync.app.ui.main.ModelCatalog;
 import com.lyricsync.app.ui.main.PermissionsSection;
 import com.lyricsync.app.ui.main.SyncSection;
@@ -83,6 +84,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     private HeroSection hero;
     private PermissionsSection permissions;
     private AiAccountSection ai;
+    private AiProviderSection provider;
     private DeveloperSection developer;
     private boolean entrancePlayed;
 
@@ -111,6 +113,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         new TranslationSection(this, prefs);
         new LyricsApiSection(this, prefs);
         ai = new AiAccountSection(this, prefs);
+        provider = new AiProviderSection(this, prefs);
         new LanguageSection(this);
         developer = new DeveloperSection(this, prefs, handler);
         setupStartButton();
@@ -126,6 +129,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         permissions.refresh();
         hero.updateRunning(FloatingOverlayService.isRunning());
         ai.refresh();
+        provider.updateStatus();
         NowPlaying.addListener(this);
         if (!entrancePlayed) {
             entrancePlayed = true;
@@ -147,6 +151,7 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
         handler.removeCallbacksAndMessages(null);
         hero.release();
         ai.release();
+        provider.release();
     }
 
     // ── Setup ──────────────────────────────────────────────────────────────
@@ -211,6 +216,14 @@ public class MainActivity extends AppCompatActivity implements NowPlaying.Listen
     }
 
     private void setupStartButton() {
+        findViewById(R.id.btn_full_lyrics).setOnClickListener(v -> {
+            Haptics.tick(v);
+            com.lyricsync.app.ui.lyrics.LyricsActivity.open(this);
+        });
+        findViewById(R.id.btn_combo_lab).setOnClickListener(v -> {
+            Haptics.tick(v);
+            com.lyricsync.app.ui.lab.ComboLabActivity.open(this);
+        });
         hero.startButton().setOnClickListener(v -> {
             Haptics.confirm(v);
             if (FloatingOverlayService.isRunning()) {

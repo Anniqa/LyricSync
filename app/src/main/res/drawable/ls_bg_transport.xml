@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Borderless round ripple for the skip buttons of the full-screen lyrics. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/ls_ripple" android:radius="32dp">
+    <item android:id="@android:id/mask">
+        <shape android:shape="oval">
+            <solid android:color="#FFFFFFFF" />
+        </shape>
+    </item>
+</ripple>

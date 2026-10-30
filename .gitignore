@@ -19,3 +19,6 @@ opencode.json
 # superpowers design docs (local only, never publish)
 docs/superpowers/
 build-output/
+
+# Personal mascot art (third-party fan art): local builds only, never published
+app/src/local/

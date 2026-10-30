@@ -1,65 +1,93 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:tools="http://schemas.android.com/tools" android:id="@+id/overlay_root" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/overlay_bg_rounded" android:padding="14dp" android:layout_marginStart="10dp" android:layout_marginEnd="10dp">
-    <!-- ── Header ─────────────────────────────────────────────────── -->
-    <LinearLayout android:id="@+id/overlay_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:animateLayoutChanges="true" android:layout_marginBottom="10dp">
-        <ImageView android:id="@+id/overlay_cover" android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/rounded_album_bg" android:scaleType="centerCrop" android:contentDescription="@string/cd_album_art" />
-        <LinearLayout android:id="@+id/overlay_header_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="12dp" android:paddingEnd="10dp">
-            <TextView android:id="@+id/overlay_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" android:letterSpacing="0.01" android:maxLines="1" android:ellipsize="end" />
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="1dp">
-                <TextView android:id="@+id/overlay_artist" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/text_secondary" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+    <!-- ── Header: record + title (tap = full screen), Lyra, panel, collapse ── -->
+    <LinearLayout android:id="@+id/overlay_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="10dp">
+        <LinearLayout android:id="@+id/overlay_now_playing" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:background="@drawable/ls_ov_press" android:clickable="true" android:contentDescription="@string/overlay_open_full" android:focusable="true" android:gravity="center_vertical" android:orientation="horizontal">
+            <com.lyricsync.app.ui.lyrics.CoverDiscView android:id="@+id/overlay_cover" android:layout_width="56dp" android:layout_height="44dp" android:layout_marginStart="-6dp" />
+            <LinearLayout android:id="@+id/overlay_header_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="6dp" android:paddingEnd="8dp">
+                <TextView android:id="@+id/overlay_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="marquee" android:fadingEdgeLength="16dp" android:letterSpacing="0.01" android:marqueeRepeatLimit="marquee_forever" android:requiresFadingEdge="horizontal" android:singleLine="true" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
+                <TextView android:id="@+id/overlay_artist" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:ellipsize="end" android:maxLines="1" android:textColor="@color/text_secondary" android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>
-        <!-- Header actions can be hidden (tap the title) so long titles are not
-             squeezed into an ellipsis. -->
-        <LinearLayout android:id="@+id/overlay_header_actions" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
-            <ImageView android:id="@+id/overlay_ai_button" android:layout_width="30dp" android:layout_height="30dp" android:padding="5dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_sparkles" android:contentDescription="@string/ai_insights_title" />
-            <ImageView android:id="@+id/overlay_toggle" android:layout_width="30dp" android:layout_height="30dp" android:padding="5dp" android:layout_marginStart="5dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_chevron_down" android:contentDescription="@string/cd_collapse" />
-            <ImageView android:id="@+id/overlay_settings" android:layout_width="30dp" android:layout_height="30dp" android:padding="5dp" android:layout_marginStart="5dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_settings" android:contentDescription="@string/cd_settings" />
-            <ImageView android:id="@+id/overlay_close" android:layout_width="30dp" android:layout_height="30dp" android:padding="6dp" android:layout_marginStart="5dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_close" android:contentDescription="@string/cd_close" />
+        <LinearLayout android:id="@+id/overlay_header_actions" android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+            <!-- Lyra: her face is the AI button. -->
+            <FrameLayout android:id="@+id/overlay_ai_button_frame" android:layout_width="34dp" android:layout_height="34dp" android:background="@drawable/ls_ai_avatar_ring" android:padding="2dp">
+                <ImageView android:id="@+id/overlay_ai_button" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="@string/overlay_ask_lyra" android:src="@drawable/ls_mascot_proud" />
+            </FrameLayout>
+            <ImageView android:id="@+id/overlay_settings" android:layout_width="32dp" android:layout_height="32dp" android:layout_marginStart="6dp" android:padding="6dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ls_ic_more" android:contentDescription="@string/cd_settings" />
+            <ImageView android:id="@+id/overlay_toggle" android:layout_width="32dp" android:layout_height="32dp" android:layout_marginStart="2dp" android:padding="6dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_chevron_down" android:contentDescription="@string/cd_collapse" />
         </LinearLayout>
     </LinearLayout>
-    <!-- ── Controls panel (toggled from the header) ───────────────── -->
-    <LinearLayout android:id="@+id/overlay_settings_panel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="8dp" android:visibility="gone">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/section_playback" android:textColor="@color/text_faint" android:textSize="10sp" android:textStyle="bold" android:letterSpacing="0.10" android:layout_marginBottom="6dp" />
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center" android:paddingBottom="10dp">
-            <ImageView android:id="@+id/overlay_prev" android:layout_width="38dp" android:layout_height="38dp" android:padding="8dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_skip_previous" android:contentDescription="@string/cd_previous" />
-            <ImageView android:id="@+id/overlay_play_pause" android:layout_width="46dp" android:layout_height="46dp" android:padding="10dp" android:layout_marginStart="18dp" android:layout_marginEnd="18dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_play" android:contentDescription="@string/cd_play_pause" />
-            <ImageView android:id="@+id/overlay_next" android:layout_width="38dp" android:layout_height="38dp" android:padding="8dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_skip_next" android:contentDescription="@string/cd_next" />
+    <!-- ── Panel: three tabs instead of one long list ──────────────── -->
+    <LinearLayout android:id="@+id/overlay_settings_panel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingBottom="10dp" android:visibility="gone">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+            <LinearLayout android:layout_width="0dp" android:layout_height="34dp" android:layout_weight="1" android:background="@drawable/ls_ov_tabs_bg" android:orientation="horizontal" android:padding="3dp">
+                <TextView android:id="@+id/overlay_tab_play" style="@style/Widget.LyricSync.Overlay.Tab" android:text="@string/overlay_tab_play" />
+                <TextView android:id="@+id/overlay_tab_view" style="@style/Widget.LyricSync.Overlay.Tab" android:text="@string/overlay_tab_view" />
+                <TextView android:id="@+id/overlay_tab_motion" style="@style/Widget.LyricSync.Overlay.Tab" android:text="@string/overlay_tab_motion" />
+            </LinearLayout>
+            <ImageView android:id="@+id/overlay_close" android:layout_width="34dp" android:layout_height="34dp" android:layout_marginStart="8dp" android:padding="8dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ls_ic_power" app:tint="@color/text_secondary" android:contentDescription="@string/overlay_turn_off" />
         </LinearLayout>
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" android:layout_marginBottom="10dp" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/section_font" android:textColor="@color/text_faint" android:textSize="10sp" android:textStyle="bold" android:letterSpacing="0.10" android:layout_marginBottom="6dp" />
-        <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never" android:layout_marginBottom="10dp">
-            <LinearLayout android:id="@+id/overlay_font_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
-        </HorizontalScrollView>
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/section_animation" android:textColor="@color/text_faint" android:textSize="10sp" android:textStyle="bold" android:letterSpacing="0.10" android:layout_marginBottom="6dp" />
-        <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never" android:layout_marginBottom="6dp">
-            <LinearLayout android:id="@+id/overlay_anim_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
-        </HorizontalScrollView>
-        <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never" android:layout_marginBottom="10dp">
-            <LinearLayout android:id="@+id/overlay_anim_effect_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
-        </HorizontalScrollView>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="4dp" android:paddingBottom="8dp">
-            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_music_note" app:tint="@color/accent" android:contentDescription="@null" />
-            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:text="@string/lyrics_translation_title" android:textColor="@color/text_primary" android:textSize="13sp" android:textStyle="bold" />
-            <androidx.appcompat.widget.SwitchCompat android:id="@+id/overlay_translate_switch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOn="" android:textOff="" android:showText="false" app:showText="false" />
+
+        <!-- Play: transport, lyrics actions, sync -->
+        <LinearLayout android:id="@+id/overlay_page_play" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="12dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center">
+                <ImageView android:id="@+id/overlay_prev" android:layout_width="40dp" android:layout_height="40dp" android:padding="9dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_skip_previous" android:contentDescription="@string/cd_previous" />
+                <ImageView android:id="@+id/overlay_play_pause" android:layout_width="48dp" android:layout_height="48dp" android:padding="11dp" android:layout_marginStart="20dp" android:layout_marginEnd="20dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_play" android:contentDescription="@string/cd_play_pause" />
+                <ImageView android:id="@+id/overlay_next" android:layout_width="40dp" android:layout_height="40dp" android:padding="9dp" android:background="@drawable/bg_icon_button" android:src="@drawable/ic_skip_next" android:contentDescription="@string/cd_next" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:baselineAligned="false" android:orientation="horizontal">
+                <LinearLayout android:id="@+id/overlay_search_lyrics_row" style="@style/Widget.LyricSync.Overlay.Action">
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_search" app:tint="@color/accent" android:contentDescription="@null" />
+                    <TextView style="@style/Widget.LyricSync.Overlay.ActionText" android:text="@string/lyrics_search_row" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/overlay_open_full" style="@style/Widget.LyricSync.Overlay.Action" android:layout_marginStart="8dp">
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ls_ic_fullscreen" app:tint="@color/accent" android:contentDescription="@null" />
+                    <TextView style="@style/Widget.LyricSync.Overlay.ActionText" android:text="@string/overlay_full_short" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:orientation="horizontal" android:gravity="center_vertical" android:baselineAligned="false">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/sync_title" android:textColor="@color/text_primary" android:textSize="13sp" android:textStyle="bold" />
+                <TextView android:id="@+id/overlay_sync_offset_label" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="0 ms" android:textColor="@color/accent" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+            <SeekBar android:id="@+id/overlay_sync_offset_slider" style="@style/Widget.LyricSync.SeekBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="3000" android:progress="1500" android:layout_marginTop="2dp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/sync_hint_short" android:textColor="@color/text_dim" android:textSize="11sp" android:layout_marginTop="2dp" />
         </LinearLayout>
-        <LinearLayout android:id="@+id/overlay_romaji_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="4dp" android:paddingBottom="8dp">
-            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_sparkles" app:tint="@color/accent" android:contentDescription="@null" />
-            <TextView android:id="@+id/overlay_transliteration_label" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:text="@string/toggle_latin_transliteration" android:textColor="@color/text_primary" android:textSize="13sp" android:textStyle="bold" />
-            <androidx.appcompat.widget.SwitchCompat android:id="@+id/overlay_romaji_switch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOn="" android:textOff="" android:showText="false" app:showText="false" />
+
+        <!-- View: what the lyric lines show, font, resize -->
+        <LinearLayout android:id="@+id/overlay_page_view" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="12dp" android:visibility="gone">
+            <TextView style="@style/Widget.LyricSync.Overlay.Section" android:text="@string/overlay_section_lines" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <TextView android:id="@+id/overlay_chip_latin" style="@style/Widget.LyricSync.Overlay.Chip" android:drawableStart="@drawable/ls_ic_latin" android:text="@string/lyrics_full_latin" />
+                <TextView android:id="@+id/overlay_chip_original" style="@style/Widget.LyricSync.Overlay.Chip" android:layout_marginStart="6dp" android:drawableStart="@drawable/ls_ic_script" android:text="@string/lyrics_full_original" />
+                <TextView android:id="@+id/overlay_chip_translation" style="@style/Widget.LyricSync.Overlay.Chip" android:layout_marginStart="6dp" android:drawableStart="@drawable/ls_ic_translate" android:text="@string/lyrics_full_translation" />
+            </LinearLayout>
+            <TextView style="@style/Widget.LyricSync.Overlay.Section" android:layout_marginTop="14dp" android:text="@string/section_font" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never">
+                <LinearLayout android:id="@+id/overlay_font_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+            </HorizontalScrollView>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_resize_grip" app:tint="@color/accent" android:contentDescription="@null" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:text="@string/overlay_resize_title" android:textColor="@color/text_primary" android:textSize="13sp" android:textStyle="bold" />
+                <androidx.appcompat.widget.SwitchCompat android:id="@+id/overlay_resize_switch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOn="" android:textOff="" android:showText="false" app:showText="false" />
+            </LinearLayout>
         </LinearLayout>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="4dp" android:paddingBottom="8dp">
-            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_resize_grip" app:tint="@color/accent" android:contentDescription="@null" />
-            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:text="@string/overlay_resize_title" android:textColor="@color/text_primary" android:textSize="13sp" android:textStyle="bold" />
-            <androidx.appcompat.widget.SwitchCompat android:id="@+id/overlay_resize_switch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOn="" android:textOff="" android:showText="false" app:showText="false" />
+
+        <!-- Motion: word motion, effect, Combo Lab -->
+        <LinearLayout android:id="@+id/overlay_page_motion" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="12dp" android:visibility="gone">
+            <TextView style="@style/Widget.LyricSync.Overlay.Section" android:text="@string/lab_tab_motion" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never">
+                <LinearLayout android:id="@+id/overlay_anim_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+            </HorizontalScrollView>
+            <TextView style="@style/Widget.LyricSync.Overlay.Section" android:layout_marginTop="12dp" android:text="@string/lab_tab_effect" />
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:overScrollMode="never">
+                <LinearLayout android:id="@+id/overlay_anim_effect_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+            </HorizontalScrollView>
+            <LinearLayout android:id="@+id/overlay_open_lab" style="@style/Widget.LyricSync.Overlay.Action" android:layout_width="match_parent" android:layout_weight="0" android:layout_marginTop="12dp">
+                <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ls_ic_combo" app:tint="@color/accent" android:contentDescription="@null" />
+                <TextView style="@style/Widget.LyricSync.Overlay.ActionText" android:text="@string/lab_open_long" />
+            </LinearLayout>
         </LinearLayout>
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" android:layout_marginBottom="10dp" />
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:baselineAligned="false">
-            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/sync_title" android:textColor="@color/text_primary" android:textSize="13sp" android:textStyle="bold" />
-            <TextView android:id="@+id/overlay_sync_offset_label" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="0 ms" android:textColor="@color/accent" android:textSize="12sp" android:textStyle="bold" />
-        </LinearLayout>
-        <SeekBar android:id="@+id/overlay_sync_offset_slider" style="@style/Widget.LyricSync.SeekBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="3000" android:progress="1500" android:layout_marginTop="2dp" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/sync_hint_short" android:textColor="@color/text_dim" android:textSize="11sp" android:layout_marginTop="2dp" />
     </LinearLayout>
     <!-- ── Body: lyrics / loading / empty ─────────────────────────── -->
     <FrameLayout android:id="@+id/overlay_body" android:layout_width="match_parent" android:layout_height="wrap_content">
@@ -82,6 +110,7 @@
             <!-- Action buttons container (Default Empty State) -->
             <LinearLayout android:id="@+id/overlay_retry_actions_container" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center" android:layout_marginTop="12dp">
                 <TextView android:id="@+id/btn_retry_standard" android:layout_width="wrap_content" android:layout_height="38dp" android:minWidth="100dp" android:gravity="center" android:text="@string/btn_retry_standard" android:textColor="@color/text_secondary" android:textSize="12sp" android:textStyle="bold" android:background="@drawable/bg_btn_secondary" android:paddingStart="12dp" android:paddingEnd="12dp" android:clickable="true" android:focusable="true" />
+                <TextView android:id="@+id/btn_search_lyrics" android:layout_width="wrap_content" android:layout_height="38dp" android:minWidth="100dp" android:layout_marginStart="8dp" android:gravity="center" android:text="@string/lyrics_search_button" android:textColor="@color/text_secondary" android:textSize="12sp" android:textStyle="bold" android:background="@drawable/bg_btn_secondary" android:paddingStart="12dp" android:paddingEnd="12dp" android:clickable="true" android:focusable="true" />
             </LinearLayout>
         </LinearLayout>
     </FrameLayout>

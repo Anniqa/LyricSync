@@ -17,6 +17,7 @@ import com.lyricsync.app.R;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.AiChatMessage;
 import com.lyricsync.app.ai.util.CleanMarkdownFormatter;
+import com.lyricsync.app.ai.util.FollowUps;
 import com.lyricsync.app.util.Haptics;
 
 /**
@@ -47,6 +48,7 @@ final class OverlayChatHistoryController {
             service.activeAiBubbleAnimator = null;
         }
         service.hideToolStatusNow();
+        service.setAiGenerating(false);
 
         if (service.songChatManager != null) {
             service.songChatManager.startNewSession();
@@ -82,6 +84,7 @@ final class OverlayChatHistoryController {
             service.activeAiBubbleAnimator = null;
         }
         service.hideToolStatusNow();
+        service.setAiGenerating(false);
 
         service.songChatManager.loadSession(session);
 
@@ -105,7 +108,7 @@ final class OverlayChatHistoryController {
                         service.addUserChatBubble(msg.content);
                     } else {
                         TextView bubble = service.addAiChatBubble("");
-                        CleanMarkdownFormatter.applyMarkdown(bubble, msg.content, false);
+                        CleanMarkdownFormatter.applyMarkdown(bubble, FollowUps.split(msg.content).text, false);
                     }
                 }
             }

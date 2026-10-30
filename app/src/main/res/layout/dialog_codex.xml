@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ChatGPT (Codex) sign-in sheet: account, model, reasoning effort. Changes apply on Save. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+    <com.google.android.material.bottomsheet.BottomSheetDragHandleView android:layout_width="match_parent" android:layout_height="wrap_content" />
+    <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:clipToPadding="false" android:scrollbars="none">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_5" android:paddingBottom="@dimen/ls_space_6">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/ls_bg_logo_tile" android:backgroundTint="#FF0F3D33">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:importantForAccessibility="no" android:src="@drawable/ls_logo_openai" app:tint="#FFFFFFFF" />
+                </FrameLayout>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="@dimen/ls_space_3" android:text="@string/codex_title" android:textAppearance="@style/TextAppearance.LyricSync.Main.Headline" />
+            </LinearLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_1" android:text="@string/codex_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+
+            <!-- Signed out -->
+            <LinearLayout android:id="@+id/codex_signed_out" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:orientation="vertical">
+                <com.google.android.material.button.MaterialButton android:id="@+id/btn_codex_login" style="@style/Widget.LyricSync.Main.Button.Primary" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/codex_login" app:icon="@drawable/ic_sparkles" />
+                <TextView android:id="@+id/codex_login_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:text="@string/codex_login_hint" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btn_codex_manual" style="@style/Widget.LyricSync.Main.Button.Text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center_horizontal" android:text="@string/codex_manual" />
+            </LinearLayout>
+
+            <!-- Signed in -->
+            <LinearLayout android:id="@+id/codex_signed_in" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:orientation="vertical" android:visibility="gone">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/ls_row_min" android:background="@drawable/ls_bg_row" android:baselineAligned="false" android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="@dimen/ls_space_3" android:paddingEnd="@dimen/ls_space_1">
+                    <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/ls_bg_logo_tile" android:backgroundTint="#FF0F3D33">
+                        <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center" android:importantForAccessibility="no" android:src="@drawable/ls_logo_openai" app:tint="#FFFFFFFF" />
+                    </FrameLayout>
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="@dimen/ls_space_3" android:paddingEnd="@dimen/ls_space_2">
+                        <TextView android:id="@+id/codex_email" android:layout_width="wrap_content" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+                        <TextView android:id="@+id/codex_plan" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                    </LinearLayout>
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_codex_logout" style="@style/Widget.LyricSync.Main.Button.Text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_disconnect" android:textColor="@color/ls_error" />
+                </LinearLayout>
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/til_codex_model" style="@style/Widget.LyricSync.Main.Dropdown" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_4" android:hint="@string/provider_model" app:endIconMode="dropdown_menu">
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/et_codex_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:completionThreshold="0" android:importantForAutofill="no" android:inputType="none" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" app:dropDownBackgroundTint="@color/ls_surface_high" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <TextView android:id="@+id/codex_models_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_1" android:text="@string/ai_custom_scanning" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_4" android:text="@string/provider_effort" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/provider_effort_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                <com.google.android.material.button.MaterialButtonToggleGroup android:id="@+id/codex_effort_group" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" app:selectionRequired="true" app:singleSelection="true">
+                    <com.google.android.material.button.MaterialButton android:id="@+id/codex_effort_low" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/effort_low" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/codex_effort_medium" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/effort_medium" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/codex_effort_high" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/effort_high" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:baselineAligned="false" android:orientation="horizontal">
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_codex_cancel" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/cancel" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_codex_save" style="@style/Widget.LyricSync.Main.Button.Primary" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="@dimen/ls_space_3" android:layout_weight="2" android:text="@string/codex_save" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Combo Lab. Top to bottom: app bar, collection progress, fusion stage (two slots, FUSE),
+  result card (rarity, name, elements, live preview, power, equip), picker grid.
+  Spacing follows the ls_space scale; every glyph is a vector asset. See ComboLabActivity.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/lab_root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/ls_bg">
+    <androidx.core.widget.NestedScrollView android:id="@+id/lab_scroll" android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false" android:scrollbars="none">
+        <LinearLayout android:id="@+id/lab_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_5">
+
+            <!-- App bar -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="64dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <com.google.android.material.button.MaterialButton android:id="@+id/lab_back" style="@style/Widget.LyricSync.Main.Button.Icon" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="-4dp" android:contentDescription="@string/lab_back" app:icon="@drawable/ls_ic_back" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="@dimen/ls_space_3" android:text="@string/lab_title" android:textAppearance="@style/TextAppearance.LyricSync.Main.Headline" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/lab_random" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/lab_random" app:icon="@drawable/ls_ic_shuffle" app:iconSize="18dp" />
+            </LinearLayout>
+
+            <!-- Collection progress -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_1" android:gravity="center_vertical" android:orientation="horizontal">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/lab_dex_label" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+                <TextView android:id="@+id/lab_dex" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFeatureSettings="tnum" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+            </LinearLayout>
+            <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/lab_dex_bar" style="@style/Widget.LyricSync.Main.Progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" />
+
+            <!-- Fusion stage -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_6" android:baselineAligned="false" android:clipChildren="false" android:gravity="center_vertical" android:orientation="horizontal">
+                <include android:id="@+id/lab_slot_motion" layout="@layout/item_lab_slot" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+                <ImageView android:layout_width="28dp" android:layout_height="28dp" android:layout_marginStart="@dimen/ls_space_2" android:layout_marginEnd="@dimen/ls_space_2" android:importantForAccessibility="no" android:src="@drawable/ls_ic_plus" app:tint="@color/ls_on_surface_variant" />
+                <include android:id="@+id/lab_slot_effect" layout="@layout/item_lab_slot" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+            </LinearLayout>
+            <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:clipChildren="false">
+                <TextView android:id="@+id/lab_fuse" android:layout_width="88dp" android:layout_height="88dp" android:layout_gravity="center" android:background="@drawable/ls_lab_fuse" android:contentDescription="@string/lab_fuse_cd" android:elevation="6dp" android:gravity="center" android:letterSpacing="0.08" android:text="@string/lab_fuse" android:textColor="@color/ls_on_primary" android:textSize="16sp" android:textStyle="bold" />
+            </FrameLayout>
+
+            <!-- Result card -->
+            <LinearLayout android:id="@+id/lab_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_6" android:background="@drawable/ls_lab_card" android:orientation="vertical" android:padding="@dimen/ls_space_5">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+                    <LinearLayout android:id="@+id/lab_stars" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+                    <TextView android:id="@+id/lab_rarity" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="@dimen/ls_space_2" android:letterSpacing="0.08" android:textAppearance="@style/TextAppearance.LyricSync.Main.Overline" android:textStyle="bold" />
+                    <TextView android:id="@+id/lab_new" android:layout_width="wrap_content" android:layout_height="24dp" android:background="@drawable/ls_lab_badge" android:gravity="center" android:paddingStart="10dp" android:paddingEnd="10dp" android:text="@string/lab_new" android:textColor="@color/ls_on_primary" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" />
+                </LinearLayout>
+                <TextView android:id="@+id/lab_result_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:ellipsize="end" android:maxLines="1" android:textAppearance="@style/TextAppearance.LyricSync.Main.Display" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/lab_type_motion" style="@style/Widget.LyricSync.Lab.TypeChip" />
+                    <TextView android:id="@+id/lab_type_effect" style="@style/Widget.LyricSync.Lab.TypeChip" android:layout_marginStart="@dimen/ls_space_2" />
+                </LinearLayout>
+                <TextView android:id="@+id/lab_recipe" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:ellipsize="end" android:maxLines="1" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+
+                <!-- Live preview: a fixed-height stage, the line sits centred in it. -->
+                <FrameLayout android:id="@+id/lab_preview_box" android:layout_width="match_parent" android:layout_height="148dp" android:layout_marginTop="@dimen/ls_space_4" android:background="@drawable/ls_lab_stage" android:clipChildren="false" android:clipToPadding="false" android:paddingStart="@dimen/ls_space_4" android:paddingEnd="@dimen/ls_space_4" />
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_4" android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/lab_power" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+                    <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/lab_power_bar" style="@style/Widget.LyricSync.Main.Progress" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="@dimen/ls_space_3" android:layout_marginEnd="@dimen/ls_space_3" android:max="100" />
+                    <TextView android:id="@+id/lab_power_value" android:layout_width="32dp" android:layout_height="wrap_content" android:fontFeatureSettings="tnum" android:gravity="end" android:textAppearance="@style/TextAppearance.LyricSync.Main.Value" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/lab_synergy" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:background="@drawable/ls_bg_row" android:gravity="center_vertical" android:orientation="horizontal" android:padding="@dimen/ls_space_3" android:visibility="gone">
+                    <ImageView android:layout_width="18dp" android:layout_height="18dp" android:importantForAccessibility="no" android:src="@drawable/ic_bolt" app:tint="@color/ls_warn" />
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="@dimen/ls_space_2" android:text="@string/lab_synergy" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" android:textColor="@color/ls_warn" />
+                </LinearLayout>
+                <com.google.android.material.button.MaterialButton android:id="@+id/lab_equip" style="@style/Widget.LyricSync.Main.Button.Primary" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_4" android:text="@string/lab_equip" />
+            </LinearLayout>
+
+            <!-- Picker -->
+            <com.google.android.material.button.MaterialButtonToggleGroup android:id="@+id/lab_picker_tabs" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_6" app:selectionRequired="true" app:singleSelection="true">
+                <com.google.android.material.button.MaterialButton android:id="@+id/lab_tab_motion" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/lab_tab_motion" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/lab_tab_effect" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/lab_tab_effect" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+            <TextView android:id="@+id/lab_picker_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+            <GridLayout android:id="@+id/lab_grid" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="-4dp" android:layout_marginTop="@dimen/ls_space_2" android:layout_marginEnd="-4dp" android:columnCount="3" android:useDefaultMargins="false" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+    <View android:id="@+id/lab_flash" android:layout_width="match_parent" android:layout_height="match_parent" android:alpha="0" android:background="#FFFFFFFF" android:clickable="false" android:focusable="false" android:importantForAccessibility="no" />
+</FrameLayout>

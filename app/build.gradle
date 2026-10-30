@@ -50,6 +50,13 @@ android {
         }
     }
 
+    // app/src/local/ (git-ignored) may override resources for personal builds, e.g. a mascot
+    // picture that must not be published. CI has no such folder and uses the built-in art.
+    sourceSets {
+        debug.res.srcDirs += 'src/local/res'
+        release.res.srcDirs += 'src/local/res'
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11

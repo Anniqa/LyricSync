@@ -171,9 +171,7 @@ public final class OverlayConfig {
     public final int chatToolIconDp;
     public final int chatToolIconGapDp;
     /** Tint of a finished tool card. */
-    public final int chatToolDoneColor;
     /** Web-search chip alpha while search is off. */
-    public final float chatWebSearchOffAlpha;
 
     // ── Lyrics editing (AI tools) ───────────────────────────────────────────
     /** Lines sampled to decide whether lyrics are in a non-Latin script. */
@@ -313,8 +311,6 @@ public final class OverlayConfig {
         chatAutoFollowDp = b.chatAutoFollowDp;
         chatToolIconDp = b.chatToolIconDp;
         chatToolIconGapDp = b.chatToolIconGapDp;
-        chatToolDoneColor = b.chatToolDoneColor;
-        chatWebSearchOffAlpha = b.chatWebSearchOffAlpha;
         scriptSampleLines = b.scriptSampleLines;
         editInsertLineDurationMs = b.editInsertLineDurationMs;
         editMinLineDurationMs = b.editMinLineDurationMs;
@@ -453,8 +449,6 @@ public final class OverlayConfig {
         public int chatAutoFollowDp = 96;
         public int chatToolIconDp = 13;
         public int chatToolIconGapDp = 6;
-        public int chatToolDoneColor = 0xFF81C784;
-        public float chatWebSearchOffAlpha = 0.5f;
 
         public int scriptSampleLines = 25;
         public long editInsertLineDurationMs = 3000;
@@ -530,7 +524,6 @@ public final class OverlayConfig {
             positive("chatChipTextSp", chatChipTextSp);
             positive("chatToolTextSp", chatToolTextSp);
             nonNegative("chatSourceChipMax", chatSourceChipMax);
-            fraction("chatWebSearchOffAlpha", chatWebSearchOffAlpha);
             return new OverlayConfig(this);
         }
 

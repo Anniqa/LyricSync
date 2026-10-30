@@ -39,13 +39,16 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.lyricsync.app.ai.auth.AntigravityAuthManager;
+import com.lyricsync.app.ai.client.AiProvider;
 import com.lyricsync.app.ai.client.AntigravityApiClient;
 import com.lyricsync.app.ai.client.LyricActionDelegate;
 import com.lyricsync.app.ai.client.MainThreadLyricActionRouter;
 import com.lyricsync.app.ai.client.AntigravityQuotaClient;
 import com.lyricsync.app.ai.history.AiChatHistoryManager;
 import com.lyricsync.app.ai.model.QuotaSummary;
+import com.lyricsync.app.ai.service.PromptSuggestions;
 import com.lyricsync.app.ai.service.SongChatManager;
+import com.lyricsync.app.ai.util.FollowUps;
 import com.lyricsync.app.ai.tools.AntigravityToolExecutor;
 import com.lyricsync.app.ai.tools.LyricsEditor;
 import com.lyricsync.app.ai.util.AiStreamingAnimator;
@@ -120,6 +123,109 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     }
 
     /** Returns the live service, or null once it has been destroyed/collected. Callers must null-check. */
+    // ── Full-screen lyrics (LyricsActivity) ────────────────────────────────
+
+    /** What the in-app full-screen lyrics read; all calls on the main thread. */
+    public interface LyricsSource {
+        LyricsData lyrics();
+
+        TrackInfo track();
+
+        /** Playback position with the sync offset applied, ms. */
+        long position();
+
+        boolean isPlaying();
+
+        void togglePlayPause();
+
+        void skip(boolean next);
+
+        void seekTo(long positionMs);
+
+        /** The overlay's motion × effect combination. */
+        com.lyricsync.app.renderer.AnimConfig animConfig();
+
+        boolean translationEnabled();
+
+        boolean romajiEnabled();
+
+        boolean originalScriptEnabled();
+
+        /** Live track length, ms (0 = unknown); players often send it after the title. */
+        long duration();
+
+        /** True while the AI is writing the Latin reading. */
+        boolean transliterating();
+
+        /** Lyra's tools act on this source (called on the main thread). */
+        LyricActionDelegate actions();
+
+        /** Lyrics lookup used by the search dialog (null when nothing is playing). */
+        LyricsProviderManager lyricsManager();
+
+        /** Shows the chosen lyrics for the playing track and remembers the choice. */
+        void useLyrics(LyricsData lyrics);
+
+        /** Called when lyrics, track or display settings change; null to stop. */
+        void setListener(Runnable onChanged);
+    }
+
+    private Runnable fullScreenListener;
+
+    /** The running service as a lyrics source, or null when it is not running. */
+    public static LyricsSource lyricsSource() {
+        FloatingOverlayService s = getInstance();
+        return s == null ? null : s.source;
+    }
+
+    private void notifyFullScreen() {
+        Runnable r = fullScreenListener;
+        if (r != null) r.run();
+    }
+
+    private final LyricsSource source = new LyricsSource() {
+        @Override public LyricsData lyrics() { return currentLyrics; }
+
+        @Override public TrackInfo track() { return currentTrack; }
+
+        @Override public long position() { return sessionTracker != null ? sessionTracker.getCurrentPosition() : 0; }
+
+        @Override public boolean isPlaying() { return sessionTracker != null && sessionTracker.isPlaying(); }
+
+        @Override public void togglePlayPause() { if (sessionTracker != null) sessionTracker.togglePlayPause(); }
+
+        @Override public void skip(boolean next) {
+            if (sessionTracker == null) return;
+            if (next) sessionTracker.skipNext();
+            else sessionTracker.skipPrevious();
+        }
+
+        @Override public void seekTo(long positionMs) { if (sessionTracker != null) sessionTracker.seekTo(positionMs); }
+
+        @Override public com.lyricsync.app.renderer.AnimConfig animConfig() { return lyricAnimConfig; }
+
+        @Override public boolean translationEnabled() { return translationEnabled; }
+
+        @Override public boolean romajiEnabled() { return romajiPref(); }
+
+        @Override public boolean originalScriptEnabled() { return originalScriptPref(); }
+
+        @Override public long duration() {
+            long d = sessionTracker != null ? sessionTracker.getDurationMs() : 0;
+            return d > 0 ? d : currentTrack != null ? Math.max(0, currentTrack.duration) : 0;
+        }
+
+        @Override public boolean transliterating() { return activeTransliterationCall != null; }
+
+        @Override public LyricActionDelegate actions() { return FloatingOverlayService.this; }
+
+        @Override public LyricsProviderManager lyricsManager() { return lyricsManager; }
+
+        @Override public void useLyrics(LyricsData lyrics) { FloatingOverlayService.this.useLyrics(lyrics); }
+
+        @Override public void setListener(Runnable onChanged) { fullScreenListener = onChanged; }
+    };
+
     public static FloatingOverlayService getInstance() {
         WeakReference<FloatingOverlayService> ref = activeInstanceRef;
         return ref != null ? ref.get() : null;
@@ -138,12 +244,12 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
 
     private TextView overlayTitle;
     private TextView overlayArtist;
-    private ImageView overlayCover;
+    private com.lyricsync.app.ui.lyrics.CoverDiscView overlayCover;
     private ImageView overlayToggle;
     private ImageView overlayClose;
     private ImageView overlaySettings;
-    private View overlayHeaderActions;
-    private boolean compactHeader;
+    /** Only Lyra is shown next to the title (one tap on the title toggles it). */
+    private boolean headerMinimal;
     private ImageView overlayPrev;
     private ImageView overlayPlayPause;
     private ImageView overlayNext;
@@ -172,6 +278,10 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     private int currentRetryState = RETRY_STATE_IDLE;
     private View overlayRetryActionsContainer;
     private TextView btnRetryStandard;
+    private LyricsSearchDialog lyricsSearchDialog;
+    /** Results of the AI's last find_lyrics search, by the index it was shown. */
+    private final List<LyricsData> aiLyricsResults = new ArrayList<>();
+    private LyricsProviderManager.Search aiLyricsSearch;
     private SharedPreferences sharedPrefs;
 
     private LyricsData currentLyrics;
@@ -193,17 +303,15 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     private boolean showResizeHandle = false;
     private GoogleTranslateService translateService;
     private AiTranslationService aiTranslationService;
-    private androidx.appcompat.widget.SwitchCompat overlayTranslateSwitch;
+    /** Panel chips for what the lyric lines show; they write the same prefs as the full screen. */
+    private TextView chipLatin, chipOriginal, chipTranslation;
+    private TextView[] panelTabs;
+    private View[] panelPages;
     private boolean translationEnabled = false;
     private SyllableHighlighter highlighter;
     private AntigravityApiClient apiClient;
     private AiSyllableTransliterationService aiTransliterationService;
     private LyricsCacheManager lyricsCacheManager;
-    private androidx.appcompat.widget.SwitchCompat overlayRomajiSwitch;
-    private TextView overlayTransliterationLabel;
-    private View romajiRow;
-    private boolean isProgrammaticRomajiUpdate = false;
-    private boolean isProgrammaticTranslateUpdate = false;
     /** The AI's edits and their undo history for the current lyrics. */
     private final LyricsEditor lyricsEditor = new LyricsEditor();
 
@@ -216,6 +324,9 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     private ImageView aiWebSearchChip;
     ScrollView aiChatEmptyState;
     LinearLayout aiPromptTemplatesContainer;
+    private TextView aiGreeting;
+    private ImageView aiMascot;
+    private ImageView aiHeaderMascot;
     private HorizontalScrollView aiWebSourcesScroll;
     private LinearLayout aiWebSourcesContainer;
     ScrollView aiChatScroll;
@@ -281,9 +392,6 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             boolean enabled = prefs.getBoolean(key, false);
             if (this.translationEnabled != enabled) {
                 this.translationEnabled = enabled;
-                if (overlayTranslateSwitch != null) {
-                    overlayTranslateSwitch.setChecked(enabled);
-                }
                 if (highlighter != null) {
                     highlighter.setTranslationEnabled(enabled);
                 }
@@ -309,16 +417,21 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             if (highlighter != null) {
                 highlighter.setTransliterationEnabled(enabled);
             }
-            if (overlayRomajiSwitch != null && overlayRomajiSwitch.isChecked() != enabled) {
-                isProgrammaticRomajiUpdate = true;
-                overlayRomajiSwitch.setChecked(enabled);
-                isProgrammaticRomajiUpdate = false;
+            if (enabled && activeTransliterationCall == null && currentLyrics != null
+                    && !currentLyrics.hasTransliteration && isLyricsNonLatin(currentLyrics)
+                    && apiClient != null && apiClient.isAuthenticated()) {
+                autoFetchTransliterationForCurrentLyrics();
             }
+
         } else if (OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED.equals(key)) {
             boolean enabled = prefs.getBoolean(key, true);
             if (highlighter != null) {
                 highlighter.setOriginalScriptEnabled(enabled);
             }
+        }
+        if (OverlayPrefKeys.ROMAJI_ENABLED.equals(key) || OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED.equals(key)
+                || GoogleTranslateService.PREF_TRANSLATION_ENABLED.equals(key)) {
+            updateDisplayChips();
         }
     };
 
@@ -348,6 +461,9 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                 AntigravityAuthManager.getInstance(this);
         apiClient = new AntigravityApiClient(authManager);
         apiClient.setLyricActionDelegate(new MainThreadLyricActionRouter(handler, this));
+        final SharedPreferences providerPrefs = sharedPrefs;
+        apiClient.setProviderSettings(() -> AiProvider.read(providerPrefs));
+        apiClient.setCodexAuth(com.lyricsync.app.ai.auth.CodexAuth.get(this));
         aiTranslationService = new AiTranslationService(
                 this, authManager, apiClient, translateService);
         songChatManager = new SongChatManager(apiClient);
@@ -445,7 +561,6 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         overlayToggle = overlayView.findViewById(R.id.overlay_toggle);
         overlayClose = overlayView.findViewById(R.id.overlay_close);
         overlaySettings = overlayView.findViewById(R.id.overlay_settings);
-        overlayHeaderActions = overlayView.findViewById(R.id.overlay_header_actions);
         overlayPrev = overlayView.findViewById(R.id.overlay_prev);
         overlayPlayPause = overlayView.findViewById(R.id.overlay_play_pause);
         overlayNext = overlayView.findViewById(R.id.overlay_next);
@@ -455,66 +570,14 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         overlayFontChips = overlayView.findViewById(R.id.overlay_font_chips);
         overlayAnimChips = overlayView.findViewById(R.id.overlay_anim_chips);
         overlayAnimEffectChips = overlayView.findViewById(R.id.overlay_anim_effect_chips);
-        overlayTranslateSwitch = overlayView.findViewById(R.id.overlay_translate_switch);
-        if (overlayTranslateSwitch != null) {
-            overlayTranslateSwitch.setShowText(false);
-            overlayTranslateSwitch.setTextOn("");
-            overlayTranslateSwitch.setTextOff("");
-            overlayTranslateSwitch.setChecked(translationEnabled);
-            overlayTranslateSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
-                if (isProgrammaticTranslateUpdate) return;
-                translationEnabled = isChecked;
-                sharedPrefs.edit().putBoolean(
-                        GoogleTranslateService.PREF_TRANSLATION_ENABLED, isChecked).apply();
-                if (highlighter != null) {
-                    highlighter.setTranslationEnabled(isChecked);
-                }
-                if (isChecked && currentLyrics != null && currentLyrics.translationLang == null) {
-                    fetchTranslationForCurrentLyrics();
-                }
-            });
-        }
-        romajiRow = overlayView.findViewById(R.id.overlay_romaji_row);
-        overlayTransliterationLabel = overlayView.findViewById(R.id.overlay_transliteration_label);
-        overlayRomajiSwitch = overlayView.findViewById(R.id.overlay_romaji_switch);
-        if (overlayRomajiSwitch != null) {
-            overlayRomajiSwitch.setShowText(false);
-            overlayRomajiSwitch.setTextOn("");
-            overlayRomajiSwitch.setTextOff("");
-            isProgrammaticRomajiUpdate = true;
-            overlayRomajiSwitch.setChecked(romajiPref());
-            isProgrammaticRomajiUpdate = false;
-            overlayRomajiSwitch.setOnCheckedChangeListener((btn, isChecked) -> {
-                if (isProgrammaticRomajiUpdate) return;
-                if (highlighter != null) {
-                    highlighter.setTransliterationEnabled(isChecked);
-                }
-                sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, isChecked).apply();
-                if (isChecked && currentLyrics != null && isLyricsNonLatin(currentLyrics) && !currentLyrics.hasTransliteration) {
-                    performTransliteration(TransliterationRequest.KEEP, null);
-                }
-                String labelName = (overlayTransliterationLabel != null && overlayTransliterationLabel.getText() != null)
-                        ? overlayTransliterationLabel.getText().toString()
-                        : getString(R.string.toggle_latin_transliteration);
-                Toast.makeText(this, labelName + (isChecked ? " diaktifkan" : " dinonaktifkan"), Toast.LENGTH_SHORT).show();
-            });
-        }
-        if (romajiRow != null) {
-            View.OnLongClickListener longClickListener = v -> {
-                Haptics.tick(v);
-                if (highlighter != null) {
-                    boolean newOrig = !highlighter.isOriginalScriptEnabled();
-                    highlighter.setOriginalScriptEnabled(newOrig);
-                    sharedPrefs.edit().putBoolean(OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, newOrig).apply();
-                    Toast.makeText(this, newOrig ? "Aksara asli ditampilkan" : "Aksara asli disembunyikan (Latin Saja)", Toast.LENGTH_SHORT).show();
-                }
-                return true;
-            };
-            romajiRow.setOnLongClickListener(longClickListener);
-            if (overlayRomajiSwitch != null) {
-                overlayRomajiSwitch.setOnLongClickListener(longClickListener);
-            }
-        }
+        chipLatin = overlayView.findViewById(R.id.overlay_chip_latin);
+        chipOriginal = overlayView.findViewById(R.id.overlay_chip_original);
+        chipTranslation = overlayView.findViewById(R.id.overlay_chip_translation);
+        // The pref listener applies the change and fetches what is missing (Latin reading, translation).
+        chipLatin.setOnClickListener(v -> toggleDisplayPref(v, OverlayPrefKeys.ROMAJI_ENABLED, true));
+        chipOriginal.setOnClickListener(v -> toggleDisplayPref(v, OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED, true));
+        chipTranslation.setOnClickListener(v -> toggleDisplayPref(v, GoogleTranslateService.PREF_TRANSLATION_ENABLED, false));
+        setupPanelTabs();
         overlayResizeContainer = overlayView.findViewById(R.id.overlay_resize_container);
         overlayResizeHandle = overlayView.findViewById(R.id.overlay_resize_handle);
         overlayResizeSwitch = overlayView.findViewById(R.id.overlay_resize_switch);
@@ -543,6 +606,16 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         overlayEmptyDesc = overlayView.findViewById(R.id.overlay_empty_desc);
         overlayRetryActionsContainer = overlayView.findViewById(R.id.overlay_retry_actions_container);
         btnRetryStandard = overlayView.findViewById(R.id.btn_retry_standard);
+        View searchLyricsButton = overlayView.findViewById(R.id.btn_search_lyrics);
+        if (searchLyricsButton != null) searchLyricsButton.setOnClickListener(v -> {
+            Haptics.tick(v);
+            showLyricsSearch();
+        });
+        View searchLyricsRow = overlayView.findViewById(R.id.overlay_search_lyrics_row);
+        if (searchLyricsRow != null) searchLyricsRow.setOnClickListener(v -> {
+            Haptics.tick(v);
+            showLyricsSearch();
+        });
         setupRetryViews();
 
         lyricsVisible = sharedPrefs.getBoolean(OverlayPrefKeys.LYRICS_VISIBLE, true);
@@ -566,16 +639,52 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             animateOutAndStop();
         });
 
-        // Tap the title block (or the cover) to hide/show the header buttons, so a
-        // long song title can use the full overlay width instead of being ellipsized.
-        compactHeader = sharedPrefs.getBoolean(OverlayPrefKeys.HEADER_COMPACT, false);
-        View.OnClickListener compactToggle = v -> {
+        // Now-playing block: one tap hides the header buttons (Lyra stays), a double tap
+        // opens the full-screen lyrics. A GestureDetector waits out the double-tap window,
+        // so the two never both fire. Long-press stays free for dragging the window.
+        View nowPlaying = overlayView.findViewById(R.id.overlay_now_playing);
+        android.view.GestureDetector taps = new android.view.GestureDetector(this,
+                new android.view.GestureDetector.SimpleOnGestureListener() {
+                    @Override
+                    public boolean onDown(android.view.MotionEvent e) {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean onSingleTapConfirmed(android.view.MotionEvent e) {
+                        nowPlaying.performClick(); // accessibility services see the tap
+                        Haptics.tick(nowPlaying);
+                        setHeaderMinimal(!headerMinimal, true);
+                        return true;
+                    }
+
+                    @Override
+                    public boolean onDoubleTap(android.view.MotionEvent e) {
+                        Haptics.confirm(nowPlaying);
+                        openInApp(com.lyricsync.app.ui.lyrics.LyricsActivity.class);
+                        return true;
+                    }
+                });
+        nowPlaying.setOnTouchListener((v, e) -> {
+            boolean handled = taps.onTouchEvent(e);
+            // Pressed state for the ripple; the detector owns click timing.
+            if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) v.setPressed(true);
+            else if (e.getActionMasked() == android.view.MotionEvent.ACTION_UP
+                    || e.getActionMasked() == android.view.MotionEvent.ACTION_CANCEL) v.setPressed(false);
+            return handled;
+        });
+        headerMinimal = sharedPrefs.getBoolean(OverlayPrefKeys.HEADER_MINIMAL, false);
+        setHeaderMinimal(headerMinimal, false);
+        overlayView.findViewById(R.id.overlay_open_full).setOnClickListener(v -> {
             Haptics.tick(v);
-            setHeaderCompact(!compactHeader, true);
-        };
-        overlayView.findViewById(R.id.overlay_header_text).setOnClickListener(compactToggle);
-        overlayCover.setOnClickListener(compactToggle);
-        setHeaderCompact(compactHeader, false);
+            openInApp(com.lyricsync.app.ui.lyrics.LyricsActivity.class);
+        });
+        overlayView.findViewById(R.id.overlay_open_lab).setOnClickListener(v -> {
+            Haptics.tick(v);
+            openInApp(com.lyricsync.app.ui.lab.ComboLabActivity.class);
+        });
+        // Long titles scroll (marquee runs while selected; the overlay never takes focus).
+        overlayTitle.setSelected(true);
 
         setupTransportControls();
         setupSyncOffsetUi();
@@ -671,6 +780,8 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         if (overlayPlayPause != null) {
             overlayPlayPause.setColorFilter(accent);
         }
+        if (overlayCover != null) overlayCover.setAccent(accent);
+        tintPanel(accent);
     }
 
     // ── Transport ──────────────────────────────────────────────────────────
@@ -698,6 +809,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         boolean playing = sessionTracker != null && sessionTracker.isPlaying();
         overlayPlayPause.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
         overlayPlayPause.setColorFilter(theme.accent());
+        if (overlayCover != null) overlayCover.setPlaying(playing);
     }
 
     // ── Sizing ─────────────────────────────────────────────────────────────
@@ -777,10 +889,13 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         float density = screen.density();
         float scaled = screen.scaledDensity();
         int coverSize = OverlayGeometry.coverSizePx(config, overlayFontSizeSp, overlayWidthPercent, density, scaled);
+        // Record sleeve + the vinyl peeking out: a bit taller than the old cover, ~1.27x as wide.
         ViewGroup.LayoutParams coverParams = overlayCover.getLayoutParams();
-        if (coverParams.width != coverSize || coverParams.height != coverSize) {
-            coverParams.width = coverSize;
-            coverParams.height = coverSize;
+        int coverH = coverSize + Math.round(4 * density);
+        int coverW = Math.round(coverH * 1.27f);
+        if (coverParams.width != coverW || coverParams.height != coverH) {
+            coverParams.width = coverW;
+            coverParams.height = coverH;
             overlayCover.setLayoutParams(coverParams);
         }
         overlayTitle.setTextSize(OverlayGeometry.titleSp(config, overlayFontSizeSp));
@@ -806,40 +921,129 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     // ── Collapse / expand ──────────────────────────────────────────────────
 
     /**
-     * Compact header: hide the toggle/settings/close buttons so long titles get the
-     * full overlay width (two lines instead of an ellipsis). Tap the title block to
-     * bring the buttons back. Persisted across restarts.
+     * Minimal header: only Lyra stays next to the title; the panel and collapse buttons
+     * fade out (and an open panel folds away). Persisted across restarts.
      */
-    private void setHeaderCompact(boolean compact, boolean animate) {
-        compactHeader = compact;
-        sharedPrefs.edit().putBoolean(OverlayPrefKeys.HEADER_COMPACT, compact).apply();
-        if (overlayHeaderActions == null) return;
-
-        // An open settings panel would be stranded without its gear button.
-        if (compact && overlaySettingsPanel.getVisibility() == View.VISIBLE) {
+    private void setHeaderMinimal(boolean minimal, boolean animate) {
+        headerMinimal = minimal;
+        sharedPrefs.edit().putBoolean(OverlayPrefKeys.HEADER_MINIMAL, minimal).apply();
+        if (minimal && overlaySettingsPanel.getVisibility() == View.VISIBLE) {
             Anim.collapse(overlaySettingsPanel);
             Anim.rotateTo(overlaySettings, 0f);
+            updateResizeHandleVisibility(false);
         }
-
-        overlayHeaderActions.animate().cancel();
-        if (animate) {
-            if (!compact) {
-                overlayHeaderActions.setAlpha(0f);
-                overlayHeaderActions.setVisibility(View.VISIBLE);
+        for (View b : new View[]{overlaySettings, overlayToggle}) {
+            b.animate().cancel();
+            if (!animate) {
+                b.setAlpha(minimal ? 0f : 1f);
+                b.setVisibility(minimal ? View.GONE : View.VISIBLE);
+                continue;
             }
-            overlayHeaderActions.animate()
-                    .alpha(compact ? 0f : 1f)
+            if (!minimal) {
+                b.setAlpha(0f);
+                b.setScaleX(0.6f);
+                b.setScaleY(0.6f);
+                b.setVisibility(View.VISIBLE);
+            }
+            b.animate().alpha(minimal ? 0f : 1f).scaleX(minimal ? 0.6f : 1f).scaleY(minimal ? 0.6f : 1f)
                     .setDuration(Anim.D_FAST)
                     .withEndAction(() -> {
-                        if (compact) overlayHeaderActions.setVisibility(View.GONE);
+                        if (headerMinimal) b.setVisibility(View.GONE);
                     })
                     .start();
-        } else {
-            overlayHeaderActions.setAlpha(compact ? 0f : 1f);
-            overlayHeaderActions.setVisibility(compact ? View.GONE : View.VISIBLE);
         }
+    }
 
-        overlayTitle.setMaxLines(compact ? 2 : 1);
+    /** Opens an app screen from the overlay and folds the panel away. */
+    private void openInApp(Class<?> screenClass) {
+        if (overlaySettingsPanel.getVisibility() == View.VISIBLE) {
+            Anim.collapse(overlaySettingsPanel);
+            Anim.rotateTo(overlaySettings, 0f);
+            updateResizeHandleVisibility(false);
+        }
+        Intent i = new Intent(this, screenClass).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception e) {
+            AppLog.w(TAG, "Cannot open " + screenClass.getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
+    /** Play / View / Motion pages of the panel; the last one used is remembered. */
+    private void setupPanelTabs() {
+        panelTabs = new TextView[]{overlayView.findViewById(R.id.overlay_tab_play),
+                overlayView.findViewById(R.id.overlay_tab_view), overlayView.findViewById(R.id.overlay_tab_motion)};
+        panelPages = new View[]{overlayView.findViewById(R.id.overlay_page_play),
+                overlayView.findViewById(R.id.overlay_page_view), overlayView.findViewById(R.id.overlay_page_motion)};
+        for (int i = 0; i < panelTabs.length; i++) {
+            final int tab = i;
+            panelTabs[i].setOnClickListener(v -> {
+                Haptics.tick(v);
+                selectPanelTab(tab, true);
+            });
+        }
+        selectPanelTab(Math.max(0, Math.min(2, sharedPrefs.getInt(OverlayPrefKeys.PANEL_TAB, 0))), false);
+    }
+
+    private void selectPanelTab(int tab, boolean animate) {
+        sharedPrefs.edit().putInt(OverlayPrefKeys.PANEL_TAB, tab).apply();
+        for (int i = 0; i < panelTabs.length; i++) {
+            boolean on = i == tab;
+            panelTabs[i].setSelected(on);
+            panelPages[i].setVisibility(on ? View.VISIBLE : View.GONE);
+        }
+        if (animate) {
+            panelPages[tab].setAlpha(0f);
+            panelPages[tab].animate().alpha(1f).setDuration(Anim.D_FAST).start();
+        }
+        tintPanel(theme.accent());
+        updateDisplayChips();
+    }
+
+    /** Selected tab and active chips take the album accent; their text keeps contrast on it. */
+    private void tintPanel(int accent) {
+        int on = com.lyricsync.app.ui.lyrics.PlayPauseButton.luminance(accent) > 0.45f ? 0xFF0B0C10 : 0xFFFFFFFF;
+        if (panelTabs != null) for (TextView t : panelTabs) {
+            t.setBackgroundTintList(t.isSelected() ? ColorStateList.valueOf(accent) : null);
+            t.setTextColor(t.isSelected() ? on : 0xB3FFFFFF);
+        }
+        for (TextView c : new TextView[]{chipLatin, chipOriginal, chipTranslation}) {
+            if (c == null) continue;
+            boolean active = c.isActivated();
+            c.setBackgroundTintList(active ? ColorStateList.valueOf(accent) : null);
+            int fg = active ? on : 0xE6FFFFFF;
+            c.setTextColor(fg);
+            for (android.graphics.drawable.Drawable d : c.getCompoundDrawablesRelative()) {
+                if (d == null) continue;
+                d.mutate().setTint(fg);
+                d.setBounds(0, 0, dpToPx(14), dpToPx(14));
+            }
+            c.setCompoundDrawablesRelative(c.getCompoundDrawablesRelative()[0], null, null, null);
+        }
+    }
+
+    /** Chips follow the prefs; Latin and original script only apply to non-Latin lyrics. */
+    private void updateDisplayChips() {
+        if (chipLatin == null) return;
+        boolean nonLatin = isLyricsNonLatin(currentLyrics);
+        chipLatin.setVisibility(nonLatin ? View.VISIBLE : View.GONE);
+        chipOriginal.setVisibility(nonLatin && romajiPref() ? View.VISIBLE : View.GONE);
+        chipLatin.setActivated(romajiPref());
+        chipOriginal.setActivated(originalScriptPref());
+        chipTranslation.setActivated(translationEnabled);
+        ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) chipTranslation.getLayoutParams();
+        lp.setMarginStart(nonLatin ? dpToPx(6) : 0);
+        chipTranslation.setLayoutParams(lp);
+        tintPanel(theme.accent());
+    }
+
+    private void toggleDisplayPref(View chip, String key, boolean def) {
+        Haptics.tick(chip);
+        boolean now = !sharedPrefs.getBoolean(key, def);
+        SharedPreferences.Editor e = sharedPrefs.edit().putBoolean(key, now);
+        // Hiding the original script needs the Latin line, or nothing would be left to read.
+        if (OverlayPrefKeys.ORIGINAL_SCRIPT_ENABLED.equals(key) && !now) e.putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, true);
+        e.apply();
     }
 
     private void setLyricsVisible(boolean visible, boolean persist, boolean animate) {
@@ -1030,6 +1234,9 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         aiWebSearchChip = aiChatView.findViewById(R.id.ai_web_search_chip);
         aiChatEmptyState = aiChatView.findViewById(R.id.ai_chat_empty_state);
         aiPromptTemplatesContainer = aiChatView.findViewById(R.id.ai_prompt_templates_container);
+        aiGreeting = aiChatView.findViewById(R.id.ai_greeting);
+        aiMascot = aiChatView.findViewById(R.id.ai_mascot);
+        aiHeaderMascot = aiChatView.findViewById(R.id.ai_header_mascot);
         aiWebSourcesScroll = aiChatView.findViewById(R.id.ai_web_sources_scroll);
         aiWebSourcesContainer = aiChatView.findViewById(R.id.ai_web_sources_container);
         aiChatScroll = aiChatView.findViewById(R.id.ai_chat_scroll);
@@ -1071,22 +1278,31 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             aiWebSearchChip.setOnClickListener(v -> {
                 Haptics.tick(v);
                 aiWebSearchEnabled = !aiWebSearchEnabled;
-                aiWebSearchChip.setAlpha(aiWebSearchEnabled ? 1.0f : config.chatWebSearchOffAlpha);
+                aiWebSearchChip.setActivated(aiWebSearchEnabled);
                 Toast.makeText(this,
                         getString(aiWebSearchEnabled ? R.string.ai_web_search_active : R.string.ai_web_search_inactive),
                         Toast.LENGTH_SHORT).show();
             });
         }
+        if (aiWebSearchChip != null) aiWebSearchChip.setActivated(aiWebSearchEnabled);
         setupAiPromptTemplates();
         if (aiChatSend != null) {
             aiChatSend.setOnClickListener(v -> {
                 Haptics.tick(v);
-                submitAiChatInput();
+                if (activeChatCall != null) stopAiReply();
+                else submitAiChatInput();
             });
         }
         if (aiChatInput != null) {
+            // Wraps up to 4 lines while the keyboard keeps its Send key.
+            aiChatInput.setHorizontallyScrolling(false);
+            aiChatInput.setMaxLines(4);
             aiChatInput.setOnEditorActionListener((v, actionId, event) -> {
-                if (actionId == EditorInfo.IME_ACTION_SEND) {
+                // The keyboard's Send key, or Enter on a hardware keyboard (IME_NULL + key down).
+                boolean enter = actionId == EditorInfo.IME_NULL && event != null
+                        && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER
+                        && event.getAction() == android.view.KeyEvent.ACTION_DOWN;
+                if (actionId == EditorInfo.IME_ACTION_SEND || enter) {
                     Haptics.tick(v);
                     submitAiChatInput();
                     return true;
@@ -1098,6 +1314,12 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     }
 
     private void fetchQuotaIfAuthenticated() {
+        AiProvider.Settings provider = AiProvider.read(sharedPrefs);
+        if (provider.customReady() && aiQuotaBadge != null) {
+            aiQuotaBadge.setText(AiProvider.shortModel(provider.model));
+            aiQuotaBadge.setVisibility(View.VISIBLE);
+            return;
+        }
         if (quotaClient == null) return;
         quotaClient.fetchQuota(new AntigravityQuotaClient.QuotaCallback() {
             @Override
@@ -1129,7 +1351,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
 
         TextView label = new TextView(this);
         label.setText(getString(R.string.overlay_web_sources_prefix, getString(R.string.ai_web_sources_label)));
-        label.setTextColor(ContextCompat.getColor(this, R.color.text_dim));
+        label.setTextColor(ContextCompat.getColor(this, R.color.ls_lyra_muted));
         label.setTextSize(config.chatChipTextSp);
         label.setPadding(0, 0, dpToPx(config.chatWebLabelGapDp), 0);
         aiWebSourcesContainer.addView(label);
@@ -1152,9 +1374,9 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
 
             TextView chip = new TextView(this);
             chip.setText(domain);
-            chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
+            chip.setTextColor(ContextCompat.getColor(this, R.color.ls_lyra_silver));
             chip.setTextSize(config.chatChipTextSp);
-            chip.setBackgroundResource(R.drawable.bg_tip_box);
+            chip.setBackgroundResource(R.drawable.ls_ai_badge);
             chip.setPadding(dpToPx(config.chatWebChipPadHorizontalDp), dpToPx(config.chatWebChipPadVerticalDp),
                     dpToPx(config.chatWebChipPadHorizontalDp), dpToPx(config.chatWebChipPadVerticalDp));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -1175,50 +1397,142 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         }
     }
 
+    /** Suggestion cards for this song, two per row, plus Lyra's greeting above them. */
     private void setupAiPromptTemplates() {
         if (aiPromptTemplatesContainer == null) return;
         aiPromptTemplatesContainer.removeAllViews();
-        if (currentLyrics != null && isLyricsNonLatin(currentLyrics)) {
-            // Option 1: Transliterasi & Arti
-            aiPromptTemplatesContainer.addView(createPromptTemplateView(
-                    getText(R.string.ai_chip_transliterate_with_translation),
-                    getText(R.string.ai_chip_transliterate_with_translation_desc),
-                    R.drawable.ic_sparkles,
-                    v -> { Haptics.tick(v); performTransliteration(TransliterationRequest.WITH_TRANSLATION, null); }));
+        PromptSuggestions.Song song = new PromptSuggestions.Song();
+        song.hasLyrics = currentLyrics != null && !currentLyrics.isEmpty();
+        song.nonLatin = isLyricsNonLatin(currentLyrics);
+        song.hasTranslation = hasAnyTranslation(currentLyrics);
+        song.playing = sessionTracker != null && sessionTracker.isPlaying();
+        List<PromptSuggestions.Card> cards = PromptSuggestions.forSong(LocaleHelper.getLanguage(this), song);
 
-            // Option 2: Transliterasi Saja
-            aiPromptTemplatesContainer.addView(createPromptTemplateView(
-                    getText(R.string.ai_chip_transliterate_only),
-                    getText(R.string.ai_chip_transliterate_only_desc),
-                    R.drawable.ic_sparkles,
-                    v -> { Haptics.tick(v); performTransliteration(TransliterationRequest.WITH_ORIGINAL, null); }));
-
-            // Option 3: Latin Saja (Tanpa Huruf Asli)
-            aiPromptTemplatesContainer.addView(createPromptTemplateView(
-                    getText(R.string.ai_chip_transliterate_pure_romaji),
-                    getText(R.string.ai_chip_transliterate_pure_romaji_desc),
-                    R.drawable.ic_sparkles,
-                    v -> { Haptics.tick(v); performTransliteration(TransliterationRequest.LATIN_ONLY, null); }));
+        LinearLayout row = null;
+        for (int i = 0; i < cards.size(); i++) {
+            if (i % 2 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setBaselineAligned(false);
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                rp.bottomMargin = dpToPx(8);
+                aiPromptTemplatesContainer.addView(row, rp);
+            }
+            View card = createPromptCard(cards.get(i), i);
+            if (i % 2 == 1) ((LinearLayout.LayoutParams) card.getLayoutParams()).setMarginStart(dpToPx(8));
+            row.addView(card);
         }
-        String lang = LocaleHelper.getLanguage(this);
-        List<SongChatManager.PromptTemplate> templates = SongChatManager.getPromptTemplates(lang);
-        for (final SongChatManager.PromptTemplate template : templates) {
-            int iconRes = getResources().getIdentifier(template.iconName, "drawable", getPackageName());
-            if (iconRes == 0) iconRes = R.drawable.ic_sparkles;
-            aiPromptTemplatesContainer.addView(createPromptTemplateView(
-                    template.title, template.description, iconRes,
-                    v -> { Haptics.tick(v); sendAiChatMessage(template.promptText); }));
+        // An odd last card keeps its half width instead of stretching.
+        if (cards.size() % 2 == 1 && row != null) {
+            View spacer = new View(this);
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, 0, 1f);
+            sp.setMarginStart(dpToPx(8));
+            row.addView(spacer, sp);
         }
+        updateAiGreeting(song);
     }
 
-    /** Builds one prompt-template row: title, description, icon and click handler. */
-    private View createPromptTemplateView(CharSequence title, CharSequence desc, int iconRes, View.OnClickListener onClick) {
-        View item = LayoutInflater.from(this).inflate(R.layout.item_prompt_template, aiPromptTemplatesContainer, false);
-        ((TextView) item.findViewById(R.id.prompt_title)).setText(title);
-        ((TextView) item.findViewById(R.id.prompt_desc)).setText(desc);
-        ((ImageView) item.findViewById(R.id.prompt_icon)).setImageResource(iconRes);
-        item.setOnClickListener(onClick);
+    /** Card accents rotate so the grid does not read as one flat block. */
+    private static final int[][] CARD_TINTS = {
+            {R.color.ls_lyra_green, R.color.ls_lyra_green_container},
+            {R.color.ls_lyra_platinum, R.color.ls_lyra_surface_high},
+            {R.color.ls_ai_sky, R.color.ls_ai_sky_container},
+            {R.color.ls_lyra_silver, R.color.ls_lyra_surface_high},
+            {R.color.ls_ai_rose, R.color.ls_ai_rose_container},
+    };
+
+    private View createPromptCard(PromptSuggestions.Card card, int index) {
+        View item = LayoutInflater.from(this).inflate(R.layout.item_prompt_card, aiPromptTemplatesContainer, false);
+        ((TextView) item.findViewById(R.id.prompt_title)).setText(card.title);
+        ((TextView) item.findViewById(R.id.prompt_desc)).setText(card.description);
+        int[] tint = CARD_TINTS[index % CARD_TINTS.length];
+        ImageView icon = item.findViewById(R.id.prompt_icon);
+        int iconRes = getResources().getIdentifier(card.icon, "drawable", getPackageName());
+        icon.setImageResource(iconRes != 0 ? iconRes : R.drawable.ic_sparkles);
+        icon.setImageTintList(ColorStateList.valueOf(ContextCompat.getColor(this, tint[0])));
+        item.findViewById(R.id.prompt_icon_tile).setBackgroundTintList(
+                ColorStateList.valueOf(ContextCompat.getColor(this, tint[1])));
+        item.setOnClickListener(v -> {
+            Haptics.tick(v);
+            if (card.web && !aiWebSearchEnabled) {
+                aiWebSearchEnabled = true;
+                if (aiWebSearchChip != null) aiWebSearchChip.setActivated(true);
+            }
+            sendAiChatMessage(card.prompt);
+        });
         return item;
+    }
+
+    /** Lyra's line on the empty chat, in character, about what is playing. */
+    private void updateAiGreeting(PromptSuggestions.Song song) {
+        if (aiGreeting == null) return;
+        String title = currentTrack != null && currentTrack.title != null ? currentTrack.title.trim() : "";
+        int res = title.isEmpty() ? R.string.ai_greeting_idle
+                : !song.hasLyrics ? R.string.ai_greeting_no_lyrics
+                : song.nonLatin ? R.string.ai_greeting_non_latin
+                : R.string.ai_greeting_song;
+        aiGreeting.setText(title.isEmpty() || res == R.string.ai_greeting_idle ? getString(res) : getString(res, title));
+        // A song she can work on gets the proud face; nothing to do gets the annoyed one.
+        setLyraMood(aiMascot, song.hasLyrics && !title.isEmpty() ? R.drawable.ls_mascot_proud : R.drawable.ls_mascot);
+        setLyraMood(overlayAiButton, song.hasLyrics && !title.isEmpty() ? R.drawable.ls_mascot_proud : R.drawable.ls_mascot);
+    }
+
+    /** Lyra's face: annoyed (ls_mascot) by default, smug after a task, proud on a good song. */
+    private void setLyraMood(ImageView view, int mood) {
+        if (view == null) return;
+        Object current = view.getTag();
+        if (current instanceof Integer && (Integer) current == mood) return;
+        view.setTag(mood);
+        view.animate().cancel();
+        view.animate().alpha(0f).setDuration(Anim.D_FAST).withEndAction(() -> {
+            view.setImageResource(mood);
+            view.animate().alpha(1f).setDuration(Anim.D_FAST).start();
+        }).start();
+    }
+
+    /**
+     * Suggested next requests under the last reply. Tapping one sends it; they all go
+     * as soon as a new message is sent.
+     */
+    private void showFollowUps(List<String> suggestions) {
+        removeFollowUps();
+        if (aiChatMessages == null || suggestions == null || suggestions.isEmpty()) return;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setTag(FOLLOW_UPS_TAG);
+        for (String s : suggestions) {
+            TextView chip = new TextView(this);
+            chip.setText(s);
+            chip.setTextSize(config.chatChipTextSp + 1.5f);
+            chip.setTextColor(ContextCompat.getColor(this, R.color.ls_lyra_platinum));
+            chip.setBackgroundResource(R.drawable.ls_ai_followup);
+            chip.setPadding(dpToPx(12), dpToPx(7), dpToPx(12), dpToPx(7));
+            setToolCardIcon(chip, R.drawable.ls_ic_reply, ContextCompat.getColor(this, R.color.ls_lyra_green));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = dpToPx(6);
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                Haptics.tick(v);
+                sendAiChatMessage(s);
+            });
+            box.addView(chip);
+        }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dpToPx(8);
+        aiChatMessages.addView(box, lp);
+        enter(box);
+        scrollAiChatToBottom();
+    }
+
+    private static final String FOLLOW_UPS_TAG = "follow_ups";
+
+    private void removeFollowUps() {
+        if (aiChatMessages == null) return;
+        View old = aiChatMessages.findViewWithTag(FOLLOW_UPS_TAG);
+        if (old != null) aiChatMessages.removeView(old);
     }
 
     private boolean isLyricsNonLatin(LyricsData lyrics) {
@@ -1311,17 +1625,10 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             translationEnabled = on;
             e.putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, on);
             if (highlighter != null) highlighter.setTranslationEnabled(on);
-            // The switch listener fetches the translation when this turns it on.
-            if (overlayTranslateSwitch != null) overlayTranslateSwitch.setChecked(on);
-            else if (on && currentLyrics != null && currentLyrics.translationLang == null) fetchTranslationForCurrentLyrics();
+            if (on && currentLyrics != null && currentLyrics.translationLang == null) fetchTranslationForCurrentLyrics();
         }
         e.apply();
-        if (overlayRomajiSwitch != null) {
-            isProgrammaticRomajiUpdate = true;
-            overlayRomajiSwitch.setChecked(true);
-            isProgrammaticRomajiUpdate = false;
-        }
-        updateTransliterationToggleUi();
+        updateDisplayChips();
     }
 
     /** "Lirik ditampilkan: Latin + terjemahan", in the UI language. */
@@ -1339,22 +1646,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
 
 
     private void updateTransliterationToggleUi() {
-        if (overlayRomajiSwitch == null) return;
-        boolean isNonLatin = isLyricsNonLatin(currentLyrics);
-        if (romajiRow != null) {
-            romajiRow.setVisibility(isNonLatin ? View.VISIBLE : View.GONE);
-        }
-        if (!isNonLatin) return;
-
-        boolean enabled = highlighter != null ? highlighter.isTransliterationEnabled()
-                : romajiPref();
-        isProgrammaticRomajiUpdate = true;
-        overlayRomajiSwitch.setChecked(enabled);
-        isProgrammaticRomajiUpdate = false;
-
-        if (overlayTransliterationLabel != null) {
-            overlayTransliterationLabel.setText(R.string.toggle_latin_transliteration);
-        }
+        updateDisplayChips();
     }
 
     private void autoFetchTransliterationForCurrentLyrics() {
@@ -1623,22 +1915,121 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         translationEnabled = on;
         sharedPrefs.edit().putBoolean(GoogleTranslateService.PREF_TRANSLATION_ENABLED, on).apply();
         if (highlighter != null) highlighter.setTranslationEnabled(on);
-        if (overlayTranslateSwitch != null) {
-            isProgrammaticTranslateUpdate = true;
-            overlayTranslateSwitch.setChecked(on);
-            isProgrammaticTranslateUpdate = false;
-        }
+        updateDisplayChips();
     }
 
     /** Latin layer on/off, kept in sync with its pref and switch. */
     private void setRomajiVisible(boolean on) {
         sharedPrefs.edit().putBoolean(OverlayPrefKeys.ROMAJI_ENABLED, on).apply();
         if (highlighter != null) highlighter.setTransliterationEnabled(on);
-        if (overlayRomajiSwitch != null) {
-            isProgrammaticRomajiUpdate = true;
-            overlayRomajiSwitch.setChecked(on);
-            isProgrammaticRomajiUpdate = false;
+        updateDisplayChips();
+    }
+
+    @Override
+    public void findLyrics(String action, String title, String artist, int index, String text,
+                           LyricActionDelegate.ActionCallback cb) {
+        if (currentTrack == null || lyricsManager == null) {
+            cb.onError("Nothing is playing.");
+            return;
         }
+        switch (action == null ? "" : action.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "search": {
+                if (aiLyricsSearch != null) aiLyricsSearch.cancel();
+                List<LyricsData> found = new ArrayList<>();
+                aiLyricsSearch = lyricsManager.search(currentTrack, title, artist, new LyricsProviderManager.SearchListener() {
+                    @Override
+                    public void onCandidate(LyricsProviderManager.Candidate c) {
+                        found.add(c.lyrics);
+                    }
+
+                    @Override
+                    public void onFinished(int count) {
+                        aiLyricsSearch = null;
+                        found.sort((a, b) -> LyricsProviderManager.betterThan(a, b) ? -1
+                                : LyricsProviderManager.betterThan(b, a) ? 1 : 0);
+                        aiLyricsResults.clear();
+                        aiLyricsResults.addAll(found);
+                        cb.onSuccess(describeLyricsResults(found));
+                    }
+                });
+                return;
+            }
+            case "use":
+                if (index < 0 || index >= aiLyricsResults.size()) {
+                    cb.onError(aiLyricsResults.isEmpty() ? "Search first (action=search)."
+                            : "index must be 0.." + (aiLyricsResults.size() - 1) + ".");
+                    return;
+                }
+                LyricsData chosen = aiLyricsResults.get(index);
+                useLyrics(chosen);
+                cb.onSuccess("Now showing " + chosen.provider + " (" + chosen.type + ", "
+                        + LyricsSearchDialog.lines(chosen) + " lines).");
+                return;
+            case "paste": {
+                LyricsData pasted = com.lyricsync.app.lyrics.model.LyricsFormat.parse(text);
+                if (pasted.isEmpty()) {
+                    cb.onError("No lyric lines found in the text. Formats: TTML, QRC, KRC, enhanced LRC, LRC, plain.");
+                    return;
+                }
+                pasted.provider = getString(R.string.lyrics_source_pasted);
+                useLyrics(pasted);
+                cb.onSuccess("Loaded " + LyricsSearchDialog.lines(pasted) + " lines (" + pasted.type + ", "
+                        + com.lyricsync.app.lyrics.model.LyricsFormat.detect(text) + ").");
+                return;
+            }
+            default:
+                cb.onError("action must be search, use or paste.");
+        }
+    }
+
+    /** "[0] Better Lyrics · SYLLABLE · 42 lines · first / second" per result, for the model. */
+    private static String describeLyricsResults(List<LyricsData> found) {
+        if (found.isEmpty()) return "No source has lyrics for this query. Try another spelling or the original-script title.";
+        StringBuilder sb = new StringBuilder("Results (best first); load one with action=use and its index:\n");
+        for (int i = 0; i < found.size(); i++) {
+            LyricsData l = found.get(i);
+            sb.append('[').append(i).append("] ").append(l.provider).append(" · ").append(l.type).append(" · ")
+                    .append(LyricsSearchDialog.lines(l)).append(" lines · ").append(LyricsSearchDialog.preview(l)).append('\n');
+        }
+        return sb.toString().trim();
+    }
+
+    /** Shows chosen lyrics (search result, paste or AI pick) for the playing track and keeps them. */
+    private void useLyrics(LyricsData lyrics) {
+        if (lyrics == null || lyrics.isEmpty() || currentTrack == null) return;
+        cancelBackgroundLyricJobs();
+        LyricsData copy = new com.google.gson.Gson().fromJson(new com.google.gson.Gson().toJson(lyrics), LyricsData.class);
+        currentLyrics = copy;
+        lyricsStatusText = describeLyrics(copy);
+        updateTrackInfo(currentTrack);
+        renderOverlayLyrics(copy);
+        if (lyricsManager != null) lyricsManager.useLyrics(currentTrack, copy);
+        updateSongChatLyrics(copy);
+        setupAiPromptTemplates();
+        publishNowPlaying();
+    }
+
+    void showLyricsSearch() {
+        if (lyricsManager == null) return;
+        if (lyricsSearchDialog == null) {
+            lyricsSearchDialog = new LyricsSearchDialog(this, new LyricsSearchDialog.Host() {
+                @Override
+                public TrackInfo currentTrack() {
+                    return currentTrack;
+                }
+
+                @Override
+                public LyricsProviderManager lyricsManager() {
+                    return lyricsManager;
+                }
+
+                @Override
+                public void useLyrics(LyricsData lyrics) {
+                    FloatingOverlayService.this.useLyrics(lyrics);
+                }
+            });
+        }
+        lyricsSearchDialog.show();
     }
 
     @Override
@@ -1700,6 +2091,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         if (displayCmd != null) {
             if (aiChatEmptyState != null) aiChatEmptyState.setVisibility(View.GONE);
             if (aiChatScroll != null) aiChatScroll.setVisibility(View.VISIBLE);
+            removeFollowUps();
             addUserChatBubble(userQuery);
             showInlineToolStatus("transliterate_lyrics", displayCmd.describe());
             performTransliteration(displayCmd, new LyricActionDelegate.ActionCallback() {
@@ -1718,8 +2110,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             return;
         }
 
-        AntigravityAuthManager auth = AntigravityAuthManager.getInstance(this);
-        if (auth == null || !auth.isAuthenticated()) {
+        if (apiClient == null || !apiClient.isAuthenticated()) {
             Toast.makeText(this, getString(R.string.ai_login_required), Toast.LENGTH_SHORT).show();
             return;
         }
@@ -1731,14 +2122,18 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             aiChatScroll.setVisibility(View.VISIBLE);
         }
 
+        removeFollowUps();
         addUserChatBubble(userQuery);
 
         final TextView aiBubble = addAiChatBubble("");
         if (activeAiBubbleAnimator != null) {
             activeAiBubbleAnimator.stopAll();
         }
-        activeAiBubbleAnimator = new AiStreamingAnimator(aiBubble, ContextCompat.getColor(this, R.color.accent));
+        activeAiBubbleAnimator = new AiStreamingAnimator(aiBubble, ContextCompat.getColor(this, R.color.ls_lyra_green));
         activeAiBubbleAnimator.startThinking(getString(R.string.ai_thinking));
+        setAiGenerating(true);
+        setLyraMood(aiHeaderMascot, R.drawable.ls_mascot);
+        final boolean[] actedOk = {false};
 
         if (activeChatCall != null) {
             activeChatCall.cancel();
@@ -1774,6 +2169,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                     public void onToolCompleted(String toolName, int resultsCount, boolean isError) {
                         handler.post(() -> {
                             if (isDestroyed) return;
+                            if (!isError) actedOk[0] = true;
                             completeInlineToolStatus(toolName, resultsCount, isError);
                             if (aiToolStatusContainer != null) {
                                 if (aiToolStatusIcon != null) {
@@ -1794,7 +2190,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                         handler.post(() -> {
                             responseAcc.append(textDelta);
                             if (activeAiBubbleAnimator != null) {
-                                activeAiBubbleAnimator.updateStream(responseAcc.toString());
+                                activeAiBubbleAnimator.updateStream(FollowUps.visible(responseAcc.toString()));
                             }
                             followAiChatIfAtBottom();
                         });
@@ -1804,12 +2200,11 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                     public void onComplete(String fullText, List<String> webSources, int promptTokens, int candidateTokens) {
                         handler.post(() -> {
                             activeChatCall = null;
+                            setAiGenerating(false);
                             scheduleToolStatusHide();
-                            String finalContent = (fullText != null && !fullText.trim().isEmpty())
-                                    ? fullText : responseAcc.toString();
-                            if (finalContent == null || finalContent.trim().isEmpty()) {
-                                finalContent = getString(R.string.ai_tool_generic_done);
-                            }
+                            FollowUps.Reply reply = FollowUps.split((fullText != null && !fullText.trim().isEmpty())
+                                    ? fullText : responseAcc.toString());
+                            String finalContent = reply.text.isEmpty() ? getString(R.string.ai_tool_generic_done) : reply.text;
                             if (activeAiBubbleAnimator != null) {
                                 activeAiBubbleAnimator.complete(finalContent);
                                 activeAiBubbleAnimator = null;
@@ -1818,6 +2213,8 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                                 displayWebSources(webSources);
                             }
                             addSourceChipsBelowBubble(webSources);
+                            showFollowUps(reply.suggestions);
+                            setLyraMood(aiHeaderMascot, actedOk[0] ? R.drawable.ls_mascot_smug : R.drawable.ls_mascot_proud);
                             scrollAiChatToBottom();
                         });
                     }
@@ -1826,6 +2223,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                     public void onError(Exception error) {
                         handler.post(() -> {
                             activeChatCall = null;
+                            setAiGenerating(false);
                             hideToolStatusNow();
                             if (activeAiBubbleAnimator != null) {
                                 activeAiBubbleAnimator.error(error != null ? error.getMessage() : "Unknown error");
@@ -1859,6 +2257,38 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         }
     }
 
+    /** Stops the reply being generated; what has streamed so far stays in the chat. */
+    private void stopAiReply() {
+        if (activeChatCall != null) {
+            activeChatCall.cancel();
+            activeChatCall = null;
+        }
+        if (activeAiBubbleAnimator != null) {
+            activeAiBubbleAnimator.stopWithCurrent(getString(R.string.ai_stopped));
+            activeAiBubbleAnimator = null;
+        }
+        hideToolStatusNow();
+        if (activeOverlayToolCard != null) {
+            aiChatMessages.removeView(activeOverlayToolCard);
+            activeOverlayToolCard = null;
+        }
+        setAiGenerating(false);
+    }
+
+    /** The send button doubles as Stop while a reply is generating. */
+    void setAiGenerating(boolean generating) {
+        if (aiChatSend == null) return;
+        aiChatSend.setImageResource(generating ? R.drawable.ic_stop : R.drawable.ic_send_arrow);
+        aiChatSend.setContentDescription(getString(generating ? R.string.ai_stop : R.string.ai_send));
+    }
+
+    /** New chat views ease in instead of popping. */
+    private void enter(View v) {
+        v.setAlpha(0f);
+        v.setTranslationY(dpToPx(6));
+        v.animate().alpha(1f).translationY(0f).setDuration(Anim.D_MED).setInterpolator(Anim.DECEL).start();
+    }
+
     /** Clickable web-source chips appended below the last AI chat bubble (max 5). */
     void addSourceChipsBelowBubble(List<String> webSources) {
         if (aiChatMessages == null || webSources == null) return;
@@ -1876,9 +2306,10 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
 
             TextView chip = new TextView(this);
             chip.setText(chipData.displayLabel);
-            chip.setTextColor(ContextCompat.getColor(this, R.color.accent));
+            chip.setTextColor(ContextCompat.getColor(this, R.color.ls_lyra_silver));
             chip.setTextSize(config.chatChipTextSp);
-            chip.setBackgroundResource(R.drawable.bg_prompt_card);
+            chip.setBackgroundResource(R.drawable.ls_ai_tool_chip);
+            setToolCardIcon(chip, R.drawable.ic_search_globe, ContextCompat.getColor(this, R.color.ls_lyra_green));
             chip.setPadding(dpToPx(config.chatSourceChipPadHorizontalDp), dpToPx(config.chatSourceChipPadVerticalDp),
                     dpToPx(config.chatSourceChipPadHorizontalDp), dpToPx(config.chatSourceChipPadVerticalDp));
             chip.setMaxLines(1);
@@ -1896,10 +2327,11 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
                 } catch (Exception e) {
-                    Toast.makeText(FloatingOverlayService.this, "Cannot open: " + url, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(FloatingOverlayService.this, getString(R.string.ai_link_error, url), Toast.LENGTH_SHORT).show();
                 }
             });
             aiChatMessages.addView(chip);
+            enter(chip);
             added++;
         }
     }
@@ -1911,12 +2343,14 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         CleanMarkdownFormatter.ToolDisplayInfo info =
                 CleanMarkdownFormatter.formatTool(toolName, queryOrUrl, 0, this);
 
-        int accent = ContextCompat.getColor(this, R.color.accent);
+        int accent = ContextCompat.getColor(this, R.color.ls_lyra_green);
         TextView card = new TextView(this);
         card.setText(info.runningText);
         card.setTextSize(config.chatToolTextSp);
-        card.setTextColor(accent);
-        card.setBackgroundResource(R.drawable.bg_tool_status_pill);
+        card.setTextColor(ContextCompat.getColor(this, R.color.ls_lyra_silver));
+        card.setMaxLines(1);
+        card.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        card.setBackgroundResource(R.drawable.ls_ai_tool_chip);
         card.setPadding(dpToPx(config.chatToolPadHorizontalDp), dpToPx(config.chatToolPadVerticalDp),
                 dpToPx(config.chatToolPadHorizontalDp), dpToPx(config.chatToolPadVerticalDp));
         setToolCardIcon(card, info.iconRes != 0 ? info.iconRes : R.drawable.ic_bolt, accent);
@@ -1929,6 +2363,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         int count = aiChatMessages.getChildCount();
         int insertPos = Math.max(0, count - 1);
         aiChatMessages.addView(card, insertPos);
+        enter(card);
         activeOverlayToolCard = card;
 
         scrollAiChatToBottom();
@@ -1938,10 +2373,9 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         if (activeOverlayToolCard != null) {
             CleanMarkdownFormatter.ToolDisplayInfo info =
                     CleanMarkdownFormatter.formatTool(toolName, "", resultsCount, this);
-            int color = isError ? ContextCompat.getColor(this, R.color.state_error) : config.chatToolDoneColor;
+            int color = ContextCompat.getColor(this, isError ? R.color.ls_error : R.color.ls_lyra_green);
             setToolCardIcon(activeOverlayToolCard, isError ? R.drawable.ic_alert : R.drawable.ic_check, color);
             activeOverlayToolCard.setText(isError ? getString(R.string.ai_tool_failed) : info.doneText);
-            activeOverlayToolCard.setTextColor(color);
             activeOverlayToolCard = null;
         }
     }
@@ -1961,9 +2395,10 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         if (aiChatMessages == null) return;
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, text, false);
-        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
+        bubble.setTextColor(ContextCompat.getColor(this, R.color.ls_lyra_platinum));
         bubble.setTextSize(config.chatTextSp);
-        bubble.setBackgroundResource(R.drawable.bg_chat_bubble_user);
+        bubble.setLineSpacing(0f, config.chatAiLineSpacing);
+        bubble.setBackgroundResource(R.drawable.ls_ai_user_bubble);
         bubble.setPadding(dpToPx(config.chatUserPadHorizontalDp), dpToPx(config.chatUserPadVerticalDp),
                 dpToPx(config.chatUserPadHorizontalDp), dpToPx(config.chatUserPadVerticalDp));
 
@@ -1975,6 +2410,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         bubble.setLayoutParams(lp);
 
         aiChatMessages.addView(bubble);
+        enter(bubble);
         scrollAiChatToBottom();
     }
 
@@ -1982,7 +2418,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         if (aiChatMessages == null) return null;
         TextView bubble = new TextView(this);
         CleanMarkdownFormatter.applyMarkdown(bubble, initialText, false);
-        bubble.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        bubble.setTextColor(ContextCompat.getColor(this, R.color.ls_lyra_platinum));
         bubble.setTextSize(config.chatTextSp);
         bubble.setLineSpacing(0f, config.chatAiLineSpacing);
         bubble.setPadding(dpToPx(config.chatAiPadHorizontalDp), 0, dpToPx(config.chatAiPadHorizontalDp), 0);
@@ -1994,6 +2430,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         bubble.setLayoutParams(lp);
 
         aiChatMessages.addView(bubble);
+        enter(bubble);
         scrollAiChatToBottom();
         return bubble;
     }
@@ -2162,6 +2599,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                     highlighter.updateLineTransliteration(lineIndex, wordsRomanji, line.romanji);
                     highlighter.updateLineTranslation(lineIndex, line.translation);
                 }
+                notifyFullScreen();
 
                 if (lyricsCacheManager != null && currentTrack != null && currentLyrics != null) {
                     lyricsCacheManager.cache(currentTrack, currentLyrics);
@@ -2268,6 +2706,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     }
 
     private void publishNowPlaying() {
+        notifyFullScreen();
         TrackInfo track = currentTrack;
         if (track == null) {
             NowPlaying.clear();
@@ -2321,11 +2760,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
 
         if (track.albumArtBitmap != null) {
             pendingArtUri = null;
-            Glide.with(this)
-                    .load(track.albumArtBitmap)
-                    .transition(DrawableTransitionOptions.withCrossFade(config.coverCrossfadeMs))
-                    .transform(new RoundedCorners(dpToPx(config.coverCornerDp)))
-                    .into(overlayCover);
+            overlayCover.setArt(track.albumArtBitmap);
             if (track.albumArtBitmap != lastPaletteArt) {
                 lastPaletteArt = track.albumArtBitmap;
                 lastPaletteArtUri = null;
@@ -2344,9 +2779,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                         public void onResourceReady(@androidx.annotation.NonNull Bitmap resource,
                                                     @Nullable com.bumptech.glide.request.transition.Transition<? super Bitmap> transition) {
                             if (isDestroyed || !artUri.equals(pendingArtUri)) return;
-                            overlayCover.setAlpha(0f);
-                            overlayCover.setImageBitmap(resource);
-                            overlayCover.animate().alpha(1f).setDuration(config.coverCrossfadeMs).start();
+                            overlayCover.setArt(resource); // crossfades itself
                             if (!artUri.equals(lastPaletteArtUri)) {
                                 lastPaletteArtUri = artUri;
                                 lastPaletteArt = null;
@@ -2361,14 +2794,12 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             glideRequestManager
                     .asBitmap()
                     .load(artUri)
-                    .transform(new RoundedCorners(dpToPx(config.coverCornerDp)))
                     .into(target);
             coverArtTarget = target;
         } else {
             pendingArtUri = null;
             lastPaletteArtUri = null;
-            Glide.with(this).clear(overlayCover);
-            overlayCover.setImageDrawable(null);
+            overlayCover.setArt(null);
         }
     }
 
@@ -2659,6 +3090,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
             jumpToCurrentLineAfterLayout();
         }
         AppLog.i(TAG, "Rendered " + lyrics.lines.size() + " lyric lines, Choreographer loop started");
+        notifyFullScreen();
         updateTransliterationToggleUi();
         if (romajiPref && isLyricsNonLatin(lyrics) && !lyrics.hasTransliteration) {
             autoFetchTransliterationForCurrentLyrics();
@@ -2711,6 +3143,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                     }
                     highlighter.setTranslationEnabled(translationEnabled);
                 }
+                notifyFullScreen();
                 if (lyricsManager != null && targetTrack != null) {
                     lyricsManager.updateCachedLyrics(targetTrack, targetLyrics);
                 }
@@ -2850,8 +3283,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         if (aiChatEmptyState != null) aiChatEmptyState.setVisibility(View.VISIBLE);
         if (aiChatScroll != null) aiChatScroll.setVisibility(View.GONE);
         setupAiPromptTemplates();
-        Glide.with(this).clear(overlayCover);
-        overlayCover.setImageDrawable(null);
+        overlayCover.setArt(null);
         showIdleState();
         theme.reset();
         NowPlaying.clear();
@@ -2906,6 +3338,8 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
     @Override
     public void onDestroy() {
         isDestroyed = true;
+        if (lyricsSearchDialog != null) lyricsSearchDialog.dismiss();
+        if (aiLyricsSearch != null) aiLyricsSearch.cancel();
         running = false;
         clearCoverArtTarget();
         WeakReference<FloatingOverlayService> ref = activeInstanceRef;

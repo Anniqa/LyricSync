@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Add / edit one OpenAI-compatible provider (bottom sheet). Nothing is stored until Save. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+    <com.google.android.material.bottomsheet.BottomSheetDragHandleView android:layout_width="match_parent" android:layout_height="wrap_content" />
+    <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:clipToPadding="false" android:scrollbars="none">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_5" android:paddingBottom="@dimen/ls_space_6">
+            <TextView android:id="@+id/editor_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="@style/TextAppearance.LyricSync.Main.Headline" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_1" android:text="@string/provider_editor_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+
+            <LinearLayout android:id="@+id/editor_presets_group" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:text="@string/provider_presets" android:textAppearance="@style/TextAppearance.LyricSync.Main.Overline" />
+                <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:scrollbars="none">
+                    <LinearLayout android:id="@+id/editor_presets" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+            </LinearLayout>
+
+            <com.google.android.material.textfield.TextInputLayout android:id="@+id/til_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_4" android:hint="@string/provider_name">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/et_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:importantForAutofill="no" android:inputType="textCapWords" android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.textfield.TextInputLayout android:id="@+id/til_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:hint="@string/provider_base_url" app:helperText="@string/provider_base_url_helper">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/et_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:importantForAutofill="no" android:inputType="textUri" android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.textfield.TextInputLayout android:id="@+id/til_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:hint="@string/provider_api_key" app:endIconMode="password_toggle">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/et_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:importantForAutofill="no" android:inputType="textPassword" android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btn_get_key" style="@style/Widget.LyricSync.Main.Button.Text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="-12dp" android:text="@string/provider_get_key" android:visibility="gone" />
+            <com.google.android.material.textfield.TextInputLayout android:id="@+id/til_model" style="@style/Widget.LyricSync.Main.Dropdown" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:hint="@string/provider_model" app:endIconMode="dropdown_menu">
+                <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/et_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:completionThreshold="0" android:importantForAutofill="no" android:inputType="text|textNoSuggestions" android:maxLines="1" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" app:dropDownBackgroundTint="@color/ls_surface_high" />
+            </com.google.android.material.textfield.TextInputLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_1" android:baselineAligned="false" android:gravity="center_vertical" android:orientation="horizontal">
+                <com.google.android.material.progressindicator.CircularProgressIndicator android:id="@+id/scan_progress" android:layout_width="16dp" android:layout_height="16dp" android:indeterminate="true" android:visibility="gone" app:indicatorSize="16dp" app:trackThickness="2dp" />
+                <TextView android:id="@+id/scan_status" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingStart="@dimen/ls_space_1" android:paddingEnd="@dimen/ls_space_2" android:text="@string/provider_scan_idle" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btn_scan" style="@style/Widget.LyricSync.Main.Button.Text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/provider_scan" />
+            </LinearLayout>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_4" android:text="@string/provider_effort" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/provider_effort_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+            <com.google.android.material.button.MaterialButtonToggleGroup android:id="@+id/effort_group" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" app:selectionRequired="true" app:singleSelection="true">
+                <com.google.android.material.button.MaterialButton android:id="@+id/effort_auto" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/effort_auto" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/effort_low" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/effort_low" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/effort_medium" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/effort_medium" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/effort_high" style="@style/Widget.LyricSync.Main.Button.Toggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/effort_high" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:baselineAligned="false" android:orientation="horizontal">
+                <com.google.android.material.button.MaterialButton android:id="@+id/btn_cancel" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/cancel" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btn_save" style="@style/Widget.LyricSync.Main.Button.Primary" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="@dimen/ls_space_3" android:layout_weight="2" android:text="@string/save" />
+            </LinearLayout>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btn_delete" style="@style/Widget.LyricSync.Main.Button.Text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:text="@string/provider_delete" android:textColor="@color/ls_error" android:visibility="gone" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Send / stop: Slytherin green with a silver rim. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#40000000">
+    <item>
+        <shape android:shape="oval">
+            <gradient android:startColor="@color/ls_lyra_green" android:endColor="#FF4FAF7E" android:angle="270" />
+        </shape>
+    </item>
+</ripple>

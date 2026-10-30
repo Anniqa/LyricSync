@@ -34,7 +34,8 @@ public final class AnimStyleChips {
     private static final int PREVIEW_INACTIVE = 0x82FFFFFF;
 
     private static final long PREVIEW_WORD_MS = 1400;
-    private static final long PREVIEW_PAUSE_MS = 600;
+    /** Long enough for after-word effects (fireworks ~1.1s, petals) to finish before the loop restarts. */
+    private static final long PREVIEW_PAUSE_MS = 1400;
 
     public interface OnComboChosen {
         void onChosen(String motionKey, String effectKey);
@@ -151,8 +152,9 @@ public final class AnimStyleChips {
         chip.addView(preview);
 
         TextView name = new TextView(context);
-        name.setText(def.displayName);
+        name.setText(label(def));
         name.setTextSize(10.5f);
+        markCombo(name, def);
         // Track the selection: styleChip() runs before the label exists, so the
         // selected-state accent has to be applied here.
         name.setTextColor(selected ? COLOR_ACCENT : COLOR_TEXT_DIM);
@@ -174,8 +176,9 @@ public final class AnimStyleChips {
                 Math.round(11 * density), Math.round(7 * density));
 
         TextView name = new TextView(context);
-        name.setText(def.displayName);
+        name.setText(label(def));
         name.setTextSize(11);
+        markCombo(name, def);
         name.setTextColor(selected ? COLOR_ACCENT : COLOR_TEXT);
         name.setTypeface(Typeface.DEFAULT_BOLD);
         chip.addView(name);
@@ -183,6 +186,25 @@ public final class AnimStyleChips {
         chip.setOnClickListener(onChoose);
         FontChips.addPressFeedback(chip);
         return chip;
+    }
+
+    /** Chip label; combination effects carry the ls_ic_combo icon (see {@link #markCombo}). */
+    private static String label(AnimStyleDef def) {
+        return def.displayName;
+    }
+
+    /** Small two-diamond icon before a combination effect's name. */
+    private static void markCombo(TextView name, AnimStyleDef def) {
+        if (!def.isCombo()) return;
+        android.graphics.drawable.Drawable d = androidx.core.content.ContextCompat.getDrawable(
+                name.getContext(), com.lyricsync.app.R.drawable.ls_ic_combo);
+        if (d == null) return;
+        d = d.mutate();
+        int px = Math.round(name.getTextSize() * 0.95f);
+        d.setBounds(0, 0, px, px);
+        d.setTint(0xFFFFB547);
+        name.setCompoundDrawablesRelative(d, null, null, null);
+        name.setCompoundDrawablePadding(Math.round(4 * name.getResources().getDisplayMetrics().density));
     }
 
     private static LinearLayout baseChip(Context context, AnimStyleDef def, boolean selected) {

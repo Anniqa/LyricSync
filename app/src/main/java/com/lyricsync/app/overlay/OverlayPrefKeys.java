@@ -16,7 +16,10 @@ final class OverlayPrefKeys {
     static final String POSITION_X = "overlay_x";
     static final String POSITION_Y = "overlay_y";
     static final String LYRICS_VISIBLE = "lyrics_visible";
-    static final String HEADER_COMPACT = "overlay_header_compact";
+    /** Header shows only Lyra next to the title (tap the title to toggle). */
+    static final String HEADER_MINIMAL = "overlay_header_compact";
+    /** Last overlay panel tab (0 Play, 1 View, 2 Motion). */
+    static final String PANEL_TAB = "overlay_panel_tab";
     static final String SHOW_RESIZE_HANDLE = "overlay_show_resize_handle";
     static final String SYNC_OFFSET_MS = "sync_offset_ms";
     static final String ROMAJI_ENABLED = "pref_romaji_enabled";

@@ -35,6 +35,7 @@
                     </LinearLayout>
                 </LinearLayout>
                 <com.google.android.material.button.MaterialButton android:id="@+id/btn_start" style="@style/Widget.LyricSync.Main.Button.Primary" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:text="@string/start" app:icon="@drawable/ic_play" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btn_full_lyrics" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:text="@string/lyrics_full_open" app:icon="@drawable/ic_lyrics_lines" />
             </LinearLayout>
 
             <!-- ── Permissions: only while something is missing ───────── -->
@@ -84,6 +85,7 @@
                     </HorizontalScrollView>
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/anim_style_label" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" android:textColor="@color/ls_on_surface_variant" />
                     <TextView android:id="@+id/anim_combo_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:layout_marginBottom="@dimen/ls_space_3" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_combo_lab" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="@dimen/ls_space_3" android:text="@string/lab_open_long" app:icon="@drawable/ls_ic_combo" />
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="6dp" android:text="@string/anim_motion_label" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
                     <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="@dimen/ls_bleed" android:layout_marginEnd="@dimen/ls_bleed" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_5" android:layout_marginBottom="@dimen/ls_space_3" android:scrollbars="none" android:overScrollMode="never" android:clipToPadding="false">
                         <LinearLayout android:id="@+id/anim_chips" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:baselineAligned="false" />
@@ -171,6 +173,15 @@
 
             <!-- ══ AI ═══════════════════════════════════════════════════ -->
             <TextView android:id="@+id/section_ai" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_5" android:layout_marginBottom="@dimen/ls_space_3" android:layout_marginStart="@dimen/ls_space_1" android:text="@string/main_section_ai" android:textAppearance="@style/TextAppearance.LyricSync.Main.Overline" />
+            <!-- Which AI answers: Google or a saved OpenAI-compatible provider. See AiProviderSection. -->
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_ai_provider" style="@style/Widget.LyricSync.Main.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/ls_space_5">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/provider_title" android:textAppearance="@style/TextAppearance.LyricSync.Main.Title" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:layout_marginBottom="@dimen/ls_space_4" android:text="@string/provider_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                    <LinearLayout android:id="@+id/provider_list" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_add_provider" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="match_parent" android:layout_height="wrap_content" app:icon="@drawable/ls_ic_add" android:text="@string/provider_add" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
             <com.google.android.material.card.MaterialCardView android:id="@+id/card_ai_account" style="@style/Widget.LyricSync.Main.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/ls_space_5">
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_account_title" android:textAppearance="@style/TextAppearance.LyricSync.Main.Title" />
@@ -208,6 +219,30 @@
                         <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/quota_5h_progress" style="@style/Widget.LyricSync.Main.Progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:max="100" android:progress="100" />
                         <TextView android:id="@+id/tv_ai_tokens" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" android:visibility="gone" />
                     </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Web search engine. See AiProviderSection. -->
+            <com.google.android.material.card.MaterialCardView android:id="@+id/card_web_search" style="@style/Widget.LyricSync.Main.Card" android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="@dimen/ls_space_5">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/web_search_title" android:textAppearance="@style/TextAppearance.LyricSync.Main.Title" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/web_search_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                    <TextView android:id="@+id/tv_web_search_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:drawablePadding="@dimen/ls_space_2" android:gravity="center_vertical" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_3" android:minHeight="@dimen/ls_row_min" android:background="@drawable/ls_bg_row" android:baselineAligned="false" android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="@dimen/ls_space_4" android:paddingEnd="@dimen/ls_space_3">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/exa_key_label" android:textAppearance="@style/TextAppearance.LyricSync.Main.Label" />
+                            <TextView android:id="@+id/tv_exa_key_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                        </LinearLayout>
+                        <com.google.android.material.button.MaterialButton android:id="@+id/btn_exa_key" style="@style/Widget.LyricSync.Main.Button.Tonal" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/row_exa_first" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ls_space_2" android:minHeight="@dimen/ls_touch" android:background="?attr/selectableItemBackground" android:baselineAligned="false" android:gravity="center_vertical" android:orientation="horizontal">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingEnd="@dimen/ls_space_3" android:paddingStart="@dimen/ls_space_1">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/exa_first_label" android:textAppearance="@style/TextAppearance.LyricSync.Main.Body" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/exa_first_desc" android:textAppearance="@style/TextAppearance.LyricSync.Main.Caption" />
+                        </LinearLayout>
+                        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/switch_exa_first" android:layout_width="wrap_content" android:layout_height="wrap_content" android:contentDescription="@string/exa_first_label" />
+                    </LinearLayout>
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btn_exa_get_key" style="@style/Widget.LyricSync.Main.Button.Text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="-12dp" android:text="@string/exa_key_get" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

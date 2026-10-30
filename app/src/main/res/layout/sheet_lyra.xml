@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lyra in the full-screen lyrics: a bottom sheet that keeps the lyrics visible above it.
+  Header (face, name, song, new chat), conversation or greeting + quick asks, composer.
+  Palette and shapes follow the overlay AI window (ls_lyra_*). See LyraSheet.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/ls_lyra_sheet" android:orientation="vertical">
+    <com.google.android.material.bottomsheet.BottomSheetDragHandleView android:layout_width="match_parent" android:layout_height="wrap_content" app:tint="@color/ls_lyra_outline" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_3">
+        <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/ls_ai_avatar_ring" android:padding="2dp">
+            <ImageView android:id="@+id/lyra_face" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="@string/ai_mascot_cd" android:src="@drawable/ls_mascot" />
+        </FrameLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="@dimen/ls_space_3" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_mascot_name" android:textColor="@color/ls_lyra_platinum" android:textSize="16sp" android:textStyle="bold" />
+            <TextView android:id="@+id/lyra_song" android:layout_width="match_parent" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:textColor="@color/ls_lyra_silver" android:textSize="12sp" />
+        </LinearLayout>
+        <ImageView android:id="@+id/lyra_new_chat" android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/bg_icon_button" android:contentDescription="@string/ai_btn_new_chat" android:padding="10dp" android:src="@drawable/ic_chat_new" app:tint="@color/ls_lyra_silver" />
+    </LinearLayout>
+
+    <androidx.core.widget.NestedScrollView android:id="@+id/lyra_scroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="@dimen/ls_space_2" android:clipToPadding="false" android:overScrollMode="never" android:scrollbars="none">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_5" android:paddingBottom="@dimen/ls_space_2">
+            <!-- Greeting -->
+            <LinearLayout android:id="@+id/lyra_intro" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/ls_ai_speech" android:orientation="vertical" android:paddingStart="14dp" android:paddingTop="10dp" android:paddingEnd="14dp" android:paddingBottom="12dp">
+                <TextView android:id="@+id/lyra_greeting" android:layout_width="match_parent" android:layout_height="wrap_content" android:lineSpacingMultiplier="1.15" android:textColor="@color/ls_lyra_platinum" android:textSize="14sp" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/lyra_messages" android:layout_width="match_parent" android:layout_height="wrap_content" android:animateLayoutChanges="true" android:orientation="vertical" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Quick asks (sweet spots) and follow-ups, one swipeable row above the composer. -->
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:clipToPadding="false" android:overScrollMode="never" android:paddingStart="@dimen/ls_space_5" android:paddingEnd="@dimen/ls_space_5" android:scrollbars="none">
+        <LinearLayout android:id="@+id/lyra_quick" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingTop="@dimen/ls_space_2" android:paddingBottom="@dimen/ls_space_2" />
+    </HorizontalScrollView>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="@dimen/ls_space_4" android:layout_marginEnd="@dimen/ls_space_4" android:layout_marginBottom="@dimen/ls_space_4" android:background="@drawable/ls_ai_input" android:gravity="bottom" android:orientation="horizontal" android:padding="4dp">
+        <EditText android:id="@+id/lyra_input" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:layout_marginEnd="4dp" android:background="@null" android:hint="@string/ai_chat_input_hint" android:imeOptions="actionSend" android:importantForAutofill="no" android:inputType="textCapSentences|textMultiLine" android:maxLines="4" android:minHeight="44dp" android:textColor="@color/ls_lyra_platinum" android:textColorHint="@color/ls_lyra_muted" android:textSize="14sp" />
+        <ImageView android:id="@+id/lyra_send" android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/ls_ai_send" android:contentDescription="@string/ai_send" android:padding="11dp" android:src="@drawable/ic_send_arrow" app:tint="@color/ls_lyra_on_green" />
+    </LinearLayout>
+</LinearLayout>

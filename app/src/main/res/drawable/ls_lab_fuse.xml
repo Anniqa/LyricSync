@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Round FUSE button. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#55FFFFFF">
+    <item>
+        <shape android:shape="oval">
+            <gradient android:type="radial" android:gradientRadius="44dp" android:startColor="#FF5CFF9D" android:endColor="#FF14A84B" />
+            <stroke android:width="3dp" android:color="#FFB9FFD4" />
+        </shape>
+    </item>
+</ripple>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Ask Lyra" pill in the full-screen lyrics. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#4D7FCFA3">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/ls_lyra_green_container" />
+            <stroke android:width="1dp" android:color="#557FCFA3" />
+            <corners android:radius="22dp" />
+        </shape>
+    </item>
+</ripple>
