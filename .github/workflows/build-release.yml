@@ -147,12 +147,30 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
 
+      # .github/release-notes/<tag>.md, when present, is the release text; the README's
+      # pictures (.github/readme) go up next to the APK so the notes can show them.
+      - name: Release notes and images
+        id: notes
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          notes=".github/release-notes/${TAG_NAME}.md"
+          if [ -f "$notes" ]; then echo "file=$notes" >> "$GITHUB_OUTPUT"; fi
+          {
+            echo "images<<EOF"
+            find .github/readme -maxdepth 1 -type f \( -name '*.webp' -o -name '*.png' -o -name '*.jpg' \) | sort
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           name: LyricSync ${{ github.ref_name }}
-          generate_release_notes: true
-          files: ${{ steps.apk.outputs.path }}
+          body_path: ${{ steps.notes.outputs.file }}
+          generate_release_notes: ${{ steps.notes.outputs.file == '' }}
+          files: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.notes.outputs.images }}
 
       - name: Send release to Telegram
         env:
