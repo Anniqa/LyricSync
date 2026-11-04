@@ -11,10 +11,9 @@ import com.lyricsync.app.R;
 import com.lyricsync.app.util.AppLog;
 
 /**
- * Lyra's face on any ImageView. Each mood is a still drawable; a personal build can add a
- * looping animated WebP for it as {@code res/raw/lyra_anim_<mood>} (local source set, never
- * published). When that file exists and the device has API 28+, she moves; otherwise the
- * still picture is shown. Switching moods crossfades.
+ * Lyra's face on any ImageView. Each mood is a still drawable plus an optional looping
+ * animated WebP, {@code res/raw/lyra_anim_<mood>}. On API 28+ the animation plays when it
+ * exists; otherwise the still picture is shown. Switching moods crossfades.
  */
 public final class LyraFace {
     public static final int ANNOYED = 0, PROUD = 1, SMUG = 2, THINKING = 3;
@@ -53,7 +52,7 @@ public final class LyraFace {
 
     private static Drawable load(Context c, int mood) {
         if (Build.VERSION.SDK_INT >= 28) {
-            // Looked up by name: the file only exists in personal builds (kept by values/keep.xml).
+            // Looked up by name (kept by values/keep.xml); a build without the file shows the still.
             int raw = c.getResources().getIdentifier("lyra_anim_" + NAMES[mood], "raw", c.getPackageName());
             if (raw != 0) {
                 try {

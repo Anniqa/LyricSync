@@ -163,5 +163,9 @@ GitHub Actions tests and builds every push. A `v*` tag publishes a release APK.
 <img src=".github/readme/headings/license.svg" alt="License" width="480"><br><br>
 
 [GPL-3.0](LICENSE). LyricSync is not affiliated with Spotify or with any lyrics provider.
+Lyra's face uses DeepSeek-chan chibi stickers from the community archive
+[lmy414/ai-girl-stickers](https://github.com/lmy414/ai-girl-stickers), marked CC0 by their submitters. DeepSeek-chan is a
+fan character, not an official DeepSeek mascot, and LyricSync is not affiliated with DeepSeek. To have an image credited or
+removed, open an issue.
 The song in the preview, *death bed (coffee for your head)*, belongs to Powfu; it is shown only to demonstrate the
 lyric display.
