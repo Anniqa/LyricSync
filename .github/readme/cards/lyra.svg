@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" width="320" height="220">
+  <defs>
+    <linearGradient id="c_lyra" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1C1D26"/>
+      <stop offset="100%" stop-color="#0E0F14"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="316" height="216" rx="20" fill="url(#c_lyra)" stroke="#24252F" stroke-width="2"/>
+  <rect x="24" y="22" width="132" height="26" rx="13" fill="#1ED760" fill-opacity="0.14" stroke="#1ED760" stroke-width="1.5"/>
+  <text x="90" y="39" text-anchor="middle" font-family="'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#7FCFA3" letter-spacing="0.6">AI ASSISTANT</text>
+  <text x="24" y="80" font-family="'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="800" fill="#F2F3F7">Lyra</text>
+  <circle cx="28" cy="111" r="3" fill="#1ED760"/>
+  <text x="38" y="115" font-family="'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#A9ACB8">Explains what the lyrics mean</text>
+  <circle cx="28" cy="143" r="3" fill="#1ED760"/>
+  <text x="38" y="147" font-family="'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#A9ACB8">Edits, re-times, translates</text>
+  <circle cx="28" cy="175" r="3" fill="#1ED760"/>
+  <text x="38" y="179" font-family="'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#A9ACB8">Your own provider and key</text>
+</svg>
