@@ -1474,21 +1474,15 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                 : R.string.ai_greeting_song;
         aiGreeting.setText(title.isEmpty() || res == R.string.ai_greeting_idle ? getString(res) : getString(res, title));
         // A song she can work on gets the proud face; nothing to do gets the annoyed one.
-        setLyraMood(aiMascot, song.hasLyrics && !title.isEmpty() ? R.drawable.ls_mascot_proud : R.drawable.ls_mascot);
-        setLyraMood(overlayAiButton, song.hasLyrics && !title.isEmpty() ? R.drawable.ls_mascot_proud : R.drawable.ls_mascot);
+        int mood = song.hasLyrics && !title.isEmpty() ? com.lyricsync.app.ui.LyraFace.PROUD : com.lyricsync.app.ui.LyraFace.ANNOYED;
+        setLyraMood(aiMascot, mood);
+        setLyraMood(overlayAiButton, mood);
+        setLyraMood(chatWindows != null ? chatWindows.bubbleFace() : null, mood);
     }
 
-    /** Lyra's face: annoyed (ls_mascot) by default, smug after a task, proud on a good song. */
+    /** Lyra's face: annoyed by default, proud on a good song, thinking while she answers, smug after a task. */
     private void setLyraMood(ImageView view, int mood) {
-        if (view == null) return;
-        Object current = view.getTag();
-        if (current instanceof Integer && (Integer) current == mood) return;
-        view.setTag(mood);
-        view.animate().cancel();
-        view.animate().alpha(0f).setDuration(Anim.D_FAST).withEndAction(() -> {
-            view.setImageResource(mood);
-            view.animate().alpha(1f).setDuration(Anim.D_FAST).start();
-        }).start();
+        com.lyricsync.app.ui.LyraFace.set(view, mood);
     }
 
     /**
@@ -2132,7 +2126,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
         activeAiBubbleAnimator = new AiStreamingAnimator(aiBubble, ContextCompat.getColor(this, R.color.ls_lyra_green));
         activeAiBubbleAnimator.startThinking(getString(R.string.ai_thinking));
         setAiGenerating(true);
-        setLyraMood(aiHeaderMascot, R.drawable.ls_mascot);
+        setLyraMood(aiHeaderMascot, com.lyricsync.app.ui.LyraFace.THINKING);
         final boolean[] actedOk = {false};
 
         if (activeChatCall != null) {
@@ -2214,7 +2208,7 @@ public class FloatingOverlayService extends Service implements LyricActionDelega
                             }
                             addSourceChipsBelowBubble(webSources);
                             showFollowUps(reply.suggestions);
-                            setLyraMood(aiHeaderMascot, actedOk[0] ? R.drawable.ls_mascot_smug : R.drawable.ls_mascot_proud);
+                            setLyraMood(aiHeaderMascot, actedOk[0] ? com.lyricsync.app.ui.LyraFace.SMUG : com.lyricsync.app.ui.LyraFace.PROUD);
                             scrollAiChatToBottom();
                         });
                     }

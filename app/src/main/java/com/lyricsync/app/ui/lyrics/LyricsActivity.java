@@ -158,6 +158,7 @@ public final class LyricsActivity extends Activity {
         };
         findViewById(R.id.lyrics_chip_search).setOnClickListener(searchLyrics);
         findViewById(R.id.lyrics_empty_search).setOnClickListener(searchLyrics);
+        com.lyricsync.app.ui.LyraFace.set(findViewById(R.id.lyrics_lyra_face), com.lyricsync.app.ui.LyraFace.PROUD);
         findViewById(R.id.lyrics_ask_lyra).setOnClickListener(v -> {
             Haptics.tick(v);
             lyra.show();

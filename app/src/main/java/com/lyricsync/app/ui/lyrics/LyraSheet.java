@@ -176,7 +176,7 @@ final class LyraSheet {
         else if (!has) greet.setText(activity.getString(R.string.ai_greeting_no_lyrics, title));
         else if (StandaloneLyricsSource.nonLatin(l)) greet.setText(activity.getString(R.string.ai_greeting_non_latin, title));
         else greet.setText(activity.getString(R.string.lyra_full_greeting, title));
-        face.setImageResource(has ? R.drawable.ls_mascot_proud : R.drawable.ls_mascot);
+        com.lyricsync.app.ui.LyraFace.set(face, has ? com.lyricsync.app.ui.LyraFace.PROUD : com.lyricsync.app.ui.LyraFace.ANNOYED);
     }
 
     // ── quick asks ──────────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ final class LyraSheet {
         reply.setAlpha(0.7f);
         quick.removeAllViews();
         setBusy(true);
-        face.setImageResource(R.drawable.ls_mascot);
+        com.lyricsync.app.ui.LyraFace.set(face, com.lyricsync.app.ui.LyraFace.THINKING);
         chat.setModelId(prefs.getString(MainPrefs.AI_MODEL, SongChatManager.DEFAULT_MODEL));
         chat.setAppState(appState(src));
         final StringBuilder acc = new StringBuilder();
@@ -307,7 +307,7 @@ final class LyraSheet {
                     FollowUps.Reply r = FollowUps.split(full);
                     reply.setAlpha(1f);
                     CleanMarkdownFormatter.applyMarkdown(reply, r.text, false);
-                    face.setImageResource(R.drawable.ls_mascot_smug);
+                    com.lyricsync.app.ui.LyraFace.set(face, com.lyricsync.app.ui.LyraFace.SMUG);
                     renderQuick(r.suggestions);
                     scrollToEnd();
                 });

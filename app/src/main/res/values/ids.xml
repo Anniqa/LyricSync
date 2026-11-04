@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- View tag: which Lyra mood an ImageView shows (LyraFace). -->
+    <item name="lyra_face_mood" type="id" />
+</resources>

@@ -50,6 +50,11 @@ final class OverlayChatWindows {
     private boolean chatAttached;
 
     private View bubbleView;
+
+    /** Lyra's face on the minimised chat bubble, or null before the bubble exists. */
+    android.widget.ImageView bubbleFace() {
+        return bubbleView != null ? bubbleView.findViewById(com.lyricsync.app.R.id.ai_bubble_icon) : null;
+    }
     private WindowManager.LayoutParams bubbleParams;
     private boolean bubbleAttached;
 
@@ -247,6 +252,7 @@ final class OverlayChatWindows {
     @SuppressLint("InflateParams") // a window root has no parent to inflate against
     private void createBubble() {
         bubbleView = LayoutInflater.from(themedContext).inflate(R.layout.overlay_ai_bubble, null);
+        com.lyricsync.app.ui.LyraFace.set(bubbleFace(), com.lyricsync.app.ui.LyraFace.PROUD);
         installBubbleGestures(bubbleView);
     }
 
