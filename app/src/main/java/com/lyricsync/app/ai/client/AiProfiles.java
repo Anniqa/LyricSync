@@ -106,8 +106,12 @@ public final class AiProfiles {
 
     /** Adds or replaces (by id; a blank id gets a new one). An active profile applies at once. */
     public static Profile save(SharedPreferences p, Profile profile) {
-        if (profile.id.isEmpty()) profile.id = "p" + Long.toString(System.currentTimeMillis(), 36);
         List<Profile> all = list(p);
+        if (profile.id.isEmpty()) {
+            // Two saves in the same millisecond must not share an id (one would replace the other).
+            long t = System.currentTimeMillis();
+            do profile.id = "p" + Long.toString(t++, 36); while (find(all, profile.id) != null);
+        }
         boolean replaced = false;
         for (int i = 0; i < all.size(); i++) {
             if (all.get(i).id.equals(profile.id)) {
