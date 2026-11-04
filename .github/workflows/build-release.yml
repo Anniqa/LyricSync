@@ -24,7 +24,9 @@ jobs:
   # debug APK. Tags build the minified release in the `release` job below.
   build:
     if: github.ref_type != 'tag'
-    runs-on: ubuntu-latest
+    # RUNNER (repository variable) picks the machine, e.g. a self-hosted label while
+    # GitHub's hosted runners are down; unset means ubuntu-latest.
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -103,7 +105,7 @@ jobs:
   # it on a GitHub Release page with auto-generated notes.
   release:
     if: github.ref_type == 'tag'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     permissions:
       contents: write
