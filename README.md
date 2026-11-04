@@ -7,7 +7,7 @@ It reads what's playing from the media notification (Spotify, YT Music, etc.), p
 ## Preview
 
 <p align="center">
-  <img src="docs/preview.gif" width="300" alt="LyricSync overlay highlighting lyrics word by word">
+  <img src=".github/preview.gif" width="300" alt="LyricSync overlay highlighting lyrics word by word">
 </p>
 
 ## What it does

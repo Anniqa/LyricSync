@@ -16,8 +16,18 @@ app/build/
 opencode.json
 .playwright-mcp/
 
-# superpowers design docs (local only, never publish)
-docs/superpowers/
+# Docs, notes and AI-agent files stay local, never published
+docs/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.cursor/
+.cursorrules
+.claude/
+.codex/
+.kiro/
+.opencode/
+.pi/
 build-output/
 
 # Personal mascot art (third-party fan art): local builds only, never published
