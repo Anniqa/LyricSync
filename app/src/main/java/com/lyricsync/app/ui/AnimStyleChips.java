@@ -21,6 +21,11 @@ import com.lyricsync.app.util.AppFont;
  * tiny GradientWordView driven by a looping fake playback clock, rendering the REAL
  * combination (chip × the other row's current selection) so the user sees exactly
  * what they'll get. The overlay panel uses the compact text-only form.
+ *
+ * Cost control: one shared 30 fps clock updates every preview in the same frame (each
+ * preview on its own timer made the screen redraw at the display rate); only previews
+ * that are on screen animate; choosing a chip restyles the rows and restarts the
+ * previews instead of rebuilding ~30 animated views.
  */
 public final class AnimStyleChips {
     private AnimStyleChips() {}
@@ -46,21 +51,96 @@ public final class AnimStyleChips {
         AnimConfig get();
     }
 
+    /**
+     * One clock for all previews of a picker. They update in the same message, so the
+     * screen redraws at 30 fps whatever the number of chips; with nothing on screen it
+     * idles at 4 Hz. {@code generation} bumps restart every preview with the new combo.
+     */
+    private static final class Ticker implements Runnable {
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final java.util.List<Preview> previews = new java.util.ArrayList<>();
+        int generation;
+
+        void add(Preview p) {
+            previews.add(p);
+            if (previews.size() == 1) handler.post(this);
+        }
+
+        void remove(Preview p) {
+            previews.remove(p);
+            if (previews.isEmpty()) handler.removeCallbacks(this);
+        }
+
+        @Override
+        public void run() {
+            long now = android.os.SystemClock.elapsedRealtime();
+            boolean any = false;
+            for (int i = 0; i < previews.size(); i++) any |= previews.get(i).tick(now, generation);
+            handler.postDelayed(this, any ? 33 : 250);
+        }
+    }
+
+    /** One chip's word, sung over PREVIEW_WORD_MS, a rest, then again with the current combo. */
+    private static final class Preview {
+        final GradientWordView view;
+        final String word;
+        final ConfigSupplier config;
+        final android.graphics.Rect visible = new android.graphics.Rect();
+        long cycleStart, lastTick;
+        int seen = -1;
+
+        Preview(GradientWordView view, String word, ConfigSupplier config) {
+            this.view = view;
+            this.word = word;
+            this.config = config;
+        }
+
+        /** Returns false (and rewinds) while the chip is off screen. */
+        boolean tick(long now, int generation) {
+            if (view.getWindowVisibility() != View.VISIBLE || !view.isShown() || !view.getGlobalVisibleRect(visible)) {
+                cycleStart = 0;
+                return false;
+            }
+            long position = now - cycleStart;
+            if (cycleStart == 0 || seen != generation || position > PREVIEW_WORD_MS + PREVIEW_PAUSE_MS) {
+                seen = generation;
+                cycleStart = now;
+                lastTick = now;
+                position = 0;
+                view.resetState();
+                view.setAnimConfig(config.get());
+                view.setTiming(0, PREVIEW_WORD_MS);
+                view.initLetterEmphasis(word, 0, PREVIEW_WORD_MS);
+            }
+            double dt = Math.min(0.1, Math.max(0.001, (now - lastTick) / 1000.0));
+            lastTick = now;
+            view.updateState(position, dt);
+            return true;
+        }
+    }
+
     /** Full two-row chips with animated previews (main activity). */
     public static void buildWithPreviews(Context context, LinearLayout motionRow,
                                          LinearLayout effectRow, TextView comboLabel,
                                          AnimSelection.Prefs prefs, OnComboChosen callback) {
         String motionKey = AnimSelection.motionKey(prefs);
         String effectKey = AnimSelection.effectKey(prefs);
-        Runnable rebuild = () -> buildWithPreviews(context, motionRow, effectRow,
-                comboLabel, prefs, callback);
+        Ticker gen = new Ticker();
+        String word = context.getString(com.lyricsync.app.R.string.anim_preview_word);
+        // A choice restyles both rows and restarts every preview; nothing is rebuilt.
+        Runnable rebuild = () -> {
+            refresh(motionRow, AnimSelection.motionKey(prefs));
+            refresh(effectRow, AnimSelection.effectKey(prefs));
+            updateComboLabel(comboLabel, AnimSelection.motionKey(prefs), AnimSelection.effectKey(prefs));
+            gen.generation++;
+        };
 
         motionRow.removeAllViews();
         // Previews animate past their bounds; keep the container from slicing them.
         motionRow.setClipChildren(false);
         motionRow.setClipToPadding(false);
         for (AnimStyleDef def : AnimStyleDef.Registry.motionStyles()) {
-            motionRow.addView(makePreviewChip(context, def, def.key.equals(motionKey),
+            motionRow.addView(makePreviewChip(context, def, def.key.equals(motionKey), word, gen,
                     () -> AnimConfig.combine(def,
                             AnimStyleDef.Registry.effectByKey(AnimSelection.effectKey(prefs))),
                     v -> choose(prefs, def.key, null, callback, rebuild)));
@@ -70,13 +150,15 @@ public final class AnimStyleChips {
         effectRow.setClipChildren(false);
         effectRow.setClipToPadding(false);
         for (AnimStyleDef def : AnimStyleDef.Registry.effectStyles()) {
-            effectRow.addView(makePreviewChip(context, def, def.key.equals(effectKey),
+            effectRow.addView(makePreviewChip(context, def, def.key.equals(effectKey), word, gen,
                     () -> AnimConfig.combine(
                             AnimStyleDef.Registry.motionByKey(AnimSelection.motionKey(prefs)), def),
                     v -> choose(prefs, null, def.key, callback, rebuild)));
         }
 
         updateComboLabel(comboLabel, motionKey, effectKey);
+        revealSelected(motionRow, motionKey);
+        revealSelected(effectRow, effectKey);
     }
 
     /** Compact text-only two-row chips (overlay settings panel, no combo label). */
@@ -125,13 +207,13 @@ public final class AnimStyleChips {
         if (label == null) return;
         AnimStyleDef motion = AnimStyleDef.Registry.motionByKey(motionKey);
         AnimStyleDef effect = AnimStyleDef.Registry.effectByKey(effectKey);
-        label.setText(effect == AnimStyleDef.Registry.none()
-                ? motion.displayName
-                : motion.displayName + " × " + effect.displayName);
+        label.setText(effect == AnimStyleDef.Registry.none() ? motion.displayName
+                : label.getContext().getString(com.lyricsync.app.R.string.lyrics_full_combo,
+                        motion.displayName, effect.displayName));
     }
 
     private static View makePreviewChip(Context context, AnimStyleDef def, boolean selected,
-                                        ConfigSupplier configSupplier,
+                                        String word, Ticker gen, ConfigSupplier configSupplier,
                                         View.OnClickListener onChoose) {
         float density = context.getResources().getDisplayMetrics().density;
 
@@ -146,9 +228,9 @@ public final class AnimStyleChips {
         preview.setWordIndex(0);
         // The preview is always "the active line" so the Wave ripple is visible.
         preview.setLineActive(true);
-        preview.setText("Lyric");
+        preview.setText(word);
         preview.setWordStyle(17f, PREVIEW_INACTIVE, pair.bold);
-        preview.initLetterEmphasis("Lyric", 0, PREVIEW_WORD_MS);
+        preview.initLetterEmphasis(word, 0, PREVIEW_WORD_MS);
         chip.addView(preview);
 
         TextView name = new TextView(context);
@@ -161,7 +243,7 @@ public final class AnimStyleChips {
         name.setPadding(0, Math.round(5 * density), 0, 0);
         chip.addView(name);
 
-        attachPreviewLoop(preview, configSupplier);
+        attachPreviewLoop(preview, word, gen, configSupplier);
         chip.setOnClickListener(onChoose);
         FontChips.addPressFeedback(chip);
         return chip;
@@ -244,66 +326,38 @@ public final class AnimStyleChips {
         }
     }
 
-    /**
-     * Drives a GradientWordView with a looping fake playback position: the word is
-     * "sung" over PREVIEW_WORD_MS, rests, then restarts. The config is re-resolved
-     * every cycle so the preview always shows the chip × the other row's CURRENT
-     * selection. The loop stops when the view detaches from the window.
-     */
-    private static void attachPreviewLoop(GradientWordView view, ConfigSupplier configSupplier) {
-        Handler handler = new Handler(Looper.getMainLooper());
-        final long[] cycleStart = {0};
-        final long[] lastTick = {0};
-
-        Runnable tick = new Runnable() {
-            @Override
-            public void run() {
-                if (!view.isAttachedToWindow()) return;
-                // Window hidden (activity paused): keep the loop alive but idle cheaply.
-                if (!view.isShown()) {
-                    lastTick[0] = 0;
-                    cycleStart[0] = 0;
-                    handler.postDelayed(this, 250);
-                    return;
-                }
-                long now = android.os.SystemClock.elapsedRealtime();
-                if (cycleStart[0] == 0) {
-                    cycleStart[0] = now;
-                    lastTick[0] = now;
-                    view.setTiming(0, PREVIEW_WORD_MS);
-                }
-                long position = now - cycleStart[0];
-                if (position > PREVIEW_WORD_MS + PREVIEW_PAUSE_MS) {
-                    cycleStart[0] = now;
-                    lastTick[0] = now;
-                    position = 0;
-                    // Re-arm with the freshly resolved combo for the new cycle.
-                    view.resetState();
-                    view.setAnimConfig(configSupplier.get());
-                    view.setTiming(0, PREVIEW_WORD_MS);
-                    view.initLetterEmphasis("Lyric", 0, PREVIEW_WORD_MS);
-                }
-                double dt = Math.min(0.1, Math.max(0.001, (now - lastTick[0]) / 1000.0));
-                lastTick[0] = now;
-                view.updateState(position, dt);
-                handler.postDelayed(this, 33);
-            }
-        };
-
+    /** Joins the picker's shared clock while the chip is attached. */
+    private static void attachPreviewLoop(GradientWordView view, String word, Ticker ticker,
+                                          ConfigSupplier configSupplier) {
+        Preview p = new Preview(view, word, configSupplier);
         view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override
             public void onViewAttachedToWindow(View v) {
-                cycleStart[0] = 0;
-                handler.post(tick);
+                p.cycleStart = 0;
+                ticker.add(p);
             }
 
             @Override
             public void onViewDetachedFromWindow(View v) {
-                handler.removeCallbacks(tick);
+                ticker.remove(p);
             }
         });
-        if (view.isAttachedToWindow()) {
-            handler.post(tick);
-        }
+        if (view.isAttachedToWindow()) ticker.add(p);
+    }
+
+    /** Scrolls a chip row so its selected chip is in view (after layout). */
+    private static void revealSelected(LinearLayout row, String key) {
+        if (!(row.getParent() instanceof android.widget.HorizontalScrollView)) return;
+        android.widget.HorizontalScrollView scroll = (android.widget.HorizontalScrollView) row.getParent();
+        row.post(() -> {
+            for (int i = 0; i < row.getChildCount(); i++) {
+                View chip = row.getChildAt(i);
+                if (chip.getTag() instanceof AnimStyleDef && ((AnimStyleDef) chip.getTag()).key.equals(key)) {
+                    int x = chip.getLeft() - (scroll.getWidth() - chip.getWidth()) / 2;
+                    scroll.scrollTo(Math.max(0, x), 0);
+                    return;
+                }
+            }
+        });
     }
 }

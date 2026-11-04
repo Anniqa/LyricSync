@@ -410,4 +410,5 @@
     <string name="overlay_full_short">Full screen</string>
     <string name="overlay_section_lines">Lyric lines</string>
     <string name="lyrics_full_search">Find lyrics</string>
+    <string name="anim_preview_word">Lyric</string>
 </resources>
